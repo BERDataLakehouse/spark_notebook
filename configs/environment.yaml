@@ -1,0 +1,9 @@
+name: base
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - uv
+  - pandas==2.3.1
+
+# We can remove all dependencies once we are using the 4.0 version of the base image.

@@ -1,0 +1,11 @@
+{
+    "favorites": [
+        {
+            "root": "/home/${NB_USER}",
+            "path": "/global_share",
+            "contentType": "directory",
+            "iconLabel": "ui-components:folder",
+            "name": "Global Share"
+        },
+    ]
+}
