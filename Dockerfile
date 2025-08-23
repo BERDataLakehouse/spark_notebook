@@ -1,4 +1,4 @@
-ARG BASE_TAG=latest
+ARG BASE_TAG=main
 FROM ghcr.io/berdatalakehouse/spark_notebook_base:${BASE_TAG}
 
 COPY configs/extensions /configs/extensions/
