@@ -17,9 +17,7 @@ from berdl_notebook_utils.setup_spark_session import get_spark_session
 lock = RLock()
 
 
-def spark_to_pandas(
-    spark_df: SparkDataFrame, limit: int = 1000, offset: int = 0
-) -> PandasDataFrame:
+def spark_to_pandas(spark_df: SparkDataFrame, limit: int = 1000, offset: int = 0) -> PandasDataFrame:
     """
     Convert a Spark DataFrame to a pandas DataFrame.
 
@@ -80,9 +78,6 @@ def display_df(
         show(df, buttons=buttons, lengthMenu=length_menu)
 
 
-
-
-
 def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accordion:
     """
     Create an Accordion widget displaying namespaces and their tables.
@@ -95,11 +90,7 @@ def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accord
         namespace_name = namespace.namespace
         tables_df = spark.sql(f"SHOW TABLES IN {namespace}").toPandas()
 
-        table_content = (
-            "<br>".join(tables_df["tableName"])
-            if not tables_df.empty
-            else "No tables available"
-        )
+        table_content = "<br>".join(tables_df["tableName"]) if not tables_df.empty else "No tables available"
         table_list = HTML(value=table_content)
 
         namespace_section = VBox([table_list])
@@ -210,6 +201,4 @@ def _detect_csv_delimiter(sample: str) -> str:
         dialect = sniffer.sniff(sample)
         return dialect.delimiter
     except Exception as e:
-        raise ValueError(
-            f"Could not detect CSV delimiter: {e}. Please provide delimiter explicitly."
-        ) from e
+        raise ValueError(f"Could not detect CSV delimiter: {e}. Please provide delimiter explicitly.") from e

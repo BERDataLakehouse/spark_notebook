@@ -75,9 +75,7 @@ def _auto_validate():
     missing_vars = validate_environment()
     if missing_vars:
         logger.error(f"❌ Missing or invalid environment variables: {missing_vars}")
-        logger.error(
-            "BERDLHub Config Error! Please contact a BERDL system administrator."
-        )
+        logger.error("BERDLHub Config Error! Please contact a BERDL system administrator.")
 
 
 # Call validation when module is imported

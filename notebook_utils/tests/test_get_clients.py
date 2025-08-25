@@ -21,7 +21,6 @@ env_vars = {
 }
 
 
-
 def test_get_cts_client():
     """Test the get_task_service_client function. Disable the connection test."""
     for key, value in env_vars.items():
