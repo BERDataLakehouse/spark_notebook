@@ -6,4 +6,3 @@
 #TODO:
 * We should put this in a module, so they can load dependencies
 * If we later delete ipython startup scripts, the old ones will still be there, so we should have a cleanup script?
-* 

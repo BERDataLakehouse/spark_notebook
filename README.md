@@ -4,30 +4,37 @@
 * Installs custom dependencies
 
 
-# Dockerfile.base Image
-* Use the official JupyterHub base image
-* Installs python dependencies
-* This takes a long time to build, so it is pushed only on release.
-
-# Dockerfile build
-* Build the Docker image using the base image and the notebook image
-* Copies the necessary files and configurations
 
 
-# Required ENV Vars
+# Sample env
+* The environment gets injected by the KubeSpawner
+```
+# Core Authentication
+KBASE_AUTH_TOKEN=your_kbase_token_here
+CDM_TASK_SERVICE_URL=https://your-cdm-service.example.com
+USER=your_kbase_username
 
-The following env vars must be provided by the jupyterhub
-* KBASE_ORIGIN
-* SPARK_JOB_LOG_DIR_CATEGORY
-* CDM_TASK_SERVICE_URL
-* SPARK_CLUSTER_MANAGER_API_URL
-* KBASE_AUTH_TOKEN
-* SPARK_MASTER_URL
-* SPARK_DRIVER_HOST as BERDL_POD_IP
- 
+# MinIO Configuration
+MINIO_ENDPOINT_URL=https://your-minio.example.com
+MINIO_ACCESS_KEY=your_access_key
+MINIO_SECRET_KEY=your_secret_key
+MINIO_SECURE_FLAG=true
 
-# Contributing
-See the [CONTRIBUTING.md](../CONTRIBUTING.md) file for guidelines on how to contribute to this project.
+# Spark Configuration
+BERDL_POD_IP=10.0.0.1
+SPARK_MASTER_URL=spark://spark-master:7077
+SPARK_JOB_LOG_DIR_CATEGORY=your_kbase_username
+
+# Hive Configuration
+BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
+
+# Optional Spark Tuning
+MAX_EXECUTORS=10
+EXECUTOR_CORES=2
+EXECUTOR_MEMORY=4g
+
+
+```
 
 
 

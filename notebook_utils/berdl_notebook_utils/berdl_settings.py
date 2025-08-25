@@ -19,12 +19,13 @@ class BERDLSettings(BaseSettings):
     # Core authentication
     KBASE_AUTH_TOKEN: str
     CDM_TASK_SERVICE_URL: str
+    USER: str  # KBase username of the user running the notebook
 
     # MinIO configuration
     MINIO_ENDPOINT_URL: AnyUrl  # Accepts http://, https://, s3://
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
-    MINIO_SECURE_FLAG: bool = False
+    MINIO_SECURE_FLAG: bool
 
     # Spark configuration
     BERDL_POD_IP: str
@@ -35,7 +36,6 @@ class BERDLSettings(BaseSettings):
     BERDL_HIVE_METASTORE_URI: AnyUrl  # Accepts thrift://
 
     # Optional Spark settings
-    SPARK_FAIR_SCHEDULER_CONFIG: str | None = None
     MAX_EXECUTORS: int = 5
     EXECUTOR_CORES: int = 1
     EXECUTOR_MEMORY: str = "2g"

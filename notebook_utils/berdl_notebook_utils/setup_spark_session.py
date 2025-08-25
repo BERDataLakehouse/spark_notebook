@@ -39,7 +39,7 @@ def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
     Get S3 configuration for MinIO.
     """
     # TODO Change the env var for the username
-    warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.SPARK_JOB_LOG_DIR_CATEGORY}/"
+    warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
 
     config = {
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT,
