@@ -3,6 +3,7 @@ Simple unit tests for environment validation.
 """
 
 import os
+from unittest.mock import patch
 
 from berdl_notebook_utils import get_task_service_client, CTSClient
 
@@ -19,7 +20,6 @@ env_vars = {
     "BERDL_HIVE_METASTORE_URI": "thrift://localhost:9083",
 }
 
-from unittest.mock import patch
 
 
 def test_get_cts_client():

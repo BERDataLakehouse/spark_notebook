@@ -5,7 +5,7 @@ Simple environment validation using Pydantic Settings.
 import logging
 from functools import lru_cache
 from pydantic_settings import BaseSettings
-from pydantic import ValidationError, HttpUrl, AnyUrl
+from pydantic import ValidationError, AnyUrl
 
 # Configure logging
 logger = logging.getLogger(__name__)

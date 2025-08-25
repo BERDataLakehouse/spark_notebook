@@ -1,28 +1,52 @@
-from berdl_settings import BERDLSettings, get_settings
-from clients import get_minio_client, get_task_service_client
-from setup_spark_session import get_spark_session
-from spark_utils import display_df, spark_to_pandas
+from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
+from berdl_notebook_utils.clients import get_minio_client, get_task_service_client
+from berdl_notebook_utils.setup_spark_session import get_spark_session
+from berdl_notebook_utils.spark_utils import display_df, spark_to_pandas, read_csv
+
+# add these to all!
+
+__all__ = [
+    "BERDLSettings",
+    "get_settings",
+    "get_minio_client",
+    "get_task_service_client",
+    "get_spark_session",
+    "display_df",
+    "spark_to_pandas",
+    "read_csv",
+]
 
 
 def help():
     print(
         """
     berdl_notebook_utils
+    ====================
 
-    A collection of utilities for working with BERDL in Jupyter notebooks.
+    A collection of utilities for working with Spark, MinIO, and other services in a Jupyter notebook environment.
 
-    Available functions:
-    - get_settings(): Get the BERDL settings from environment variables.
-    - get_minio_client(): Get a MinIO client instance.
-    - get_task_service_client(): Get a CDM Task Service client instance.
-    - get_spark_session(): Get a configured Spark session.
+    Modules:
+    --------
+    - BERDLSettings: Configuration settings for the BERDL environment.
+    - get_settings: Function to retrieve the current settings.
+    - get_minio_client: Function to get a MinIO client instance.
+    - get_task_service_client: Function to get a CDM Task Service client instance.
+    - get_spark_session: Function to create or retrieve a Spark session.
+    - display_df: Function to display pandas or Spark DataFrames in a Jupyter notebook using itables.
+    - spark_to_pandas: Function to convert a Spark DataFrame to a pandas DataFrame.
 
-    Example usage:
-    from berdl_notebook_utils import get_settings, get_minio_client, get_task_service_client, get_spark_session
+    Usage:
+    ------
+    Import the desired functions or classes from the module and use them in your notebook.
 
-    settings = get_settings()
-    minio_client = get_minio_client()
-    cts_client = get_task_service_client()
+    Example:
+    --------
+    from berdl_notebook_utils import get_spark_session, display_df
+
     spark = get_spark_session()
+    df = spark.read.csv("s3a://your-bucket/your-file.csv")
+    display_df(df)
+
+    For more detailed documentation, refer to the individual module docstrings.
     """
     )

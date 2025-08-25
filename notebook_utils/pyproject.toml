@@ -1,7 +1,7 @@
 [project]
-name = "notebook-utils"
-version = "0.1.0"
-description = "Add your description here"
+name = "berdl_notebook_utils"
+version = "0.0.1"
+description = "berdl_notebook_utils"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
