@@ -44,7 +44,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-      - name: Free Disk Space (Ubuntu)
+      - name: Free Disk Space For Build (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: false
