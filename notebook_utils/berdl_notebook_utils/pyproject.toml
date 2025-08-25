@@ -1,0 +1,22 @@
+[project]
+name = "notebook-utils"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cdm-task-service-client>=0.1.0",
+    "cdm-tree-browser>=0.1.0",
+    "minio>=7.2.16",
+    "pydantic-settings>=2.10.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]
+
+
+[tool.uv.sources]
+cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client.git", rev = "0.2.0" }
+cdm-tree-browser = { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" }
