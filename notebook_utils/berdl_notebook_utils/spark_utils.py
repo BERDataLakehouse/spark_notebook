@@ -1,217 +1,150 @@
-"""
-Spark utilities for CDM JupyterHub.
-
-This module provides utilities for creating and configuring Spark sessions
-with support for Delta Lake, MinIO S3 storage, and fair scheduling.
-
-# This file must be loaded AFTER the 02-get_minio_client.py file
-"""
-
 import csv
-from datetime import datetime
-from typing import Dict, List, Optional
+from threading import RLock
+from typing import Optional
 
-from pyspark.conf import SparkConf
-from pyspark.sql import DataFrame, SparkSession
+import itables.options as opt
+import pandas as pd
+from IPython.core.display_functions import clear_output
+from IPython.display import display
+from ipywidgets import Accordion, VBox, HTML
+from itables import init_notebook_mode, show
+from pandas import DataFrame as PandasDataFrame
+from pyspark.sql import DataFrame as SparkDataFrame, SparkSession, DataFrame
+from sidecar import Sidecar
 
+from berdl_notebook_utils import get_minio_client
+from berdl_notebook_utils.setup_spark_session import get_spark_session
 
-import os
-
-from berdl_notebook_utils import BERDLSettings
-
-# =============================================================================
-# CONSTANTS
-# =============================================================================
-
-# Spark executor defaults
-DEFAULT_EXECUTOR_CORES = 1
-DEFAULT_EXECUTOR_MEMORY = "2g"
-DEFAULT_MAX_EXECUTORS = 5
-
-# Fair scheduler configuration
-SPARK_DEFAULT_POOL = "default"
-SPARK_POOLS = [SPARK_DEFAULT_POOL, "highPriority"]
-
-# =============================================================================
-# PRIVATE HELPER FUNCTIONS
-# =============================================================================
+lock = RLock()
 
 
-def _validate_env_vars(required_vars: List[str], context: str) -> None:
-    """Validate that required environment variables are set."""
-    missing = [var for var in required_vars if var not in os.environ]
-    if missing:
-        raise EnvironmentError(
-            f"Missing required environment variables for {context}: {missing}"
-        )
-
-
-def _get_s3_conf(username) -> Dict[str, str]:
+def spark_to_pandas(
+    spark_df: SparkDataFrame, limit: int = 1000, offset: int = 0
+) -> PandasDataFrame:
     """
-    Get S3 configuration for MinIO.
-    """
-    warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{username}/"
+    Convert a Spark DataFrame to a pandas DataFrame.
 
-    config = {
-        "spark.hadoop.fs.s3a.endpoint": os.environ.get("MINIO_ENDPOINT")
-        or os.environ.get("MINIO_URL"),
-        "spark.hadoop.fs.s3a.access.key": os.environ.get("MINIO_ACCESS_KEY"),
-        "spark.hadoop.fs.s3a.secret.key": os.environ.get("MINIO_SECRET_KEY"),
-        "spark.hadoop.fs.s3a.path.style.access": "true",
-        "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
-        "spark.sql.warehouse.dir": warehouse_dir,
+    :param spark_df: a Spark DataFrame
+    :param limit: the number of rows to fetch
+    :param offset: the number of rows to skip
+    :return: a pandas DataFrame
+    """
+
+    return spark_df.offset(offset).limit(limit).toPandas()
+
+
+def display_df(
+    df: PandasDataFrame | SparkDataFrame,
+    layout: dict = None,
+    buttons: list = None,
+    length_menu: list = None,
+) -> None:
+    """
+    Display a pandas DataFrame using itables.
+    iTables project page: https://github.com/mwouts/itables
+
+    Notice itables.show() function is not compatible with Spark DataFrames. If a Spark DataFrame is passed to this
+    function, it will be converted to a pandas DataFrame (first 1000 rows) before displaying it.
+
+    :param df: a pandas DataFrame or a Spark DataFrame
+    :param layout: layout options, refer to https://datatables.net/reference/option/layout
+    :param buttons: buttons options, options refer to https://datatables.net/reference/button/
+    :param length_menu: length menu options, refer to https://datatables.net/reference/option/lengthMenu
+    :return:
+    """
+    # convert Spark DataFrame to pandas DataFrame
+    if isinstance(df, SparkDataFrame):
+        if df.count() > 1000:
+            print("Converting first 1000 rows from Spark to Pandas DataFrame...")
+        df = spark_to_pandas(df)
+
+    # initialize itables for the notebook
+    init_notebook_mode(all_interactive=False)
+
+    # set default values if options are not provided
+    default_layout = {
+        "topStart": "search",
+        "topEnd": "buttons",
+        "bottomStart": "pageLength",
+        "bottomEnd": "paging",
+        "bottom2Start": "info",
     }
+    default_buttons = ["csvHtml5", "excelHtml5", "print"]
+    default_length_menu = [5, 10, 20]
 
-    config.update(
-        {
-            "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
-            "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-            "spark.databricks.delta.retentionDurationCheck.enabled": "false",
-        }
-    )
-    return config
+    layout = layout or default_layout
+    buttons = buttons or default_buttons
+    length_menu = length_menu or default_length_menu
 
-
-
+    with lock:
+        opt.layout = layout
+        show(df, buttons=buttons, lengthMenu=length_menu)
 
 
+def _fetch_namespaces(spark: SparkSession) -> list:
+    """
+    Retrieve all database namespaces using an active Spark session.
+    """
+    return spark.sql("SHOW DATABASES").collect()
 
 
+def _fetch_tables_for_namespace(spark: SparkSession, namespace: str) -> pd.DataFrame:
+    """
+    Retrieve all tables for a given namespace.
+    """
+    return spark.sql(f"SHOW TABLES IN {namespace}").toPandas()
 
 
+def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accordion:
+    """
+    Create an Accordion widget displaying namespaces and their tables.
 
+    ref: https://ipywidgets.readthedocs.io/en/latest/examples/Widget%20List.html#accordion
+    """
+    accordion = Accordion()
 
-def _configure_spark_master(config: Dict[str, str]) -> None:
-    """Configure Spark master URL."""
-    _validate_env_vars(["SPARK_MASTER_URL"], "Spark master setup")
-    config["spark.master"] = os.environ["SPARK_MASTER_URL"]
+    for namespace in namespaces:
+        namespace_name = namespace.namespace
+        tables_df = _fetch_tables_for_namespace(spark, namespace_name)
 
-
-def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
-    """Set the scheduler pool for the Spark session."""
-    if scheduler_pool not in SPARK_POOLS:
-        print(
-            f"Warning: Scheduler pool '{scheduler_pool}' not in available pools: {SPARK_POOLS}. "
-            f"Defaulting to '{SPARK_DEFAULT_POOL}'"
+        table_content = (
+            "<br>".join(tables_df["tableName"])
+            if not tables_df.empty
+            else "No tables available"
         )
-        scheduler_pool = SPARK_DEFAULT_POOL
+        table_list = HTML(value=table_content)
 
-    spark.sparkContext.setLocalProperty("spark.scheduler.pool", scheduler_pool)
+        namespace_section = VBox([table_list])
+        accordion.children += (namespace_section,)
+        accordion.set_title(len(accordion.children) - 1, f"Namespace: {namespace_name}")
+
+    return accordion
 
 
-def _detect_csv_delimiter(sample: str) -> str:
+def _update_namespace_view(
+    sidecar: Sidecar,
+) -> None:
     """
-    Detect CSV delimiter from a sample string.
-
-    Args:
-        sample: Sample string from CSV file
-
-    Returns:
-        Detected delimiter character
-
-    Raises:
-        ValueError: If delimiter cannot be detected
+    Update the namespace viewer in the sidecar with the latest namespaces and tables.
     """
-    try:
-        sniffer = csv.Sniffer()
-        dialect = sniffer.sniff(sample)
-        return dialect.delimiter
-    except Exception as e:
-        raise ValueError(
-            f"Could not detect CSV delimiter: {e}. Please provide delimiter explicitly."
-        ) from e
+    with get_spark_session() as spark:
+        namespaces = _fetch_namespaces(spark)
+        print("Available Namespaces:", [ns.namespace for ns in namespaces])
+        updated_accordion = _create_namespace_accordion(spark, namespaces)
+
+    ui = VBox([updated_accordion])
+
+    with sidecar:
+        clear_output(wait=True)
+        display(ui)
 
 
-# =============================================================================
-# PUBLIC FUNCTIONS
-# =============================================================================
-
-
-
-
-
-def get_spark_session(
-    app_name: Optional[str] = None,
-    local: bool = False,
-    delta_lake: bool = True,
-    scheduler_pool: str = SPARK_DEFAULT_POOL,
-    use_hive: bool = True,
-    settings: BERDLSettings = None,
-) -> SparkSession:
+def display_namespace_viewer() -> None:
     """
-    Create and configure a Spark session with CDM-specific settings.
-
-    This function creates a Spark session configured for the CDM environment,
-    including support for Delta Lake, MinIO S3 storage
-
-    Args:
-        app_name: Application name. If None, generates a timestamp-based name
-        local: If True, creates a local Spark session (ignores other configs)
-        delta_lake: If True, enables Delta Lake support with required JARs
-        scheduler_pool: Fair scheduler pool name (default: "default")
-
-    Returns:
-        Configured SparkSession instance
-
-    Raises:
-        EnvironmentError: If required environment variables are missing
-        FileNotFoundError: If required JAR files are missing
-
-    Example:
-        >>> # Basic usage
-        >>> spark = get_spark_session("MyApp")
-
-        >>> # With custom scheduler pool
-        >>> spark = get_spark_session("MyApp", scheduler_pool="highPriority")
-
-        >>> # Local development
-        >>> spark = get_spark_session("TestApp", local=True)
+    Display the namespace viewer in the Jupyter Notebook Sidecar.
     """
-    #TODO TODO since we disabled dynamic allocation, we need to set the executor cores and memory here
-    #TODO: Ensure hub passes the settings of the cores and memory of the executors, so the client can set them here,
-    #TODO: Set Spark Driver Settings too
-
-    if settings is None:
-        settings = BERDLSettings()
-
-    # Generate app name if not provided
-    if app_name is None:
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        app_name = f"kbase_spark_session_{timestamp}"
-
-    # For local development, return simple session
-    if local:
-        return SparkSession.builder.appName(app_name).getOrCreate()
-
-    # Build configuration dictionary
-    config: Dict[str, str] = {"spark.app.name": app_name}
-
-    # Configure driver host
-    config["spark.driver.host"] = settings.BERDL_POD_IP
-    config["spark.master"] = settings.SPARK_MASTER_URL
-
-
-    # Configure Delta Lake and S3 if enabled
-    if delta_lake:
-        s3_delta_lake_config = _get_s3_conf(
-            username=os.environ["SPARK_JOB_LOG_DIR_CATEGORY"]
-        )
-        config.update(s3_delta_lake_config)
-
-    if use_hive:
-        config["hive.metastore.uris"] = os.environ["BERDL_HIVE_METASTORE_URI"]
-
-        # config["spark.sql.warehouse.dir"]
-
-    # Create and configure Spark session
-    spark_conf = SparkConf().setAll(list(config.items()))
-    spark = SparkSession.builder.config(conf=spark_conf).getOrCreate()
-    spark.sparkContext.setLogLevel("DEBUG")
-
-    # Set scheduler pool
-    _set_scheduler_pool(spark, scheduler_pool)
-
-    return spark
+    sidecar = Sidecar(title="Database Namespaces & Tables")
+    _update_namespace_view(sidecar)
 
 
 def read_csv(
@@ -219,9 +152,6 @@ def read_csv(
     path: str,
     header: bool = True,
     sep: Optional[str] = None,
-    minio_url: Optional[str] = None,
-    access_key: Optional[str] = None,
-    secret_key: Optional[str] = None,
     **kwargs,
 ) -> DataFrame:
     """
@@ -258,9 +188,7 @@ def read_csv(
     """
     # Auto-detect delimiter if not provided
     if sep is None:
-        client = get_minio_client(
-            minio_url=minio_url, access_key=access_key, secret_key=secret_key
-        )
+        client = get_minio_client()
 
         # Parse S3 path to get bucket and key
         s3_path = path.replace("s3a://", "")
@@ -274,3 +202,26 @@ def read_csv(
 
     # Read CSV into DataFrame
     return spark.read.csv(path, header=header, sep=sep, **kwargs)
+
+
+def _detect_csv_delimiter(sample: str) -> str:
+    """
+    Detect CSV delimiter from a sample string.
+
+    Args:
+        sample: Sample string from CSV file
+
+    Returns:
+        Detected delimiter character
+
+    Raises:
+        ValueError: If delimiter cannot be detected
+    """
+    try:
+        sniffer = csv.Sniffer()
+        dialect = sniffer.sniff(sample)
+        return dialect.delimiter
+    except Exception as e:
+        raise ValueError(
+            f"Could not detect CSV delimiter: {e}. Please provide delimiter explicitly."
+        ) from e
