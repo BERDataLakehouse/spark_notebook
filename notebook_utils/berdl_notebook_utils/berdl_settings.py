@@ -7,7 +7,6 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings
 from pydantic import ValidationError, HttpUrl, AnyUrl
 
-
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,7 @@ class BERDLSettings(BaseSettings):
     """
     BERDL environment configuration using Pydantic Settings.
     """
+
     # Core authentication
     KBASE_AUTH_TOKEN: str
     CDM_TASK_SERVICE_URL: str
@@ -52,7 +52,7 @@ def validate_environment():
         BERDLSettings()
         return []
     except ValidationError as e:
-        return [error['loc'][0] for error in e.errors()]
+        return [error["loc"][0] for error in e.errors()]
 
 
 @lru_cache(maxsize=1)
@@ -75,7 +75,9 @@ def _auto_validate():
     missing_vars = validate_environment()
     if missing_vars:
         logger.error(f"❌ Missing or invalid environment variables: {missing_vars}")
-        logger.error("BERDLHub Config Error! Please contact a BERDL system administrator.")
+        logger.error(
+            "BERDLHub Config Error! Please contact a BERDL system administrator."
+        )
 
 
 # Call validation when module is imported

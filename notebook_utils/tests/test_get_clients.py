@@ -1,6 +1,7 @@
 """
 Simple unit tests for environment validation.
 """
+
 import os
 
 from berdl_notebook_utils import get_task_service_client, CTSClient
@@ -26,7 +27,7 @@ def test_get_cts_client():
     for key, value in env_vars.items():
         os.environ[key] = value
 
-    with patch.object(CTSClient, '_test_cts_connection') as mock_test_connection:
+    with patch.object(CTSClient, "_test_cts_connection") as mock_test_connection:
         a = get_task_service_client()
         mock_test_connection.assert_called_once()
         assert type(a) is CTSClient

@@ -17,10 +17,10 @@ env_vars = {
     "BERDL_HIVE_METASTORE_URI": "thrift://localhost:9083",
 }
 
+
 def test_valid_environment(monkeypatch):
     """Test that all valid environment variables return empty list."""
     # Set all required environment variables
-
 
     for key, value in env_vars.items():
         monkeypatch.setenv(key, value)
@@ -33,10 +33,9 @@ def test_missing_variables(monkeypatch):
     """Test that missing variables are returned in list."""
     # Only set some variables
     env_vars_with_missing = env_vars.copy()
-    env_vars_with_missing["BERDL_HIVE_METASTORE_URI"] = ''
+    env_vars_with_missing["BERDL_HIVE_METASTORE_URI"] = ""
     for key, value in env_vars_with_missing.items():
         monkeypatch.setenv(key, value)
-
 
     result = validate_environment()
 

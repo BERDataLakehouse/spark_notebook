@@ -8,7 +8,7 @@ from berdl_notebook_utils import get_settings, BERDLSettings
 
 @lru_cache(maxsize=1)
 def get_task_service_client(settings: BERDLSettings = None) -> CTSClient:
-    """ Get an instance of the CDM Task Service client.
+    """Get an instance of the CDM Task Service client.
     See:
     https://github.com/kbase/cdm-task-service-client/
     https://github.com/kbase/cdm-task-service/
@@ -30,5 +30,9 @@ def get_minio_client(settings: BERDLSettings = None) -> Minio:
     if settings is None:
         settings = get_settings()
 
-    return Minio(endpoint=settings.MINIO_ENDPOINT, access_key=settings.MINIO_ACCESS_KEY, secret_key=settings.MINIO_SECRET_KEY,
-                 secure=settings.MINIO_SECURE)
+    return Minio(
+        endpoint=settings.MINIO_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=settings.MINIO_SECURE,
+    )

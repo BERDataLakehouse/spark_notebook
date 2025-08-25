@@ -7,10 +7,8 @@ from pyspark.sql import SparkSession
 
 
 def create_namespace_if_not_exists(
-        spark: SparkSession,
-        namespace: str = "default"
+    spark: SparkSession, namespace: str = "default"
 ) -> None:
-
     """
     Create a namespace in the Spark catalog if it does not exist.
 
@@ -24,11 +22,10 @@ def create_namespace_if_not_exists(
 
 
 def table_exists(
-        spark: SparkSession,
-        table_name: str,
-        namespace: str = "default",
+    spark: SparkSession,
+    table_name: str,
+    namespace: str = "default",
 ) -> bool:
-
     """
     Check if a table exists in the Spark catalog.
 
@@ -50,11 +47,10 @@ def table_exists(
 
 
 def remove_table(
-        spark: SparkSession,
-        table_name: str,
-        namespace: str = "default",
+    spark: SparkSession,
+    table_name: str,
+    namespace: str = "default",
 ) -> None:
-
     """
     Remove a table from the Spark catalog.
 

@@ -10,15 +10,13 @@ from pandas import DataFrame as PandasDataFrame
 from pyspark.sql import DataFrame as SparkDataFrame, SparkSession
 from sidecar import Sidecar
 
-#from spark.utils import get_spark_session
+# from spark.utils import get_spark_session
 
 lock = RLock()
 
 
 def spark_to_pandas(
-        spark_df: SparkDataFrame,
-        limit: int = 1000,
-        offset: int = 0
+    spark_df: SparkDataFrame, limit: int = 1000, offset: int = 0
 ) -> PandasDataFrame:
     """
     Convert a Spark DataFrame to a pandas DataFrame.
@@ -33,10 +31,10 @@ def spark_to_pandas(
 
 
 def display_df(
-        df: PandasDataFrame | SparkDataFrame,
-        layout: dict = None,
-        buttons: list = None,
-        length_menu: list = None
+    df: PandasDataFrame | SparkDataFrame,
+    layout: dict = None,
+    buttons: list = None,
+    length_menu: list = None,
 ) -> None:
     """
     Display a pandas DataFrame using itables.
@@ -66,7 +64,7 @@ def display_df(
         "topEnd": "buttons",
         "bottomStart": "pageLength",
         "bottomEnd": "paging",
-        "bottom2Start": "info"
+        "bottom2Start": "info",
     }
     default_buttons = ["csvHtml5", "excelHtml5", "print"]
     default_length_menu = [5, 10, 20]
@@ -106,7 +104,11 @@ def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accord
         namespace_name = namespace.namespace
         tables_df = _fetch_tables_for_namespace(spark, namespace_name)
 
-        table_content = '<br>'.join(tables_df['tableName']) if not tables_df.empty else "No tables available"
+        table_content = (
+            "<br>".join(tables_df["tableName"])
+            if not tables_df.empty
+            else "No tables available"
+        )
         table_list = HTML(value=table_content)
 
         namespace_section = VBox([table_list])
@@ -139,5 +141,5 @@ def display_namespace_viewer(yarn: bool = True) -> None:
     Args:
         yarn (bool): Whether to use YARN as the spark resource manager. Defaults to True.
     """
-    sidecar = Sidecar(title='Database Namespaces & Tables')
+    sidecar = Sidecar(title="Database Namespaces & Tables")
     _update_namespace_view(sidecar, yarn)

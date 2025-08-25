@@ -17,9 +17,7 @@ from pyspark.sql import DataFrame, SparkSession
 
 import os
 
-
-
-
+from berdl_notebook_utils import BERDLSettings
 
 # =============================================================================
 # CONSTANTS
@@ -55,7 +53,8 @@ def _get_s3_conf(username) -> Dict[str, str]:
     warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{username}/"
 
     config = {
-        "spark.hadoop.fs.s3a.endpoint": os.environ.get("MINIO_ENDPOINT") or os.environ.get("MINIO_URL"),
+        "spark.hadoop.fs.s3a.endpoint": os.environ.get("MINIO_ENDPOINT")
+        or os.environ.get("MINIO_URL"),
         "spark.hadoop.fs.s3a.access.key": os.environ.get("MINIO_ACCESS_KEY"),
         "spark.hadoop.fs.s3a.secret.key": os.environ.get("MINIO_SECRET_KEY"),
         "spark.hadoop.fs.s3a.path.style.access": "true",
@@ -63,11 +62,13 @@ def _get_s3_conf(username) -> Dict[str, str]:
         "spark.sql.warehouse.dir": warehouse_dir,
     }
 
-    config.update({
-        "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
-        "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        "spark.databricks.delta.retentionDurationCheck.enabled": "false",
-    })
+    config.update(
+        {
+            "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+            "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            "spark.databricks.delta.retentionDurationCheck.enabled": "false",
+        }
+    )
     return config
 
 
@@ -75,49 +76,8 @@ def _get_s3_conf(username) -> Dict[str, str]:
 
 
 
-def _configure_dynamic_allocation(config: Dict[str, str]) -> None:
-    """Configure Spark dynamic allocation settings."""
-    config.update(
-        {
-            "spark.dynamicAllocation.enabled": "true",
-            "spark.dynamicAllocation.minExecutors": "1",
-            "spark.dynamicAllocation.maxExecutors": os.getenv(
-                "MAX_EXECUTORS", str(DEFAULT_MAX_EXECUTORS)
-            ),
-            "spark.executor.cores": os.environ.get(
-                "EXECUTOR_CORES", str(DEFAULT_EXECUTOR_CORES)
-            ),
-            "spark.executor.memory": os.getenv(
-                "EXECUTOR_MEMORY", DEFAULT_EXECUTOR_MEMORY
-            ),
-        }
-    )
 
 
-def _configure_fair_scheduler(config: Dict[str, str]) -> None:
-    """Configure Spark fair scheduler settings."""
-    _validate_env_vars(["SPARK_FAIR_SCHEDULER_CONFIG"], "fair scheduler setup")
-    config.update(
-        {
-            "spark.scheduler.mode": "FAIR",
-            "spark.scheduler.allocation.file": os.environ[
-                "SPARK_FAIR_SCHEDULER_CONFIG"
-            ],
-        }
-    )
-
-
-def _configure_driver_host(config: Dict[str, str]) -> None:
-    """Configure Spark driver host settings."""
-    _validate_env_vars(["BERDL_POD_IP"], "Spark driver setup")
-    hostname = os.environ["BERDL_POD_IP"]
-    config["spark.driver.host"] = os.environ['BERDL_POD_IP']
-
-    # if os.environ.get("USE_KUBE_SPAWNER") == "true":
-    #     # For Kubernetes: use pod IP since hostname may not be resolvable
-    #     config["spark.driver.host"] = socket.gethostbyname(hostname)
-    # else:
-    #     # For Docker/standalone: hostname is resolvable
 
 
 
@@ -125,9 +85,6 @@ def _configure_spark_master(config: Dict[str, str]) -> None:
     """Configure Spark master URL."""
     _validate_env_vars(["SPARK_MASTER_URL"], "Spark master setup")
     config["spark.master"] = os.environ["SPARK_MASTER_URL"]
-
-
-
 
 
 def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
@@ -170,18 +127,22 @@ def _detect_csv_delimiter(sample: str) -> str:
 # =============================================================================
 
 
+
+
+
 def get_spark_session(
     app_name: Optional[str] = None,
     local: bool = False,
     delta_lake: bool = True,
     scheduler_pool: str = SPARK_DEFAULT_POOL,
     use_hive: bool = True,
+    settings: BERDLSettings = None,
 ) -> SparkSession:
     """
     Create and configure a Spark session with CDM-specific settings.
 
     This function creates a Spark session configured for the CDM environment,
-    including support for Delta Lake, MinIO S3 storage, and fair scheduling.
+    including support for Delta Lake, MinIO S3 storage
 
     Args:
         app_name: Application name. If None, generates a timestamp-based name
@@ -206,6 +167,13 @@ def get_spark_session(
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
     """
+    #TODO TODO since we disabled dynamic allocation, we need to set the executor cores and memory here
+    #TODO: Ensure hub passes the settings of the cores and memory of the executors, so the client can set them here,
+    #TODO: Set Spark Driver Settings too
+
+    if settings is None:
+        settings = BERDLSettings()
+
     # Generate app name if not provided
     if app_name is None:
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -218,22 +186,22 @@ def get_spark_session(
     # Build configuration dictionary
     config: Dict[str, str] = {"spark.app.name": app_name}
 
-    # Configure core Spark settings
-    _configure_dynamic_allocation(config)
-    #_configure_fair_scheduler(config) #TODO
-    _configure_driver_host(config)
-    _configure_spark_master(config)
+    # Configure driver host
+    config["spark.driver.host"] = settings.BERDL_POD_IP
+    config["spark.master"] = settings.SPARK_MASTER_URL
+
 
     # Configure Delta Lake and S3 if enabled
     if delta_lake:
-        s3_delta_lake_config = _get_s3_conf(username=os.environ['SPARK_JOB_LOG_DIR_CATEGORY'])
+        s3_delta_lake_config = _get_s3_conf(
+            username=os.environ["SPARK_JOB_LOG_DIR_CATEGORY"]
+        )
         config.update(s3_delta_lake_config)
 
     if use_hive:
+        config["hive.metastore.uris"] = os.environ["BERDL_HIVE_METASTORE_URI"]
 
-        config["hive.metastore.uris"] = os.environ['BERDL_HIVE_METASTORE_URI']
-
-        #config["spark.sql.warehouse.dir"]
+        # config["spark.sql.warehouse.dir"]
 
     # Create and configure Spark session
     spark_conf = SparkConf().setAll(list(config.items()))
