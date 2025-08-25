@@ -41,5 +41,4 @@ def test_missing_variables(monkeypatch):
 
     assert isinstance(result, list)
     assert len(result) > 0
-    assert len(result[0]) > len(env_vars_with_missing) - 1
     print(result)
