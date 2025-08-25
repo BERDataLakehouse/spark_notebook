@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 
-def help():
+def berdl_notebook_help():
     print(
         """
     berdl_notebook_utils
@@ -27,8 +27,6 @@ def help():
 
     Modules:
     --------
-    - BERDLSettings: Configuration settings for the BERDL environment.
-    - get_settings: Function to retrieve the current settings.
     - get_minio_client: Function to get a MinIO client instance.
     - get_task_service_client: Function to get a CDM Task Service client instance.
     - get_spark_session: Function to create or retrieve a Spark session.

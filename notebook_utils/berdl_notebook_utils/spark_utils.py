@@ -3,7 +3,6 @@ from threading import RLock
 from typing import Optional
 
 import itables.options as opt
-import pandas as pd
 from IPython.core.display_functions import clear_output
 from IPython.display import display
 from ipywidgets import Accordion, VBox, HTML
@@ -81,18 +80,7 @@ def display_df(
         show(df, buttons=buttons, lengthMenu=length_menu)
 
 
-def _fetch_namespaces(spark: SparkSession) -> list:
-    """
-    Retrieve all database namespaces using an active Spark session.
-    """
-    return spark.sql("SHOW DATABASES").collect()
 
-
-def _fetch_tables_for_namespace(spark: SparkSession, namespace: str) -> pd.DataFrame:
-    """
-    Retrieve all tables for a given namespace.
-    """
-    return spark.sql(f"SHOW TABLES IN {namespace}").toPandas()
 
 
 def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accordion:
@@ -105,7 +93,7 @@ def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accord
 
     for namespace in namespaces:
         namespace_name = namespace.namespace
-        tables_df = _fetch_tables_for_namespace(spark, namespace_name)
+        tables_df = spark.sql(f"SHOW TABLES IN {namespace}").toPandas()
 
         table_content = (
             "<br>".join(tables_df["tableName"])
@@ -128,7 +116,7 @@ def _update_namespace_view(
     Update the namespace viewer in the sidecar with the latest namespaces and tables.
     """
     with get_spark_session() as spark:
-        namespaces = _fetch_namespaces(spark)
+        namespaces = spark.sql("SHOW DATABASES").collect()
         print("Available Namespaces:", [ns.namespace for ns in namespaces])
         updated_accordion = _create_namespace_accordion(spark, namespaces)
 
