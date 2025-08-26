@@ -1,5 +1,5 @@
 """
-Simple unit tests for environment validation.
+Unit tests for client creation functions.
 """
 
 import os
