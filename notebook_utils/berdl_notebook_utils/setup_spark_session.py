@@ -41,7 +41,7 @@ def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
     warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
 
     config = {
-        "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
+        "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
         "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
         "spark.hadoop.fs.s3a.path.style.access": "true",
