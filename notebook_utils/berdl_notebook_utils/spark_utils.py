@@ -1,25 +1,23 @@
+import csv
 from threading import RLock
+from typing import Optional
 
 import itables.options as opt
-import pandas as pd
 from IPython.core.display_functions import clear_output
 from IPython.display import display
 from ipywidgets import Accordion, VBox, HTML
 from itables import init_notebook_mode, show
 from pandas import DataFrame as PandasDataFrame
-from pyspark.sql import DataFrame as SparkDataFrame, SparkSession
+from pyspark.sql import DataFrame as SparkDataFrame, SparkSession, DataFrame
 from sidecar import Sidecar
 
-#from spark.utils import get_spark_session
+from berdl_notebook_utils import get_minio_client
+from berdl_notebook_utils.setup_spark_session import get_spark_session
 
 lock = RLock()
 
 
-def spark_to_pandas(
-        spark_df: SparkDataFrame,
-        limit: int = 1000,
-        offset: int = 0
-) -> PandasDataFrame:
+def spark_to_pandas(spark_df: SparkDataFrame, limit: int = 1000, offset: int = 0) -> PandasDataFrame:
     """
     Convert a Spark DataFrame to a pandas DataFrame.
 
@@ -33,10 +31,10 @@ def spark_to_pandas(
 
 
 def display_df(
-        df: PandasDataFrame | SparkDataFrame,
-        layout: dict = None,
-        buttons: list = None,
-        length_menu: list = None
+    df: PandasDataFrame | SparkDataFrame,
+    layout: dict = None,
+    buttons: list = None,
+    length_menu: list = None,
 ) -> None:
     """
     Display a pandas DataFrame using itables.
@@ -66,7 +64,7 @@ def display_df(
         "topEnd": "buttons",
         "bottomStart": "pageLength",
         "bottomEnd": "paging",
-        "bottom2Start": "info"
+        "bottom2Start": "info",
     }
     default_buttons = ["csvHtml5", "excelHtml5", "print"]
     default_length_menu = [5, 10, 20]
@@ -80,20 +78,6 @@ def display_df(
         show(df, buttons=buttons, lengthMenu=length_menu)
 
 
-def _fetch_namespaces(spark: SparkSession) -> list:
-    """
-    Retrieve all database namespaces using an active Spark session.
-    """
-    return spark.sql("SHOW DATABASES").collect()
-
-
-def _fetch_tables_for_namespace(spark: SparkSession, namespace: str) -> pd.DataFrame:
-    """
-    Retrieve all tables for a given namespace.
-    """
-    return spark.sql(f"SHOW TABLES IN {namespace}").toPandas()
-
-
 def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accordion:
     """
     Create an Accordion widget displaying namespaces and their tables.
@@ -104,9 +88,9 @@ def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accord
 
     for namespace in namespaces:
         namespace_name = namespace.namespace
-        tables_df = _fetch_tables_for_namespace(spark, namespace_name)
+        tables_df = spark.sql(f"SHOW TABLES IN {namespace_name}").toPandas()
 
-        table_content = '<br>'.join(tables_df['tableName']) if not tables_df.empty else "No tables available"
+        table_content = "<br>".join(tables_df["tableName"]) if not tables_df.empty else "No tables available"
         table_list = HTML(value=table_content)
 
         namespace_section = VBox([table_list])
@@ -116,12 +100,14 @@ def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accord
     return accordion
 
 
-def _update_namespace_view(sidecar: Sidecar, yarn: bool) -> None:
+def _update_namespace_view(
+    sidecar: Sidecar,
+) -> None:
     """
     Update the namespace viewer in the sidecar with the latest namespaces and tables.
     """
-    with get_spark_session(yarn=yarn) as spark:
-        namespaces = _fetch_namespaces(spark)
+    with get_spark_session() as spark:
+        namespaces = spark.sql("SHOW DATABASES").collect()
         print("Available Namespaces:", [ns.namespace for ns in namespaces])
         updated_accordion = _create_namespace_accordion(spark, namespaces)
 
@@ -132,12 +118,83 @@ def _update_namespace_view(sidecar: Sidecar, yarn: bool) -> None:
         display(ui)
 
 
-def display_namespace_viewer(yarn: bool = True) -> None:
+def display_namespace_viewer() -> None:
     """
     Display the namespace viewer in the Jupyter Notebook Sidecar.
+    """
+    sidecar = Sidecar(title="Database Namespaces & Tables")
+    _update_namespace_view(sidecar)
+
+
+def read_csv(
+    spark: SparkSession,
+    path: str,
+    header: bool = True,
+    sep: Optional[str] = None,
+    **kwargs,
+) -> DataFrame:
+    """
+    Read CSV file from MinIO into a Spark DataFrame with automatic delimiter detection.
 
     Args:
-        yarn (bool): Whether to use YARN as the spark resource manager. Defaults to True.
+        spark: Spark session instance
+        path: MinIO path to CSV file (e.g., "s3a://bucket/file.csv" or "bucket/file.csv")
+        header: Whether CSV file has header row
+        sep: CSV delimiter. If None, will attempt auto-detection
+        **kwargs: Additional arguments passed to spark.read.csv()
+
+    Returns:
+        Spark DataFrame containing CSV data
+
+    Example:
+        >>> # Basic usage with auto-detection
+        >>> df = read_csv(spark, "s3a://my-bucket/data.csv")
+
+        >>> # With explicit delimiter
+        >>> df = read_csv(spark, "s3a://my-bucket/data.tsv", sep="\\t")
+
+        >>> # With custom MinIO credentials
+        >>> df = read_csv(
+        ...     spark,
+        ...     "s3a://my-bucket/data.csv",
+        ...     minio_url="http://localhost:9000",
+        ...     access_key="my-key",
+        ...     secret_key="my-secret"
+        ... )
     """
-    sidecar = Sidecar(title='Database Namespaces & Tables')
-    _update_namespace_view(sidecar, yarn)
+    # Auto-detect delimiter if not provided
+    if sep is None:
+        client = get_minio_client()
+
+        # Parse S3 path to get bucket and key
+        s3_path = path.replace("s3a://", "")
+        bucket, key = s3_path.split("/", 1)
+
+        # Sample file to detect delimiter
+        obj = client.get_object(bucket, key)
+        sample = obj.read(8192).decode()
+        sep = _detect_csv_delimiter(sample)
+
+    # Read CSV into DataFrame
+    return spark.read.csv(path, header=header, sep=sep, **kwargs)
+
+
+def _detect_csv_delimiter(sample: str) -> str:
+    """
+    Detect CSV delimiter from a sample string.
+
+    Args:
+        sample: Sample string from CSV file
+
+    Returns:
+        Detected delimiter character
+
+    Raises:
+        ValueError: If delimiter cannot be detected
+    """
+    try:
+        sniffer = csv.Sniffer()
+        dialect = sniffer.sniff(sample)
+        return dialect.delimiter
+    except Exception as e:
+        raise ValueError(f"Could not detect CSV delimiter: {e}. Please provide delimiter explicitly.") from e

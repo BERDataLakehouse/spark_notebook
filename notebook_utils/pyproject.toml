@@ -1,0 +1,62 @@
+[project]
+name = "berdl_notebook_utils"
+version = "0.0.1"
+description = "berdl_notebook_utils"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cdm-task-service-client>=0.1.0",
+    "ipywidgets>=8.1.7",
+    "itables>=2.4.5",
+    "minio>=7.2.16",
+    "pandas>=2.3.2",
+    "pydantic-settings>=2.10.1",
+    "pyspark>=4.0.0",
+    "sidecar>=0.7.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]
+
+
+[tool.uv.sources]
+cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client.git", rev = "0.2.0" }
+
+
+
+[tool.ruff]
+
+exclude = [
+    ".git",
+    ".ipynb_checkpoints",
+    ".ruff_cache",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "venv",
+]
+
+line-length = 120
+indent-width = 4
+target-version = "py312"
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v"
