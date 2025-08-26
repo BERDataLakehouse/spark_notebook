@@ -5,7 +5,7 @@ Simple environment validation using Pydantic Settings.
 import logging
 from functools import lru_cache
 from pydantic_settings import BaseSettings
-from pydantic import ValidationError, AnyUrl
+from pydantic import ValidationError, AnyUrl, Field, AnyHttpUrl
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -18,11 +18,11 @@ class BERDLSettings(BaseSettings):
 
     # Core authentication
     KBASE_AUTH_TOKEN: str
-    CDM_TASK_SERVICE_URL: str
+    CDM_TASK_SERVICE_URL: AnyHttpUrl  # Accepts http:// and https://
     USER: str  # KBase username of the user running the notebook
 
     # MinIO configuration
-    MINIO_ENDPOINT_URL: AnyUrl  # Accepts http://, https://, s3://
+    MINIO_ENDPOINT_URL: str = Field(..., description="MinIO endpoint (hostname:port)")
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
     MINIO_SECURE_FLAG: bool
@@ -38,7 +38,7 @@ class BERDLSettings(BaseSettings):
     # Optional Spark settings
     MAX_EXECUTORS: int = 5
     EXECUTOR_CORES: int = 1
-    EXECUTOR_MEMORY: str = "2g"
+    EXECUTOR_MEMORY: str = Field(default="2g", pattern=r"^\d+[kmg]$", description="Spark executor memory (e.g., 2g, 1024m)")
 
 
 def validate_environment():
