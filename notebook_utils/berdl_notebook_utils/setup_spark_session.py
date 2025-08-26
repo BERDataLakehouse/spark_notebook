@@ -20,7 +20,6 @@ from berdl_notebook_utils import BERDLSettings
 # =============================================================================
 
 # Spark executor defaults and get them from settings.. We will need to set them in settings though
-settings = BERDLSettings()
 DEFAULT_EXECUTOR_CORES = 1
 DEFAULT_EXECUTOR_MEMORY = "2g"
 DEFAULT_MAX_EXECUTORS = 5
@@ -112,6 +111,9 @@ def get_spark_session(
 
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
+
+    Parameters
+    ----------
     """
     # TODO TODO since we disabled dynamic allocation, we need to set the executor cores and memory here
     # TODO: Ensure hub passes the settings of the cores and memory of the executors, so the client can set them here,
