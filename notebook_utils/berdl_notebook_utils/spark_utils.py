@@ -174,7 +174,6 @@ def read_csv(
         obj = client.get_object(bucket, key)
         sample = obj.read(8192).decode()
         sep = _detect_csv_delimiter(sample)
-        logging.info(f"Auto-detected CSV delimiter: '{sep}'")
 
     # Read CSV into DataFrame
     return spark.read.csv(path, header=header, sep=sep, **kwargs)
