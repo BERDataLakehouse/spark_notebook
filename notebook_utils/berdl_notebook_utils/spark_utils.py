@@ -141,9 +141,6 @@ def read_csv(
         path: MinIO path to CSV file (e.g., "s3a://bucket/file.csv" or "bucket/file.csv")
         header: Whether CSV file has header row
         sep: CSV delimiter. If None, will attempt auto-detection
-        minio_url: MinIO URL (uses MINIO_URL env var if None)
-        access_key: MinIO access key (uses MINIO_ACCESS_KEY env var if None)
-        secret_key: MinIO secret key (uses MINIO_SECRET_KEY env var if None)
         **kwargs: Additional arguments passed to spark.read.csv()
 
     Returns:
