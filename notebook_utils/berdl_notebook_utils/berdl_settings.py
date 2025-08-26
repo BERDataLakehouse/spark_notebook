@@ -22,10 +22,10 @@ class BERDLSettings(BaseSettings):
     USER: str  # KBase username of the user running the notebook
 
     # MinIO configuration
-    MINIO_ENDPOINT_URL: str = Field(..., description="MinIO endpoint (hostname:port)")
+    MINIO_ENDPOINT: str = Field(..., description="MinIO endpoint (hostname:port)")
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
-    MINIO_SECURE_FLAG: bool
+    MINIO_SECURE: bool = Field(default=False, description="Use secure connection (True/False)")
 
     # Spark configuration
     BERDL_POD_IP: str

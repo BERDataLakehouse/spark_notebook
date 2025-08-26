@@ -7,7 +7,7 @@ from berdl_notebook_utils import validate_environment
 env_vars = {
     "KBASE_AUTH_TOKEN": "test-token-123",
     "CDM_TASK_SERVICE_URL": "http://localhost:8080",
-    "MINIO_ENDPOINT_URL": "http://localhost:9000",
+    "MINIO_ENDPOINT": "http://localhost:9000",
     "MINIO_ACCESS_KEY": "minioadmin",
     "MINIO_SECRET_KEY": "minioadmin",
     "MINIO_SECURE_FLAG": "false",

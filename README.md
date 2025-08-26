@@ -11,10 +11,10 @@ CDM_TASK_SERVICE_URL=https://your-cdm-service.example.com
 USER=your_kbase_username
 
 # MinIO Configuration
-MINIO_ENDPOINT_URL=https://your-minio.example.com
+MINIO_ENDPOINT=https://your-minio.example.com
 MINIO_ACCESS_KEY=your_access_key
 MINIO_SECRET_KEY=your_secret_key
-MINIO_SECURE_FLAG=true
+MINIO_SECURE=true
 
 # Spark Configuration
 BERDL_POD_IP=10.0.0.1
