@@ -16,7 +16,7 @@ def get_task_service_client(settings: BERDLSettings = None) -> CTSClient:
     Returns:"""
     if settings is None:
         settings = get_settings()
-    return CTSClient(settings.KBASE_AUTH_TOKEN, url=settings.CDM_TASK_SERVICE_URL)
+    return CTSClient(settings.KBASE_AUTH_TOKEN, url=str(settings.CDM_TASK_SERVICE_URL))
 
 
 @lru_cache(maxsize=1)
