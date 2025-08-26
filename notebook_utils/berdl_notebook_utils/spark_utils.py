@@ -88,7 +88,7 @@ def _create_namespace_accordion(spark: SparkSession, namespaces: list) -> Accord
 
     for namespace in namespaces:
         namespace_name = namespace.namespace
-        tables_df = spark.sql(f"SHOW TABLES IN {namespace}").toPandas()
+        tables_df = spark.sql(f"SHOW TABLES IN {namespace_name}").toPandas()
 
         table_content = "<br>".join(tables_df["tableName"]) if not tables_df.empty else "No tables available"
         table_list = HTML(value=table_content)
