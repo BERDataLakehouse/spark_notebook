@@ -57,6 +57,6 @@ docstring-code-format = false
 docstring-code-line-length = "dynamic"
 
 [tool.pytest.ini_options]
-testpaths = ["unit_tests"]
+testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v"
