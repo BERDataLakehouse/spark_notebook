@@ -38,7 +38,7 @@ class BERDLSettings(BaseSettings):
     # Optional Spark settings
     MAX_EXECUTORS: int = 5
     EXECUTOR_CORES: int = 1
-    EXECUTOR_MEMORY: str = Field(default="2g", pattern=r"^\d+[kmg]$", description="Spark executor memory (e.g., 2g, 1024m)")
+    EXECUTOR_MEMORY: str = Field(default="2g", pattern=r"^\d+[kmgKMG]$", description="Spark executor memory (e.g., 2g, 2G, 1024m, 1024M)")
 
 
 def validate_environment():
