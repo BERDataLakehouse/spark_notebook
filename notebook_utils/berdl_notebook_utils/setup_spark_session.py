@@ -143,6 +143,7 @@ def get_spark_session(
         config.update(_get_s3_conf(settings))
     if use_hive:
         config["hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
+        config["spark.sql.catalogImplementation"] = "hive"
 
     # Create and configure Spark session
     spark_conf = SparkConf().setAll(list(config.items()))
