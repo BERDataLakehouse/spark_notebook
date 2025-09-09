@@ -19,11 +19,6 @@ from berdl_notebook_utils import BERDLSettings
 # CONSTANTS
 # =============================================================================
 
-# Spark executor defaults and get them from settings.. We will need to set them in settings though
-DEFAULT_EXECUTOR_CORES = 1
-DEFAULT_EXECUTOR_MEMORY = "2g"
-DEFAULT_MAX_EXECUTORS = 5
-
 # Fair scheduler configuration
 SPARK_DEFAULT_POOL = "default"
 SPARK_POOLS = [SPARK_DEFAULT_POOL, "highPriority"]
@@ -33,11 +28,85 @@ SPARK_POOLS = [SPARK_DEFAULT_POOL, "highPriority"]
 # =============================================================================
 
 
+def _convert_memory_format(memory_str: str) -> str:
+    """
+    Convert memory format from profile format (e.g., "2GiB", "1024MiB") to Spark format (e.g., "2g", "1024m").
+
+    Args:
+        memory_str: Memory string in profile format (supports B, KiB, MiB, GiB, TiB)
+
+    Returns:
+        Memory string in Spark format (uses k, m, g, t)
+    """
+    # Handle case-insensitive conversion
+    memory_lower = memory_str.lower()
+
+    # Remove 'i' from binary units (KiB -> KB, MiB -> MB, etc.)
+    if "ib" in memory_lower:
+        memory_lower = memory_lower.replace("ib", "")
+    elif memory_lower.endswith("b"):
+        memory_lower = memory_lower[:-1]  # Remove trailing 'b'
+
+    # Convert to Spark format (lowercase without 'B')
+    return memory_lower
+
+
+def _get_executor_config(settings: BERDLSettings) -> Dict[str, str]:
+    """
+    Get Spark executor configuration based on profile settings.
+
+    Args:
+        settings: BERDLSettings instance with profile-specific configuration
+
+    Returns:
+        Dictionary of Spark executor configuration
+    """
+    # Convert memory formats from profile to Spark format
+    executor_memory = _convert_memory_format(settings.DEFAULT_WORKER_MEMORY)
+    driver_memory = _convert_memory_format(settings.DEFAULT_MASTER_MEMORY)
+
+    config = {
+        # Executor configuration
+        "spark.executor.instances": str(settings.DEFAULT_WORKER_COUNT),
+        "spark.executor.cores": str(settings.DEFAULT_WORKER_CORES),
+        "spark.executor.memory": executor_memory,
+        # Driver configuration
+        "spark.driver.cores": str(settings.DEFAULT_MASTER_CORES),
+        "spark.driver.memory": driver_memory,
+        # Disable dynamic allocation since we're setting explicit instances
+        "spark.dynamicAllocation.enabled": "false",
+        "spark.dynamicAllocation.shuffleTracking.enabled": "false",
+    }
+
+    return config
+
+
+def _get_spark_defaults_conf() -> Dict[str, str]:
+    """
+    Get Spark defaults configuration.
+    """
+
+    return {
+        # Decommissioning
+        "spark.decommission.enabled": "true",
+        "spark.storage.decommission.rddBlocks.enabled": "true",
+        # Broadcast join configurations
+        "spark.sql.autoBroadcastJoinThreshold": "52428800",  # 50MB (default is 10MB)
+        # Shuffle and compression configurations
+        "spark.reducer.maxSizeInFlight": "96m",  # 96MB (default is 48MB)
+        "spark.shuffle.file.buffer": "1m",  # 1MB (default is 32KB)
+        # Delta Lake optimizations
+        "spark.databricks.delta.optimizeWrite.enabled": "true",
+        "spark.databricks.delta.autoCompact.enabled": "true",
+    }
+
+
 def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
     """
     Get S3 configuration for MinIO.
     """
     warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
+    event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
     config = {
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT,
@@ -46,15 +115,13 @@ def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_dir,
+        "spark.eventLog.enabled": "true",
+        "spark.eventLog.dir": event_log_dir,
+        "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+        "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        "spark.databricks.delta.retentionDurationCheck.enabled": "false",
     }
 
-    config.update(
-        {
-            "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
-            "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-            "spark.databricks.delta.retentionDurationCheck.enabled": "false",
-        }
-    )
     return config
 
 
@@ -81,7 +148,7 @@ def get_spark_session(
     delta_lake: bool = True,
     scheduler_pool: str = SPARK_DEFAULT_POOL,
     use_hive: bool = True,
-    settings: BERDLSettings = None,
+    settings: Optional[BERDLSettings] = None,
 ) -> SparkSession:
     """
     Create and configure a Spark session with CDM-specific settings.
@@ -115,10 +182,6 @@ def get_spark_session(
     Parameters
     ----------
     """
-    # TODO TODO since we disabled dynamic allocation, we need to set the executor cores and memory here
-    # TODO: Ensure hub passes the settings of the cores and memory of the executors, so the client can set them here,
-    # TODO: Set Spark Driver Settings too
-
     if settings is None:
         settings = BERDLSettings()
 
@@ -137,6 +200,12 @@ def get_spark_session(
         "spark.driver.host": settings.BERDL_POD_IP,
         "spark.master": str(settings.SPARK_MASTER_URL),
     }
+
+    # Add default Spark configurations
+    config.update(_get_spark_defaults_conf())
+
+    # Add profile-specific executor and driver configuration
+    config.update(_get_executor_config(settings))
 
     # Configure driver host
     if delta_lake:

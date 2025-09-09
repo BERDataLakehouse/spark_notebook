@@ -4,8 +4,9 @@ Simple environment validation using Pydantic Settings.
 
 import logging
 from functools import lru_cache
+
+from pydantic import AnyHttpUrl, AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings
-from pydantic import ValidationError, AnyUrl, Field, AnyHttpUrl
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -35,11 +36,15 @@ class BERDLSettings(BaseSettings):
     # Hive configuration
     BERDL_HIVE_METASTORE_URI: AnyUrl  # Accepts thrift://
 
-    # Optional Spark settings
-    MAX_EXECUTORS: int = 5
-    EXECUTOR_CORES: int = 1
-    EXECUTOR_MEMORY: str = Field(
-        default="2g", pattern=r"^\d+[kmgKMG]$", description="Spark executor memory (e.g., 2g, 2G, 1024m, 1024M)"
+    # Profile-specific Spark configuration from JupyterHub
+    DEFAULT_WORKER_COUNT: int = Field(default=1, description="Number of Spark workers from profile")
+    DEFAULT_WORKER_CORES: int = Field(default=1, description="Cores per Spark worker from profile")
+    DEFAULT_WORKER_MEMORY: str = Field(
+        default="2GiB", pattern=r"^\d+[kmgKMGT]i?[bB]?$", description="Memory per Spark worker from profile"
+    )
+    DEFAULT_MASTER_CORES: int = Field(default=1, description="Cores for Spark master from profile")
+    DEFAULT_MASTER_MEMORY: str = Field(
+        default="1GiB", pattern=r"^\d+[kmgKMGT]i?[bB]?$", description="Memory for Spark master from profile"
     )
 
 
