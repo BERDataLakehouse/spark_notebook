@@ -37,13 +37,13 @@ class BERDLSettings(BaseSettings):
     BERDL_HIVE_METASTORE_URI: AnyUrl  # Accepts thrift://
 
     # Profile-specific Spark configuration from JupyterHub
-    DEFAULT_WORKER_COUNT: int = Field(default=1, description="Number of Spark workers from profile")
-    DEFAULT_WORKER_CORES: int = Field(default=1, description="Cores per Spark worker from profile")
-    DEFAULT_WORKER_MEMORY: str = Field(
+    SPARK_WORKER_COUNT: int = Field(default=1, description="Number of Spark workers from profile")
+    SPARK_WORKER_CORES: int = Field(default=1, description="Cores per Spark worker from profile")
+    SPARK_WORKER_MEMORY: str = Field(
         default="2GiB", pattern=r"^\d+[kmgKMGT]i?[bB]?$", description="Memory per Spark worker from profile"
     )
-    DEFAULT_MASTER_CORES: int = Field(default=1, description="Cores for Spark master from profile")
-    DEFAULT_MASTER_MEMORY: str = Field(
+    SPARK_MASTER_CORES: int = Field(default=1, description="Cores for Spark master from profile")
+    SPARK_MASTER_MEMORY: str = Field(
         default="1GiB", pattern=r"^\d+[kmgKMGT]i?[bB]?$", description="Memory for Spark master from profile"
     )
 
