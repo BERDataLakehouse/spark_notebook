@@ -87,27 +87,29 @@ def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) ->
         adjusted_value = adjusted_bytes
         spark_unit = ''
 
-    # Format to reasonable precision
-    if adjusted_value >= 10:
-        return f"{int(adjusted_value)}{spark_unit}"
-    else:
-        return f"{adjusted_value:.1f}{spark_unit}"
+    # Format as integer to ensure Spark compatibility
+    # Some Spark versions don't accept fractional memory values
+    return f"{int(round(adjusted_value))}{spark_unit}"
 
 
 def _get_executor_config(settings: BERDLSettings) -> Dict[str, str]:
     """
-    Get Spark executor configuration based on profile settings.
+    Get Spark executor and driver configuration based on profile settings.
 
     Args:
         settings: BERDLSettings instance with profile-specific configuration
 
     Returns:
-        Dictionary of Spark executor configuration
+        Dictionary of Spark executor and driver configuration
     """
     # Convert memory formats from profile to Spark format with overhead adjustment
     executor_memory = _convert_memory_format(settings.DEFAULT_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
+    driver_memory = _convert_memory_format(settings.DEFAULT_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
 
     config = {
+        # Driver configuration (critical for remote cluster connections)
+        "spark.driver.memory": driver_memory,
+        "spark.driver.cores": str(settings.DEFAULT_MASTER_CORES),
         # Executor configuration
         "spark.executor.instances": str(settings.DEFAULT_WORKER_COUNT),
         "spark.executor.cores": str(settings.DEFAULT_WORKER_CORES),
