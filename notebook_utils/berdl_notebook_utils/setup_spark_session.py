@@ -19,18 +19,127 @@ from berdl_notebook_utils import BERDLSettings
 # CONSTANTS
 # =============================================================================
 
-# Spark executor defaults and get them from settings.. We will need to set them in settings though
-DEFAULT_EXECUTOR_CORES = 1
-DEFAULT_EXECUTOR_MEMORY = "2g"
-DEFAULT_MAX_EXECUTORS = 5
-
 # Fair scheduler configuration
 SPARK_DEFAULT_POOL = "default"
 SPARK_POOLS = [SPARK_DEFAULT_POOL, "highPriority"]
 
+# Memory overhead percentages for Spark components
+EXECUTOR_MEMORY_OVERHEAD = 0.1  # 10% overhead for executors (accounts for JVM + system overhead)
+DRIVER_MEMORY_OVERHEAD = 0.05   # 5% overhead for driver (typically less memory pressure)
+
 # =============================================================================
 # PRIVATE HELPER FUNCTIONS
 # =============================================================================
+
+
+def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) -> str:
+    """
+    Convert memory format from profile format to Spark format with overhead adjustment.
+
+    Args:
+        memory_str: Memory string in profile format (supports B, KiB, MiB, GiB, TiB)
+        overhead_percentage: Percentage of memory to reserve for system overhead (default: 0.1 = 10%)
+
+    Returns:
+        Memory string in Spark format with overhead accounted for
+    """
+    import re
+
+    # Extract number and unit from memory string
+    match = re.match(r'^(\d+(?:\.\d+)?)\s*([kmgtKMGT]i?[bB]?)$', memory_str)
+    if not match:
+        raise ValueError(f"Invalid memory format: {memory_str}")
+
+    value, unit = match.groups()
+    value = float(value)
+
+    # Convert to bytes for calculation
+    unit_lower = unit.lower()
+    multipliers = {
+        'b': 1,
+        'kb': 1024, 'kib': 1024,
+        'mb': 1024**2, 'mib': 1024**2,
+        'gb': 1024**3, 'gib': 1024**3,
+        'tb': 1024**4, 'tib': 1024**4
+    }
+
+    # Remove trailing 'b' if present for lookup
+    unit_key = unit_lower.rstrip('b') + 'b' if unit_lower.endswith('b') else unit_lower + 'b'
+    if unit_key not in multipliers:
+        unit_key = unit_lower
+
+    bytes_value = value * multipliers.get(unit_key, multipliers['b'])
+
+    # Apply overhead reduction (reserve percentage for system)
+    adjusted_bytes = bytes_value * (1 - overhead_percentage)
+
+    # Convert back to appropriate Spark unit (prefer GiB for larger values)
+    if adjusted_bytes >= 1024**3:
+        adjusted_value = adjusted_bytes / (1024**3)
+        spark_unit = 'g'
+    elif adjusted_bytes >= 1024**2:
+        adjusted_value = adjusted_bytes / (1024**2)
+        spark_unit = 'm'
+    elif adjusted_bytes >= 1024:
+        adjusted_value = adjusted_bytes / 1024
+        spark_unit = 'k'
+    else:
+        adjusted_value = adjusted_bytes
+        spark_unit = ''
+
+    # Format as integer to ensure Spark compatibility
+    # Some Spark versions don't accept fractional memory values
+    return f"{int(round(adjusted_value))}{spark_unit}"
+
+
+def _get_executor_config(settings: BERDLSettings) -> Dict[str, str]:
+    """
+    Get Spark executor and driver configuration based on profile settings.
+
+    Args:
+        settings: BERDLSettings instance with profile-specific configuration
+
+    Returns:
+        Dictionary of Spark executor and driver configuration
+    """
+    # Convert memory formats from profile to Spark format with overhead adjustment
+    executor_memory = _convert_memory_format(settings.DEFAULT_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
+    driver_memory = _convert_memory_format(settings.DEFAULT_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
+
+    config = {
+        # Driver configuration (critical for remote cluster connections)
+        "spark.driver.memory": driver_memory,
+        "spark.driver.cores": str(settings.DEFAULT_MASTER_CORES),
+        # Executor configuration
+        "spark.executor.instances": str(settings.DEFAULT_WORKER_COUNT),
+        "spark.executor.cores": str(settings.DEFAULT_WORKER_CORES),
+        "spark.executor.memory": executor_memory,
+        # Disable dynamic allocation since we're setting explicit instances
+        "spark.dynamicAllocation.enabled": "false",
+        "spark.dynamicAllocation.shuffleTracking.enabled": "false",
+    }
+
+    return config
+
+
+def _get_spark_defaults_conf() -> Dict[str, str]:
+    """
+    Get Spark defaults configuration.
+    """
+
+    return {
+        # Decommissioning
+        "spark.decommission.enabled": "true",
+        "spark.storage.decommission.rddBlocks.enabled": "true",
+        # Broadcast join configurations
+        "spark.sql.autoBroadcastJoinThreshold": "52428800",  # 50MB (default is 10MB)
+        # Shuffle and compression configurations
+        "spark.reducer.maxSizeInFlight": "96m",  # 96MB (default is 48MB)
+        "spark.shuffle.file.buffer": "1m",  # 1MB (default is 32KB)
+        # Delta Lake optimizations
+        "spark.databricks.delta.optimizeWrite.enabled": "true",
+        "spark.databricks.delta.autoCompact.enabled": "true",
+    }
 
 
 def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
@@ -38,6 +147,7 @@ def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
     Get S3 configuration for MinIO.
     """
     warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
+    event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
     config = {
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT,
@@ -46,15 +156,13 @@ def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_dir,
+        "spark.eventLog.enabled": "true",
+        "spark.eventLog.dir": event_log_dir,
+        "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+        "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        "spark.databricks.delta.retentionDurationCheck.enabled": "false",
     }
 
-    config.update(
-        {
-            "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
-            "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-            "spark.databricks.delta.retentionDurationCheck.enabled": "false",
-        }
-    )
     return config
 
 
@@ -81,7 +189,7 @@ def get_spark_session(
     delta_lake: bool = True,
     scheduler_pool: str = SPARK_DEFAULT_POOL,
     use_hive: bool = True,
-    settings: BERDLSettings = None,
+    settings: Optional[BERDLSettings] = None,
 ) -> SparkSession:
     """
     Create and configure a Spark session with CDM-specific settings.
@@ -115,10 +223,6 @@ def get_spark_session(
     Parameters
     ----------
     """
-    # TODO TODO since we disabled dynamic allocation, we need to set the executor cores and memory here
-    # TODO: Ensure hub passes the settings of the cores and memory of the executors, so the client can set them here,
-    # TODO: Set Spark Driver Settings too
-
     if settings is None:
         settings = BERDLSettings()
 
@@ -137,6 +241,12 @@ def get_spark_session(
         "spark.driver.host": settings.BERDL_POD_IP,
         "spark.master": str(settings.SPARK_MASTER_URL),
     }
+
+    # Add default Spark configurations
+    config.update(_get_spark_defaults_conf())
+
+    # Add profile-specific executor and driver configuration
+    config.update(_get_executor_config(settings))
 
     # Configure driver host
     if delta_lake:
