@@ -106,16 +106,12 @@ def _get_executor_config(settings: BERDLSettings) -> Dict[str, str]:
     """
     # Convert memory formats from profile to Spark format with overhead adjustment
     executor_memory = _convert_memory_format(settings.DEFAULT_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
-    driver_memory = _convert_memory_format(settings.DEFAULT_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
 
     config = {
         # Executor configuration
         "spark.executor.instances": str(settings.DEFAULT_WORKER_COUNT),
         "spark.executor.cores": str(settings.DEFAULT_WORKER_CORES),
         "spark.executor.memory": executor_memory,
-        # Driver configuration
-        "spark.driver.cores": str(settings.DEFAULT_MASTER_CORES),
-        "spark.driver.memory": driver_memory,
         # Disable dynamic allocation since we're setting explicit instances
         "spark.dynamicAllocation.enabled": "false",
         "spark.dynamicAllocation.shuffleTracking.enabled": "false",
