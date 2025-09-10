@@ -11,8 +11,6 @@ from typing import Any, Optional, Type, TypeVar
 import httpx
 from pydantic import BaseModel
 
-T = TypeVar("T", bound=BaseModel)
-
 from .exceptions import APIError
 from .models import (
     CredentialsResponse,
@@ -29,6 +27,8 @@ from .models import (
     UserPoliciesResponse,
     UserWorkspaceResponse,
 )
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def not_falsy(value: Optional[str], name: str) -> str:
