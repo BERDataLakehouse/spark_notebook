@@ -73,9 +73,7 @@ def check_api_health() -> HealthResponse | None:
 
     client = _get_client()
     with client as client:
-        response: Response[HealthResponse] = health_check_health_get.sync_detailed(
-            client=client
-        )
+        response: Response[HealthResponse] = health_check_health_get.sync_detailed(client=client)
 
     if response.status_code == 200 and response.parsed:
         return response.parsed
@@ -91,9 +89,7 @@ def get_cluster_status(
     """
     client = _get_authenticated_client(kbase_auth_token)
     with client as client:
-        response: Response[SparkClusterStatus] = (
-            get_cluster_status_clusters_get.sync_detailed(client=client)
-        )
+        response: Response[SparkClusterStatus] = get_cluster_status_clusters_get.sync_detailed(client=client)
 
     if response.status_code == 200 and response.parsed:
         # TODO - Parse the response and return information more useful to the user
@@ -124,9 +120,7 @@ def create_cluster(
     """
 
     if not force:
-        print(
-            "WARNING: Creating a new Spark cluster will terminate your existing cluster."
-        )
+        print("WARNING: Creating a new Spark cluster will terminate your existing cluster.")
         print("All active Spark sessions and computations will be lost.")
         # TODO: check existence of user's cluster - by default, upon pod creation, the user's cluster should be created.
         confirmation = input("Do you want to proceed? [y/N]: ").strip().lower() or "N"
@@ -145,8 +139,8 @@ def create_cluster(
             master_memory=master_memory,
         )
 
-        response: Response[SparkClusterCreateResponse] = (
-            create_cluster_clusters_post.sync_detailed(client=client, body=config)
+        response: Response[SparkClusterCreateResponse] = create_cluster_clusters_post.sync_detailed(
+            client=client, body=config
         )
 
     if response.status_code == 201 and response.parsed:
@@ -165,9 +159,7 @@ def delete_cluster(kbase_auth_token: str | None = None) -> ClusterDeleteResponse
     """
     client = _get_authenticated_client(kbase_auth_token)
     with client as client:
-        response: Response[ClusterDeleteResponse] = (
-            delete_cluster_clusters_delete.sync_detailed(client=client)
-        )
+        response: Response[ClusterDeleteResponse] = delete_cluster_clusters_delete.sync_detailed(client=client)
 
     if response.status_code == 200 and response.parsed:
         print(f"Spark cluster deleted: {response.parsed.message}")
