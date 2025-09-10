@@ -4,7 +4,7 @@ CDM Spark Cluster Manager API Client Wrapper
 
 import os
 
-from spark_notebook.notebook_utils.berdl_notebook_utils.berdl_settings import BERDLSettings
+from berdl_notebook_utils.berdl_settings import BERDLSettings
 
 from .cdm_spark_cluster_manager_api_client.api.clusters import (
     create_cluster_clusters_post,
