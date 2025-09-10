@@ -47,6 +47,9 @@ class BERDLSettings(BaseSettings):
         default="1GiB", pattern=r"^\d+[kmgKMGT]i?[bB]?$", description="Memory for Spark master from profile"
     )
 
+    # Spark Cluster Manager API configuration
+    SPARK_CLUSTER_MANAGER_API_URL: AnyHttpUrl
+
 
 def validate_environment():
     """

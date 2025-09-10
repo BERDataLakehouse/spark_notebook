@@ -15,6 +15,13 @@ from berdl_notebook_utils.spark import (  # noqa F401
     read_csv,
     display_namespace_viewer,
 )
+from berdl_notebook_utils.spark.cluster import (  # noqa F401
+    # Cluster management
+    check_api_health,
+    get_cluster_status,
+    create_cluster,
+    delete_cluster,
+)
 from berdl_notebook_utils import berdl_notebook_help  # noqa F401
 
 # MinIO Data Governance integration
