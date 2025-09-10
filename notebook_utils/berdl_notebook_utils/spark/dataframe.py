@@ -1,3 +1,10 @@
+"""
+Spark DataFrame utilities for BERDL notebook environments.
+
+This module contains utility functions for DataFrame operations, display functions,
+and data manipulation in BERDL notebook environments.
+"""
+
 import csv
 from threading import RLock
 from typing import Optional
@@ -21,12 +28,14 @@ def spark_to_pandas(spark_df: SparkDataFrame, limit: int = 1000, offset: int = 0
     """
     Convert a Spark DataFrame to a pandas DataFrame.
 
-    :param spark_df: a Spark DataFrame
-    :param limit: the number of rows to fetch
-    :param offset: the number of rows to skip
-    :return: a pandas DataFrame
-    """
+    Args:
+        spark_df: a Spark DataFrame
+        limit: the number of rows to fetch
+        offset: the number of rows to skip
 
+    Returns:
+        a pandas DataFrame
+    """
     return spark_df.offset(offset).limit(limit).toPandas()
 
 
@@ -43,11 +52,11 @@ def display_df(
     Notice itables.show() function is not compatible with Spark DataFrames. If a Spark DataFrame is passed to this
     function, it will be converted to a pandas DataFrame (first 1000 rows) before displaying it.
 
-    :param df: a pandas DataFrame or a Spark DataFrame
-    :param layout: layout options, refer to https://datatables.net/reference/option/layout
-    :param buttons: buttons options, options refer to https://datatables.net/reference/button/
-    :param length_menu: length menu options, refer to https://datatables.net/reference/option/lengthMenu
-    :return:
+    Args:
+        df: a pandas DataFrame or a Spark DataFrame
+        layout: layout options, refer to https://datatables.net/reference/option/layout
+        buttons: buttons options, options refer to https://datatables.net/reference/button/
+        length_menu: length menu options, refer to https://datatables.net/reference/option/lengthMenu
     """
     # convert Spark DataFrame to pandas DataFrame
     if isinstance(df, SparkDataFrame):
