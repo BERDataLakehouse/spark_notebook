@@ -26,6 +26,7 @@ from .dataframe import (
     read_csv,
 )
 
+
 __all__ = [
     # Database operations
     "create_namespace_if_not_exists",
