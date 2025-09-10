@@ -14,8 +14,6 @@ from berdl_notebook_utils.spark import (  # noqa F401
     spark_to_pandas,
     read_csv,
     display_namespace_viewer,
-)
-from berdl_notebook_utils.spark.cluster import (  # noqa F401
     # Cluster management
     check_api_health,
     get_cluster_status,
