@@ -1,9 +1,20 @@
 from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
 from berdl_notebook_utils.clients import get_minio_client, get_task_service_client
 from berdl_notebook_utils.setup_spark_session import get_spark_session
-from berdl_notebook_utils.spark_utils import display_df, spark_to_pandas, read_csv
-
-# add these to all!
+from berdl_notebook_utils.spark import (
+    # Database operations
+    create_namespace_if_not_exists,
+    table_exists,
+    remove_table,
+    list_tables,
+    list_namespaces,
+    get_table_info,
+    # DataFrame operations
+    display_df,
+    spark_to_pandas,
+    read_csv,
+    display_namespace_viewer,
+)
 
 __all__ = [
     "BERDLSettings",
@@ -11,9 +22,18 @@ __all__ = [
     "get_minio_client",
     "get_task_service_client",
     "get_spark_session",
+    # Database operations
+    "create_namespace_if_not_exists",
+    "table_exists",
+    "remove_table",
+    "list_tables",
+    "list_namespaces",
+    "get_table_info",
+    # DataFrame operations
     "display_df",
     "spark_to_pandas",
     "read_csv",
+    "display_namespace_viewer",
 ]
 
 

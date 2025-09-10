@@ -25,7 +25,7 @@ SPARK_POOLS = [SPARK_DEFAULT_POOL, "highPriority"]
 
 # Memory overhead percentages for Spark components
 EXECUTOR_MEMORY_OVERHEAD = 0.1  # 10% overhead for executors (accounts for JVM + system overhead)
-DRIVER_MEMORY_OVERHEAD = 0.05   # 5% overhead for driver (typically less memory pressure)
+DRIVER_MEMORY_OVERHEAD = 0.05  # 5% overhead for driver (typically less memory pressure)
 
 # =============================================================================
 # PRIVATE HELPER FUNCTIONS
@@ -46,7 +46,7 @@ def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) ->
     import re
 
     # Extract number and unit from memory string
-    match = re.match(r'^(\d+(?:\.\d+)?)\s*([kmgtKMGT]i?[bB]?)$', memory_str)
+    match = re.match(r"^(\d+(?:\.\d+)?)\s*([kmgtKMGT]i?[bB]?)$", memory_str)
     if not match:
         raise ValueError(f"Invalid memory format: {memory_str}")
 
@@ -56,19 +56,23 @@ def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) ->
     # Convert to bytes for calculation
     unit_lower = unit.lower()
     multipliers = {
-        'b': 1,
-        'kb': 1024, 'kib': 1024,
-        'mb': 1024**2, 'mib': 1024**2,
-        'gb': 1024**3, 'gib': 1024**3,
-        'tb': 1024**4, 'tib': 1024**4
+        "b": 1,
+        "kb": 1024,
+        "kib": 1024,
+        "mb": 1024**2,
+        "mib": 1024**2,
+        "gb": 1024**3,
+        "gib": 1024**3,
+        "tb": 1024**4,
+        "tib": 1024**4,
     }
 
     # Remove trailing 'b' if present for lookup
-    unit_key = unit_lower.rstrip('b') + 'b' if unit_lower.endswith('b') else unit_lower + 'b'
+    unit_key = unit_lower.rstrip("b") + "b" if unit_lower.endswith("b") else unit_lower + "b"
     if unit_key not in multipliers:
         unit_key = unit_lower
 
-    bytes_value = value * multipliers.get(unit_key, multipliers['b'])
+    bytes_value = value * multipliers.get(unit_key, multipliers["b"])
 
     # Apply overhead reduction (reserve percentage for system)
     adjusted_bytes = bytes_value * (1 - overhead_percentage)
@@ -76,16 +80,16 @@ def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) ->
     # Convert back to appropriate Spark unit (prefer GiB for larger values)
     if adjusted_bytes >= 1024**3:
         adjusted_value = adjusted_bytes / (1024**3)
-        spark_unit = 'g'
+        spark_unit = "g"
     elif adjusted_bytes >= 1024**2:
         adjusted_value = adjusted_bytes / (1024**2)
-        spark_unit = 'm'
+        spark_unit = "m"
     elif adjusted_bytes >= 1024:
         adjusted_value = adjusted_bytes / 1024
-        spark_unit = 'k'
+        spark_unit = "k"
     else:
         adjusted_value = adjusted_bytes
-        spark_unit = ''
+        spark_unit = ""
 
     # Format as integer to ensure Spark compatibility
     # Some Spark versions don't accept fractional memory values
@@ -142,11 +146,36 @@ def _get_spark_defaults_conf() -> Dict[str, str]:
     }
 
 
-def _get_s3_conf(settings: BERDLSettings) -> Dict[str, str]:
+def _get_s3_conf(settings: BERDLSettings, tenant_name: Optional[str] = None) -> Dict[str, str]:
     """
     Get S3 configuration for MinIO.
+
+    Args:
+        settings: BERDLSettings instance with configuration
+        tenant_name: Tenant/group name to use for SQL warehouse. If provided,
+                    configures Spark to write tables to the tenant's SQL warehouse.
+                    If None, uses the user's personal SQL warehouse.
+
+    Returns:
+        Dictionary of S3/MinIO Spark configuration properties
     """
-    warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
+    if tenant_name:
+        # Use governance client to get tenant SQL warehouse prefix
+        try:
+            from berdl_notebook_utils.minio_governance.client import DataGovernanceClient
+
+            governance_client = DataGovernanceClient()
+            tenant_warehouse_response = governance_client.get_group_sql_warehouse_prefix(tenant_name)
+            warehouse_dir = tenant_warehouse_response.sql_warehouse_prefix
+        except Exception as e:
+            # Fallback to user warehouse if governance API fails
+            print(f"Warning: Cannot access tenant warehouse '{tenant_name}': {e}")
+            print("Falling back to user's personal SQL warehouse")
+            warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
+    else:
+        # Use user's personal SQL warehouse
+        warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
+
     event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
     config = {
@@ -190,39 +219,49 @@ def get_spark_session(
     scheduler_pool: str = SPARK_DEFAULT_POOL,
     use_hive: bool = True,
     settings: Optional[BERDLSettings] = None,
+    tenant_name: Optional[str] = None,
 ) -> SparkSession:
     """
-    Create and configure a Spark session with CDM-specific settings.
+    Create and configure a Spark session with BERDL-specific settings.
 
-    This function creates a Spark session configured for the CDM environment,
-    including support for Delta Lake, MinIO S3 storage
+    This function creates a Spark session configured for the BERDL environment,
+    including support for Delta Lake, MinIO S3 storage, and tenant-aware warehouses.
 
     Args:
         app_name: Application name. If None, generates a timestamp-based name
         local: If True, creates a local Spark session (ignores other configs)
         delta_lake: If True, enables Delta Lake support with required JARs
         scheduler_pool: Fair scheduler pool name (default: "default")
+        use_hive: If True, enables Hive metastore integration
+        settings: BERDLSettings instance. If None, creates new instance from env vars
+        tenant_name: Tenant/group name to use for SQL warehouse location. If specified,
+                     tables will be written to the tenant's SQL warehouse instead
+                     of the user's personal warehouse.
 
     Returns:
         Configured SparkSession instance
 
     Raises:
         EnvironmentError: If required environment variables are missing
-        FileNotFoundError: If required JAR files are missing
+        ValueError: If user is not a member of the specified tenant
 
     Example:
-        >>> # Basic usage
+        >>> # Basic usage (user's personal warehouse)
         >>> spark = get_spark_session("MyApp")
+
+        >>> # Using tenant warehouse (writes to tenant's SQL directory)
+        >>> spark = get_spark_session("MyApp", tenant_name="research_team")
 
         >>> # With custom scheduler pool
         >>> spark = get_spark_session("MyApp", scheduler_pool="highPriority")
 
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
-
-    Parameters
-    ----------
     """
+    current_spark = SparkSession.getActiveSession()
+    if current_spark:
+        current_spark.stop()
+
     if settings is None:
         settings = BERDLSettings()
 
@@ -250,7 +289,7 @@ def get_spark_session(
 
     # Configure driver host
     if delta_lake:
-        config.update(_get_s3_conf(settings))
+        config.update(_get_s3_conf(settings, tenant_name))
     if use_hive:
         config["hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
         config["spark.sql.catalogImplementation"] = "hive"
