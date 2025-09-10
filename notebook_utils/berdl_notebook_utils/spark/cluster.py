@@ -4,7 +4,7 @@ CDM Spark Cluster Manager API Client Wrapper
 
 import os
 
-from berdl_notebook_utils.berdl_settings import BERDLSettings
+from berdl_notebook_utils.berdl_settings import get_settings
 
 from .cdm_spark_cluster_manager_api_client.api.clusters import (
     create_cluster_clusters_post,
@@ -39,7 +39,7 @@ def _get_client() -> Client:
     """
     Get an unauthenticated client for the Spark Cluster Manager API.
     """
-    api_url = BERDLSettings.SPARK_CLUSTER_MANAGER_API_URL
+    api_url = get_settings().SPARK_CLUSTER_MANAGER_API_URL
     return Client(base_url=str(api_url))
 
 
@@ -49,8 +49,8 @@ def _get_authenticated_client(
     """
     Get an authenticated client for the Spark Cluster Manager API.
     """
-    api_url = BERDLSettings.SPARK_CLUSTER_MANAGER_API_URL
-    auth_token = BERDLSettings.KBASE_AUTH_TOKEN
+    api_url = get_settings().SPARK_CLUSTER_MANAGER_API_URL
+    auth_token = get_settings().KBASE_AUTH_TOKEN
     return AuthenticatedClient(base_url=str(api_url), token=str(auth_token))
 
 
