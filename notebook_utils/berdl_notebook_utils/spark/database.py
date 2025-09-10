@@ -44,7 +44,8 @@ def create_namespace_if_not_exists(
             else:
                 # Keep original namespace if warehouse path doesn't match expected patterns
                 print(
-                    f"Warning: Could not determine target name from warehouse directory '{warehouse_dir}'. Using namespace as-is."
+                    f"Warning: Could not determine target name from warehouse directory '{warehouse_dir}'. "
+                    f"Using namespace as-is."
                 )
     except Exception as e:
         print(f"Error creating namespace: {e}")

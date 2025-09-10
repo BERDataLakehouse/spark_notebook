@@ -144,7 +144,7 @@ def create_cluster(
         )
 
     if response.status_code == 201 and response.parsed:
-        print(f"Spark cluster created successfully.")
+        print("Spark cluster created successfully.")
         print(f"Master URL: {response.parsed.master_url}")
         # Set the master URL for the user
         os.environ["SPARK_MASTER_URL"] = response.parsed.master_url
