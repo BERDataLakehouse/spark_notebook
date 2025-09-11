@@ -293,6 +293,9 @@ def get_spark_session(
     if use_hive:
         config["hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
         config["spark.sql.catalogImplementation"] = "hive"
+        config["spark.sql.hive.metastore.version"] = "4.0.0"
+        config["spark.sql.hive.metastore.jars"] = "path"
+        config["spark.sql.hive.metastore.jars.path"] = "/usr/local/spark/jars/*"
 
     # Create and configure Spark session
     spark_conf = SparkConf().setAll(list(config.items()))
