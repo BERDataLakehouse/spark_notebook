@@ -113,7 +113,9 @@ wheels = [
 name = "berdl-notebook-utils"
 version = "0.0.1"
 source = { virtual = "." }
-dependencies = [
+
+[package.dev-dependencies]
+dev = [
     { name = "cdm-task-service-client" },
     { name = "httpx" },
     { name = "ipywidgets" },
@@ -123,17 +125,15 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyspark" },
+    { name = "pytest" },
+    { name = "ruff" },
     { name = "sidecar" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
 [package.metadata]
-requires-dist = [
+
+[package.metadata.requires-dev]
+dev = [
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "ipywidgets", specifier = ">=8.1.7" },
@@ -143,13 +143,9 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pyspark", specifier = ">=4.0.0" },
-    { name = "sidecar", specifier = ">=0.7.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "ruff", specifier = ">=0.13.0" },
+    { name = "sidecar", specifier = ">=0.7.0" },
 ]
 
 [[package]]
