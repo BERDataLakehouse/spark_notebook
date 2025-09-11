@@ -6,27 +6,21 @@ import os
 
 from berdl_notebook_utils.berdl_settings import get_settings
 
-from .cdm_spark_cluster_manager_api_client.api.clusters import (
+from spark_manager_client.api.clusters import (
     create_cluster_clusters_post,
     delete_cluster_clusters_delete,
     get_cluster_status_clusters_get,
 )
-from .cdm_spark_cluster_manager_api_client.api.health import health_check_health_get
-from .cdm_spark_cluster_manager_api_client.client import AuthenticatedClient, Client
-from .cdm_spark_cluster_manager_api_client.models.cluster_delete_response import (
+from spark_manager_client.api.health import health_check_health_get
+from spark_manager_client.client import AuthenticatedClient, Client
+from spark_manager_client.models import (
     ClusterDeleteResponse,
-)
-from .cdm_spark_cluster_manager_api_client.models.health_response import HealthResponse
-from .cdm_spark_cluster_manager_api_client.models.spark_cluster_config import (
+    HealthResponse,
     SparkClusterConfig,
-)
-from .cdm_spark_cluster_manager_api_client.models.spark_cluster_create_response import (
     SparkClusterCreateResponse,
-)
-from .cdm_spark_cluster_manager_api_client.models.spark_cluster_status import (
     SparkClusterStatus,
 )
-from .cdm_spark_cluster_manager_api_client.types import Response
+from spark_manager_client.types import Response
 
 DEFAULT_WORKER_COUNT = int(os.environ.get("DEFAULT_WORKER_COUNT", 2))
 DEFAULT_WORKER_CORES = int(os.environ.get("DEFAULT_WORKER_CORES", 1))

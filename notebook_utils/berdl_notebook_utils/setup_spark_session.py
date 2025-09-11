@@ -13,7 +13,8 @@ from typing import Dict, Optional
 from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
 
-from berdl_notebook_utils import BERDLSettings
+from berdl_notebook_utils import BERDLSettings, get_settings
+from berdl_notebook_utils.clients import get_governance_client
 
 # =============================================================================
 # CONSTANTS
@@ -159,22 +160,17 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: Optional[str] = None) -> 
     Returns:
         Dictionary of S3/MinIO Spark configuration properties
     """
-    if tenant_name:
-        # Use governance client to get tenant SQL warehouse prefix
-        try:
-            from berdl_notebook_utils.minio_governance.client import DataGovernanceClient
 
-            governance_client = DataGovernanceClient()
-            tenant_warehouse_response = governance_client.get_group_sql_warehouse_prefix(tenant_name)
-            warehouse_dir = tenant_warehouse_response.sql_warehouse_prefix
-        except Exception as e:
-            # Fallback to user warehouse if governance API fails
-            print(f"Warning: Cannot access tenant warehouse '{tenant_name}': {e}")
-            print("Falling back to user's personal SQL warehouse")
-            warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
+    governance_client = get_governance_client()
+
+    if tenant_name:
+        # Use tenant's SQL warehouse
+        tenant_warehouse_response = governance_client.get_group_sql_warehouse_prefix(tenant_name)
+        warehouse_dir = tenant_warehouse_response.sql_warehouse_prefix
     else:
         # Use user's personal SQL warehouse
-        warehouse_dir = f"s3a://cdm-lake/users-sql-warehouse/{settings.USER}/"
+        user_warehouse_response = governance_client.get_sql_warehouse_prefix()
+        warehouse_dir = user_warehouse_response.sql_warehouse_prefix
 
     event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
@@ -258,12 +254,9 @@ def get_spark_session(
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
     """
-    current_spark = SparkSession.getActiveSession()
-    if current_spark:
-        current_spark.stop()
 
     if settings is None:
-        settings = BERDLSettings()
+        settings = get_settings()
 
     # Generate app name if not provided
     if app_name is None:
