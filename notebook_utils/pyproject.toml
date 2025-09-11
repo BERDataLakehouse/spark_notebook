@@ -20,6 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
+    "ruff>=0.13.0",
 ]
 
 
@@ -62,3 +63,6 @@ docstring-code-line-length = "dynamic"
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v"
+
+[tool.ruff.lint.per-file-ignores]
+"**/cdm_spark_cluster_manager_api_client/**/*.py" = ["E501"]
