@@ -22,8 +22,11 @@ jobs:
       run: |
         cd notebook_utils
         uv sync --locked --inexact --group dev
-        cd ..
     - name: Run linting
-      run: uv run ruff check . --config notebook_utils/pyproject.toml
+      run: |
+        cd notebook_utils
+        uv run ruff check ..
     - name: Check formatting
-      run: uv run ruff format --check . --config notebook_utils/pyproject.toml
+      run: |
+        cd notebook_utils
+        uv run ruff format --check ..
