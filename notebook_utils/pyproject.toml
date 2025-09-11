@@ -25,6 +25,13 @@ dev = [
     "sidecar>=0.7.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "ruff>=0.13.0",
+]
+
+
 [tool.uv.sources]
 cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client.git", rev = "0.2.0" }
 
