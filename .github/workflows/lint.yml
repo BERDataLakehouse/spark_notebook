@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         cd notebook_utils
-        uv sync --locked --inexact --group dev
+        uv sync --inexact --group dev
     - name: Run linting
       run: |
         cd notebook_utils

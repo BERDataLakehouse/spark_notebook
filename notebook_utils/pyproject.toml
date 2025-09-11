@@ -3,7 +3,7 @@ name = "berdl_notebook_utils"
 version = "0.0.1"
 description = "berdl_notebook_utils"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
 
 ]
