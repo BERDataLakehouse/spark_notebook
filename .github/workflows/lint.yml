@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [ main, develop ]
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -19,7 +19,7 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
     - name: Install dependencies
-      run: uv sync --locked --inexact --group dev notebook_tils
+      run: uv sync --locked --inexact --group dev --config notebook_tils/pyproject.toml
     - name: Run linting
       run: uv run ruff check . --config notebook_utils/pyproject.toml
     - name: Check formatting
