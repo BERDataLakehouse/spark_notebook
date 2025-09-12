@@ -1,5 +1,4 @@
 from functools import lru_cache
-from typing import Optional, Union
 
 from cdmtaskserviceclient.client import CTSClient
 from minio import Minio
@@ -10,7 +9,7 @@ from governance_client import AuthenticatedClient as GovernanceAuthenticatedClie
 
 
 @lru_cache(maxsize=1)
-def get_task_service_client(settings: Optional[BERDLSettings] = None) -> CTSClient:
+def get_task_service_client(settings: BERDLSettings | None = None) -> CTSClient:
     """Get an instance of the CDM Task Service client.
     See:
     https://github.com/kbase/cdm-task-service-client/
@@ -23,7 +22,7 @@ def get_task_service_client(settings: Optional[BERDLSettings] = None) -> CTSClie
 
 
 @lru_cache(maxsize=1)
-def get_minio_client(settings: Optional[BERDLSettings] = None) -> Minio:
+def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
     """
     * Get an instance of the Minio client.
     * Note: Your minio credentials are refreshed on each restart of the jupyter notebook.
@@ -42,7 +41,7 @@ def get_minio_client(settings: Optional[BERDLSettings] = None) -> Minio:
 
 
 @lru_cache(maxsize=1)
-def get_governance_client(settings: Optional[BERDLSettings] = None) -> GovernanceAuthenticatedClient:
+def get_governance_client(settings: BERDLSettings | None = None) -> GovernanceAuthenticatedClient:
     """
     Get the governance client for MinIO data management.
 
@@ -60,8 +59,8 @@ def get_governance_client(settings: Optional[BERDLSettings] = None) -> Governanc
 
 @lru_cache(maxsize=1)
 def get_spark_cluster_client(
-    authenticated: bool = True, settings: Optional[BERDLSettings] = None
-) -> Union[SparkAuthenticatedClient, SparkClient]:
+    authenticated: bool = True, settings: BERDLSettings | None = None
+) -> SparkAuthenticatedClient | SparkClient:
     """
     Get a Spark Cluster Manager API client.
 

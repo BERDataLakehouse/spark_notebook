@@ -6,6 +6,7 @@ import logging
 import os
 from typing import List, Optional
 
+from berdl_notebook_utils import get_settings
 from berdl_notebook_utils.clients import get_governance_client
 from governance_client.api.credentials import get_credentials_credentials_get
 from governance_client.api.health import health_check_health_get
@@ -163,7 +164,7 @@ def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse
         table_name: Table name (e.g., "test_employees")
     """
     client = get_governance_client()
-    username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
+    username = get_settings().USER
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
@@ -198,7 +199,7 @@ def share_table(
     """
     client = get_governance_client()
     # Get current user's username from environment variable
-    username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
+    username = get_settings().USER
 
     table_path = _build_table_path(username, namespace, table_name)
     request = ShareRequest(path=table_path, users=with_users or [], groups=with_groups or [])
@@ -236,7 +237,7 @@ def unshare_table(
     """
     client = get_governance_client()
     # Get current user's username from environment variable
-    username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
+    username = get_settings().USER
 
     table_path = _build_table_path(username, namespace, table_name)
     request = UnshareRequest(path=table_path, users=from_users or [], groups=from_groups or [])
@@ -270,7 +271,7 @@ def make_table_public(
     """
     client = get_governance_client()
     # Get current user's username from environment variable
-    username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
+    username = get_settings().USER
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
@@ -296,7 +297,7 @@ def make_table_private(
     """
     client = get_governance_client()
     # Get current user's username from environment variable
-    username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
+    username = get_settings().USER
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
