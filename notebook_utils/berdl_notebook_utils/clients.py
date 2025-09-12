@@ -57,7 +57,7 @@ def get_governance_client(settings: BERDLSettings | None = None) -> GovernanceAu
     )
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=2)
 def get_spark_cluster_client(
     authenticated: bool = True, settings: BERDLSettings | None = None
 ) -> SparkAuthenticatedClient | SparkClient:
