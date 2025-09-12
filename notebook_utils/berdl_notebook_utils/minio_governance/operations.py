@@ -50,7 +50,6 @@ SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 # =============================================================================
 
 
-
 def _build_table_path(username: str, namespace: str, table_name: str) -> str:
     """
     Build S3 path for a SQL warehouse table.
