@@ -8,7 +8,6 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 """
 
 from datetime import datetime
-from typing import Dict, Optional
 
 from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
@@ -100,7 +99,7 @@ def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) ->
     return f"{int(round(adjusted_value))}{spark_unit}"
 
 
-def _get_executor_config(settings: BERDLSettings) -> Dict[str, str]:
+def _get_executor_config(settings: BERDLSettings) -> dict[str, str]:
     """
     Get Spark executor and driver configuration based on profile settings.
 
@@ -130,7 +129,7 @@ def _get_executor_config(settings: BERDLSettings) -> Dict[str, str]:
     return config
 
 
-def _get_spark_defaults_conf() -> Dict[str, str]:
+def _get_spark_defaults_conf() -> dict[str, str]:
     """
     Get Spark defaults configuration.
     """
@@ -150,7 +149,7 @@ def _get_spark_defaults_conf() -> Dict[str, str]:
     }
 
 
-def _get_s3_conf(settings: BERDLSettings, tenant_name: Optional[str] = None) -> Dict[str, str]:
+def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dict[str, str]:
     """
     Get S3 configuration for MinIO.
 
@@ -210,13 +209,13 @@ def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
 
 
 def get_spark_session(
-    app_name: Optional[str] = None,
+    app_name: str | None = None,
     local: bool = False,
     delta_lake: bool = True,
     scheduler_pool: str = SPARK_DEFAULT_POOL,
     use_hive: bool = True,
-    settings: Optional[BERDLSettings] = None,
-    tenant_name: Optional[str] = None,
+    settings: BERDLSettings | None = None,
+    tenant_name: str | None = None,
 ) -> SparkSession:
     """
     Create and configure a Spark session with BERDL-specific settings.
@@ -269,7 +268,7 @@ def get_spark_session(
         return SparkSession.builder.appName(app_name).getOrCreate()
 
     # Build configuration dictionary
-    config: Dict[str, str] = {
+    config: dict[str, str] = {
         "spark.app.name": app_name,
         "spark.driver.host": settings.BERDL_POD_IP,
         "spark.master": str(settings.SPARK_MASTER_URL),

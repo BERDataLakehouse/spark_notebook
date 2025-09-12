@@ -4,7 +4,6 @@ Utility functions for BERDL MinIO Data Governance integration
 
 import logging
 import os
-from typing import List, Optional
 
 from berdl_notebook_utils import get_settings
 from berdl_notebook_utils.clients import get_governance_client
@@ -179,8 +178,8 @@ def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse
 def share_table(
     namespace: str,
     table_name: str,
-    with_users: Optional[List[str]] = None,
-    with_groups: Optional[List[str]] = None,
+    with_users: list[str] | None = None,
+    with_groups: list[str] | None = None,
 ) -> ShareResponse:
     """
     Share a SQL warehouse table with users and/or groups.
@@ -217,8 +216,8 @@ def share_table(
 def unshare_table(
     namespace: str,
     table_name: str,
-    from_users: Optional[List[str]] = None,
-    from_groups: Optional[List[str]] = None,
+    from_users: list[str] | None = None,
+    from_groups: list[str] | None = None,
 ) -> UnshareResponse:
     """
     Remove sharing permissions from a SQL warehouse table.

@@ -7,7 +7,6 @@ and data manipulation in BERDL notebook environments.
 
 import csv
 from threading import RLock
-from typing import Optional
 
 import itables.options as opt
 from IPython.core.display_functions import clear_output
@@ -139,7 +138,7 @@ def read_csv(
     spark: SparkSession,
     path: str,
     header: bool = True,
-    sep: Optional[str] = None,
+    sep: str | None = None,
     **kwargs,
 ) -> DataFrame:
     """
