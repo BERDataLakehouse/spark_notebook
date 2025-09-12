@@ -1,26 +1,39 @@
-from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
-from berdl_notebook_utils.clients import get_minio_client, get_task_service_client
+from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings, validate_environment
+from berdl_notebook_utils.clients import (
+    get_governance_client,
+    get_minio_client,
+    get_spark_cluster_client,
+    get_task_service_client,
+)
 from berdl_notebook_utils.setup_spark_session import get_spark_session
 from berdl_notebook_utils.spark import (
+    # Cluster management
+    check_api_health,
+    create_cluster,
     # Database operations
     create_namespace_if_not_exists,
-    table_exists,
-    remove_table,
-    list_tables,
-    list_namespaces,
-    get_table_info,
+    delete_cluster,
     # DataFrame operations
     display_df,
-    spark_to_pandas,
-    read_csv,
     display_namespace_viewer,
+    get_cluster_status,
+    get_table_info,
+    list_namespaces,
+    list_tables,
+    read_csv,
+    remove_table,
+    spark_to_pandas,
+    table_exists,
 )
 
 __all__ = [
     "BERDLSettings",
     "get_settings",
+    "validate_environment",
     "get_minio_client",
     "get_task_service_client",
+    "get_governance_client",
+    "get_spark_cluster_client",
     "get_spark_session",
     # Database operations
     "create_namespace_if_not_exists",
@@ -34,6 +47,11 @@ __all__ = [
     "spark_to_pandas",
     "read_csv",
     "display_namespace_viewer",
+    # Cluster management
+    "check_api_health",
+    "get_cluster_status",
+    "create_cluster",
+    "delete_cluster",
 ]
 
 
@@ -43,28 +61,55 @@ def berdl_notebook_help():
     berdl_notebook_utils
     ====================
 
-    A collection of utilities for working with Spark, MinIO, and other services in a Jupyter notebook environment.
+    A collection of utilities for working with Spark, MinIO, data governance, and other BERDL services
+    in a Jupyter notebook environment.
 
-    Modules:
-    --------
-    - get_minio_client: Function to get a MinIO client instance.
-    - get_task_service_client: Function to get a CDM Task Service client instance.
-    - get_spark_session: Function to create or retrieve a Spark session.
-    - display_df: Function to display pandas or Spark DataFrames in a Jupyter notebook using itables.
-    - spark_to_pandas: Function to convert a Spark DataFrame to a pandas DataFrame.
+    Client Functions:
+    -----------------
+    - get_minio_client: MinIO S3 client instance
+    - get_task_service_client: CDM Task Service client instance  
+    - get_governance_client: Data Governance API client instance
+    - get_spark_cluster_client: Spark Cluster Manager API client instance
+    - get_spark_session: Create configured Spark session with Delta Lake and S3 support
+
+    Database Operations:
+    -------------------
+    - create_namespace_if_not_exists: Create database namespace
+    - table_exists: Check if table exists
+    - remove_table: Delete table
+    - list_tables: List tables in namespace
+    - list_namespaces: List available namespaces
+    - get_table_info: Get table metadata
+
+    DataFrame Utilities:
+    -------------------
+    - display_df: Display pandas/Spark DataFrames with interactive tables
+    - spark_to_pandas: Convert Spark DataFrame to pandas
+    - read_csv: S3-aware CSV reader with auto-detection
+    - display_namespace_viewer: Interactive namespace browser
+
+    Cluster Management:
+    ------------------
+    - check_api_health: Check Spark Cluster Manager API health
+    - get_cluster_status: Get current cluster status
+    - create_cluster: Create new Spark cluster
+    - delete_cluster: Delete Spark cluster
 
     Usage:
     ------
-    Import the desired functions or classes from the module and use them in your notebook.
-
-    Example:
-    --------
     from berdl_notebook_utils import get_spark_session, display_df
+    from berdl_notebook_utils.minio_governance import share_table
 
-    spark = get_spark_session()
-    df = spark.read.csv("s3a://your-bucket/your-file.csv")
+    # Create Spark session
+    spark = get_spark_session("MyAnalysis")
+
+    # Read and display data
+    df = spark.read.csv("s3a://your-bucket/data.csv")
     display_df(df)
 
-    For more detailed documentation, refer to the individual module docstrings.
+    # Share table with colleagues
+    share_table("analytics", "user_metrics", with_users=["alice", "bob"])
+
+    For detailed documentation, see the README.md or individual module docstrings.
     """
     )

@@ -21,6 +21,7 @@ dev = [
     "pydantic-settings==2.10.1",
     "pyspark==4.0.0",
     "sidecar==0.7.0",
+    "attrs==25.3.0",
     # Development tools
     "pytest==8.4.1",
     "ruff==0.13.0",
