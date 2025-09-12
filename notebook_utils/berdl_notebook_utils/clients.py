@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from cdmtaskserviceclient.client import CTSClient
 from minio import Minio
-from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient, Client as SparkClient
+from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 
 from berdl_notebook_utils import BERDLSettings, get_settings
 from governance_client import AuthenticatedClient as GovernanceAuthenticatedClient
@@ -57,29 +57,21 @@ def get_governance_client(settings: BERDLSettings | None = None) -> GovernanceAu
     )
 
 
-@lru_cache(maxsize=2)
-def get_spark_cluster_client(
-    authenticated: bool = True, settings: BERDLSettings | None = None
-) -> SparkAuthenticatedClient | SparkClient:
+@lru_cache(maxsize=1)
+def get_spark_cluster_client(settings: BERDLSettings | None = None) -> SparkAuthenticatedClient:
     """
-    Get a Spark Cluster Manager API client.
+    Get an authenticated Spark Cluster Manager API client.
 
     Args:
-        authenticated: If True, returns authenticated client. If False, returns unauthenticated client.
         settings: Optional BERDLSettings instance. If None, reads from environment.
 
     Returns:
-        SparkAuthenticatedClient if authenticated=True, SparkClient if authenticated=False
+        SparkAuthenticatedClient with KBase authentication
     """
     if settings is None:
         settings = get_settings()
 
-    base_url = str(settings.SPARK_CLUSTER_MANAGER_API_URL)
-
-    if authenticated:
-        return SparkAuthenticatedClient(
-            base_url=base_url,
-            token=settings.KBASE_AUTH_TOKEN,
-        )
-    else:
-        return SparkClient(base_url=base_url)
+    return SparkAuthenticatedClient(
+        base_url=str(settings.SPARK_CLUSTER_MANAGER_API_URL),
+        token=settings.KBASE_AUTH_TOKEN,
+    )
