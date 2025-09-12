@@ -3,7 +3,6 @@ CDM Spark Cluster Manager API Client Wrapper
 """
 
 import os
-from typing import cast
 
 from spark_manager_client.api.clusters import (
     create_cluster_clusters_post,
@@ -11,7 +10,6 @@ from spark_manager_client.api.clusters import (
     get_cluster_status_clusters_get,
 )
 from spark_manager_client.api.health import health_check_health_get
-from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 from spark_manager_client.models import (
     ClusterDeleteResponse,
     HealthResponse,
@@ -47,7 +45,7 @@ def check_api_health() -> HealthResponse | None:
     Check if the Spark Cluster Manager API is healthy.
     """
 
-    client = get_spark_cluster_client(authenticated=False)
+    client = get_spark_cluster_client()
     with client as client:
         response: Response[HealthResponse] = health_check_health_get.sync_detailed(client=client)
 
@@ -61,7 +59,7 @@ def get_cluster_status() -> SparkClusterStatus | None:
     """
     Get the status of the user's Spark cluster.
     """
-    client = cast(SparkAuthenticatedClient, get_spark_cluster_client(authenticated=True))
+    client = get_spark_cluster_client()
     with client as client:
         response: Response[SparkClusterStatus] = get_cluster_status_clusters_get.sync_detailed(client=client)
 
@@ -101,7 +99,7 @@ def create_cluster(
             print("Cluster creation aborted.")
             return None
 
-    client = cast(SparkAuthenticatedClient, get_spark_cluster_client(authenticated=True))
+    client = get_spark_cluster_client()
     with client as client:
         # Create the config object
         config = SparkClusterConfig(
@@ -130,7 +128,7 @@ def delete_cluster() -> ClusterDeleteResponse | None:
     """
     Delete the user's Spark cluster.
     """
-    client = cast(SparkAuthenticatedClient, get_spark_cluster_client(authenticated=True))
+    client = get_spark_cluster_client()
     with client as client:
         response: Response[ClusterDeleteResponse] = delete_cluster_clusters_delete.sync_detailed(client=client)
 
