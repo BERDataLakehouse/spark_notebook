@@ -1,5 +1,10 @@
 from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings  # noqa F401
-from berdl_notebook_utils.clients import get_minio_client, get_task_service_client  # noqa F401
+from berdl_notebook_utils.clients import (  # noqa F401
+    get_minio_client,
+    get_task_service_client,
+    get_governance_client,
+    get_spark_cluster_client,
+)
 from berdl_notebook_utils.setup_spark_session import get_spark_session  # noqa F401
 from berdl_notebook_utils.spark import (  # noqa F401
     # Database operations
@@ -14,13 +19,17 @@ from berdl_notebook_utils.spark import (  # noqa F401
     spark_to_pandas,
     read_csv,
     display_namespace_viewer,
+    # Cluster management
+    check_api_health,
+    get_cluster_status,
+    create_cluster,
+    delete_cluster,
 )
 
 from berdl_notebook_utils import berdl_notebook_help  # noqa F401
 
 # MinIO Data Governance integration
-from berdl_notebook_utils.minio_governance.client import DataGovernanceClient  # noqa F401
-from berdl_notebook_utils.minio_governance.utils import (  # noqa F401
+from berdl_notebook_utils.minio_governance import (  # noqa F401
     check_governance_health,
     get_minio_credentials,
     get_my_sql_warehouse,
@@ -33,13 +42,8 @@ from berdl_notebook_utils.minio_governance.utils import (  # noqa F401
     make_table_private,
 )
 
-# Pre-initialize data governance client for easy access
-governance = DataGovernanceClient()  # noqa F401
-
-from berdl_notebook_utils.spark.cluster import (  # noqa F401
-    # Cluster management
-    check_api_health,
-    get_cluster_status,
-    create_cluster,
-    delete_cluster,
-)
+# Pre-initialize clients for easy access
+governance = get_governance_client()  # noqa F401
+minio = get_minio_client()  # noqa F401
+task_service = get_task_service_client()  # noqa F401
+spark_cluster = get_spark_cluster_client()  # noqa F401

@@ -14,7 +14,7 @@ from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from berdl_notebook_utils.clients import get_governance_client
+from berdl_notebook_utils.minio_governance import get_my_sql_warehouse, get_group_sql_warehouse
 
 # =============================================================================
 # CONSTANTS
@@ -161,15 +161,13 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: Optional[str] = None) -> 
         Dictionary of S3/MinIO Spark configuration properties
     """
 
-    governance_client = get_governance_client()
-
     if tenant_name:
         # Use tenant's SQL warehouse
-        tenant_warehouse_response = governance_client.get_group_sql_warehouse_prefix(tenant_name)
+        tenant_warehouse_response = get_group_sql_warehouse(tenant_name)
         warehouse_dir = tenant_warehouse_response.sql_warehouse_prefix
     else:
         # Use user's personal SQL warehouse
-        user_warehouse_response = governance_client.get_sql_warehouse_prefix()
+        user_warehouse_response = get_my_sql_warehouse()
         warehouse_dir = user_warehouse_response.sql_warehouse_prefix
 
     event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"

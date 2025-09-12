@@ -26,6 +26,14 @@ from .dataframe import (
     read_csv,
 )
 
+# Cluster management utilities
+from .cluster import (
+    check_api_health,
+    get_cluster_status,
+    create_cluster,
+    delete_cluster,
+)
+
 
 __all__ = [
     # Database operations
@@ -40,4 +48,9 @@ __all__ = [
     "display_df",
     "display_namespace_viewer",
     "read_csv",
+    # Cluster management
+    "check_api_health",
+    "get_cluster_status",
+    "create_cluster",
+    "delete_cluster",
 ]

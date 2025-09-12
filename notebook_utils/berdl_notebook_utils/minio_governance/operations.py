@@ -6,20 +6,34 @@ import logging
 import os
 from typing import List, Optional
 
-from .client import DataGovernanceClient
-from .models import (
+from berdl_notebook_utils.clients import get_governance_client
+from governance_client.api.credentials import get_credentials_credentials_get
+from governance_client.api.health import health_check_health_get
+from governance_client.api.sharing import (
+    get_path_access_info_sharing_get_path_access_info_post,
+    make_path_private_sharing_make_private_post,
+    make_path_public_sharing_make_public_post,
+    share_data_sharing_share_post,
+    unshare_data_sharing_unshare_post,
+)
+from governance_client.api.workspaces import (
+    get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get,
+    get_my_policies_workspaces_me_policies_get,
+    get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get,
+    get_my_workspace_workspaces_me_get,
+)
+from governance_client.models import (
     CredentialsResponse,
     HealthResponse,
-    PathAccessInfoResponse,
+    PathAccessResponse,
     PathRequest,
     PublicAccessResponse,
-    SharePathRequest,
-    SharePathResponse,
-    SqlWarehousePrefixResponse,
-    UnsharePathRequest,
-    UnsharePathResponse,
+    ShareRequest,
+    ShareResponse,
+    UnshareRequest,
+    UnshareResponse,
     UserPoliciesResponse,
-    UserWorkspaceResponse,
+    UserSqlWarehousePrefixResponse,
 )
 
 # =============================================================================
@@ -35,15 +49,6 @@ SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 # HELPER FUNCTIONS
 # =============================================================================
 
-
-def _get_governance_client() -> DataGovernanceClient:
-    """
-    Get a DataGovernanceClient instance using KBASE_AUTH_TOKEN env var.
-
-    Returns:
-        DataGovernanceClient instance
-    """
-    return DataGovernanceClient()
 
 
 def _build_table_path(username: str, namespace: str, table_name: str) -> str:
@@ -72,8 +77,8 @@ def check_governance_health() -> HealthResponse:
     Returns:
         HealthResponse with service status
     """
-    client = _get_governance_client()
-    return client.health_check()
+    client = get_governance_client()
+    return health_check_health_get.sync(client=client)
 
 
 def get_minio_credentials() -> CredentialsResponse:
@@ -87,8 +92,8 @@ def get_minio_credentials() -> CredentialsResponse:
     Returns:
         CredentialsResponse with username, access_key, and secret_key
     """
-    client = _get_governance_client()
-    credentials = client.get_credentials()
+    client = get_governance_client()
+    credentials = get_credentials_credentials_get.sync(client=client)
 
     # Set MinIO credentials as environment variables
     if os.environ.get("USE_DATA_GOVERNANCE_CREDENTIALS", "false") == "true":
@@ -101,26 +106,42 @@ def get_minio_credentials() -> CredentialsResponse:
     return credentials
 
 
-def get_my_sql_warehouse() -> SqlWarehousePrefixResponse:
+def get_my_sql_warehouse() -> UserSqlWarehousePrefixResponse:
     """
     Get SQL warehouse prefix for the current user.
 
     Returns:
-        SqlWarehousePrefixResponse with username and sql_warehouse_prefix
+        UserSqlWarehousePrefixResponse with username and sql_warehouse_prefix
     """
-    client = _get_governance_client()
-    return client.get_sql_warehouse_prefix()
+    client = get_governance_client()
+    return get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get.sync(client=client)
 
 
-def get_my_workspace() -> UserWorkspaceResponse:
+def get_group_sql_warehouse(group_name: str):
+    """
+    Get SQL warehouse prefix for a specific group.
+
+    Args:
+        group_name: Name of the group
+
+    Returns:
+        GroupSqlWarehousePrefixResponse with group_name and sql_warehouse_prefix
+    """
+    client = get_governance_client()
+    return get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get.sync(
+        client=client, group_name=group_name
+    )
+
+
+def get_my_workspace():
     """
     Get comprehensive workspace information for the current user.
 
     Returns:
-        UserWorkspaceResponse with username, home_paths, groups, policies, and accessible_paths
+        Workspace information from governance client
     """
-    client = _get_governance_client()
-    return client.get_workspace()
+    client = get_governance_client()
+    return get_my_workspace_workspaces_me_get.sync(client=client)
 
 
 def get_my_policies() -> UserPoliciesResponse:
@@ -130,11 +151,11 @@ def get_my_policies() -> UserPoliciesResponse:
     Returns:
         UserPoliciesResponse with user_home_policy, user_system_policy, and group_policies
     """
-    client = _get_governance_client()
-    return client.get_user_policies()
+    client = get_governance_client()
+    return get_my_policies_workspaces_me_policies_get.sync(client=client)
 
 
-def get_table_access_info(namespace: str, table_name: str) -> PathAccessInfoResponse:
+def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse:
     """
     Get access information for a SQL warehouse table.
 
@@ -142,12 +163,12 @@ def get_table_access_info(namespace: str, table_name: str) -> PathAccessInfoResp
         namespace: Database namespace (e.g., "test" or "test.db")
         table_name: Table name (e.g., "test_employees")
     """
-    client = _get_governance_client()
+    client = get_governance_client()
     username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
-    return client.get_path_access_info(request)
+    return get_path_access_info_sharing_get_path_access_info_post.sync(client=client, body=request)
 
 
 # =============================================================================
@@ -160,7 +181,7 @@ def share_table(
     table_name: str,
     with_users: Optional[List[str]] = None,
     with_groups: Optional[List[str]] = None,
-) -> SharePathResponse:
+) -> ShareResponse:
     """
     Share a SQL warehouse table with users and/or groups.
 
@@ -176,13 +197,13 @@ def share_table(
     Example:
         share_table("analytics", "user_metrics", with_users=["alice", "bob"])
     """
-    client = _get_governance_client()
+    client = get_governance_client()
     # Get current user's username from environment variable
     username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
 
     table_path = _build_table_path(username, namespace, table_name)
-    request = SharePathRequest(path=table_path, with_users=with_users or [], with_groups=with_groups or [])
-    response = client.share_path(request)
+    request = ShareRequest(path=table_path, users=with_users or [], groups=with_groups or [])
+    response = share_data_sharing_share_post.sync(client=client, body=request)
 
     # Log warnings if there were errors
     if response.errors:
@@ -198,7 +219,7 @@ def unshare_table(
     table_name: str,
     from_users: Optional[List[str]] = None,
     from_groups: Optional[List[str]] = None,
-) -> UnsharePathResponse:
+) -> UnshareResponse:
     """
     Remove sharing permissions from a SQL warehouse table.
 
@@ -214,13 +235,13 @@ def unshare_table(
     Example:
         unshare_table("analytics", "user_metrics", from_users=["alice"])
     """
-    client = _get_governance_client()
+    client = get_governance_client()
     # Get current user's username from environment variable
     username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
 
     table_path = _build_table_path(username, namespace, table_name)
-    request = UnsharePathRequest(path=table_path, from_users=from_users or [], from_groups=from_groups or [])
-    response = client.unshare_path(request)
+    request = UnshareRequest(path=table_path, users=from_users or [], groups=from_groups or [])
+    response = unshare_data_sharing_unshare_post.sync(client=client, body=request)
 
     # Log warnings if there were errors
     if response.errors:
@@ -248,13 +269,13 @@ def make_table_public(
     Example:
         make_table_public("research", "public_dataset")
     """
-    client = _get_governance_client()
+    client = get_governance_client()
     # Get current user's username from environment variable
     username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
-    return client.make_public(request)
+    return make_path_public_sharing_make_public_post.sync(client=client, body=request)
 
 
 def make_table_private(
@@ -274,10 +295,10 @@ def make_table_private(
     Example:
         make_table_private("research", "sensitive_data")
     """
-    client = _get_governance_client()
+    client = get_governance_client()
     # Get current user's username from environment variable
     username = os.environ.get("JUPYTERHUB_USER", os.environ.get("USER", "unknown"))
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
-    return client.make_private(request)
+    return make_path_private_sharing_make_private_post.sync(client=client, body=request)

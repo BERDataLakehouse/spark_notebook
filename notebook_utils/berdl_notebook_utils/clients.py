@@ -1,11 +1,12 @@
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Union
 
 from cdmtaskserviceclient.client import CTSClient
 from minio import Minio
+from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient, Client as SparkClient
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from berdl_notebook_utils.minio_governance.client import DataGovernanceClient
+from governance_client import AuthenticatedClient as GovernanceAuthenticatedClient
 
 
 @lru_cache(maxsize=1)
@@ -41,14 +42,45 @@ def get_minio_client(settings: Optional[BERDLSettings] = None) -> Minio:
 
 
 @lru_cache(maxsize=1)
-def get_governance_client(settings: Optional[BERDLSettings] = None) -> DataGovernanceClient:
+def get_governance_client(settings: Optional[BERDLSettings] = None) -> GovernanceAuthenticatedClient:
     """
-    Get an instance of the Data Governance client.
+    Get the governance client for MinIO data management.
 
-    The governance client is used for managing MinIO permissions, user workspaces,
-    and data sharing operations in the BERDL environment.
+    This provides access to all governance API endpoints including credentials,
+    workspace management, and data sharing operations.
     """
     if settings is None:
         settings = get_settings()
 
-    return DataGovernanceClient(kbase_token=settings.KBASE_AUTH_TOKEN)
+    return GovernanceAuthenticatedClient(
+        base_url=str(settings.GOVERNANCE_API_URL),
+        token=settings.KBASE_AUTH_TOKEN,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_spark_cluster_client(
+    authenticated: bool = True, settings: Optional[BERDLSettings] = None
+) -> Union[SparkAuthenticatedClient, SparkClient]:
+    """
+    Get a Spark Cluster Manager API client.
+
+    Args:
+        authenticated: If True, returns authenticated client. If False, returns unauthenticated client.
+        settings: Optional BERDLSettings instance. If None, reads from environment.
+
+    Returns:
+        SparkAuthenticatedClient if authenticated=True, SparkClient if authenticated=False
+    """
+    if settings is None:
+        settings = get_settings()
+
+    base_url = str(settings.SPARK_CLUSTER_MANAGER_API_URL)
+
+    if authenticated:
+        return SparkAuthenticatedClient(
+            base_url=base_url,
+            token=settings.KBASE_AUTH_TOKEN,
+        )
+    else:
+        return SparkClient(base_url=base_url)

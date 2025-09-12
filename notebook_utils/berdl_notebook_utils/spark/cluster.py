@@ -3,8 +3,7 @@ CDM Spark Cluster Manager API Client Wrapper
 """
 
 import os
-
-from berdl_notebook_utils.berdl_settings import get_settings
+from typing import cast
 
 from spark_manager_client.api.clusters import (
     create_cluster_clusters_post,
@@ -12,7 +11,7 @@ from spark_manager_client.api.clusters import (
     get_cluster_status_clusters_get,
 )
 from spark_manager_client.api.health import health_check_health_get
-from spark_manager_client.client import AuthenticatedClient, Client
+from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 from spark_manager_client.models import (
     ClusterDeleteResponse,
     HealthResponse,
@@ -22,30 +21,13 @@ from spark_manager_client.models import (
 )
 from spark_manager_client.types import Response
 
+from berdl_notebook_utils.clients import get_spark_cluster_client
+
 DEFAULT_WORKER_COUNT = int(os.environ.get("DEFAULT_WORKER_COUNT", 2))
 DEFAULT_WORKER_CORES = int(os.environ.get("DEFAULT_WORKER_CORES", 1))
 DEFAULT_WORKER_MEMORY = os.environ.get("DEFAULT_WORKER_MEMORY", "10GiB")
 DEFAULT_MASTER_CORES = int(os.environ.get("DEFAULT_MASTER_CORES", 1))
 DEFAULT_MASTER_MEMORY = os.environ.get("DEFAULT_MASTER_MEMORY", "10GiB")
-
-
-def _get_client() -> Client:
-    """
-    Get an unauthenticated client for the Spark Cluster Manager API.
-    """
-    api_url = get_settings().SPARK_CLUSTER_MANAGER_API_URL
-    return Client(base_url=str(api_url))
-
-
-def _get_authenticated_client(
-    kbase_auth_token: str | None = None,
-) -> AuthenticatedClient:
-    """
-    Get an authenticated client for the Spark Cluster Manager API.
-    """
-    api_url = get_settings().SPARK_CLUSTER_MANAGER_API_URL
-    auth_token = get_settings().KBASE_AUTH_TOKEN
-    return AuthenticatedClient(base_url=str(api_url), token=str(auth_token))
 
 
 def _raise_api_error(response: Response) -> None:
@@ -65,7 +47,7 @@ def check_api_health() -> HealthResponse | None:
     Check if the Spark Cluster Manager API is healthy.
     """
 
-    client = _get_client()
+    client = get_spark_cluster_client(authenticated=False)
     with client as client:
         response: Response[HealthResponse] = health_check_health_get.sync_detailed(client=client)
 
@@ -75,13 +57,11 @@ def check_api_health() -> HealthResponse | None:
     _raise_api_error(response)
 
 
-def get_cluster_status(
-    kbase_auth_token: str | None = None,
-) -> SparkClusterStatus | None:
+def get_cluster_status() -> SparkClusterStatus | None:
     """
     Get the status of the user's Spark cluster.
     """
-    client = _get_authenticated_client(kbase_auth_token)
+    client = cast(SparkAuthenticatedClient, get_spark_cluster_client(authenticated=True))
     with client as client:
         response: Response[SparkClusterStatus] = get_cluster_status_clusters_get.sync_detailed(client=client)
 
@@ -93,7 +73,6 @@ def get_cluster_status(
 
 
 def create_cluster(
-    kbase_auth_token: str | None = None,
     worker_count: int = DEFAULT_WORKER_COUNT,
     worker_cores: int = DEFAULT_WORKER_CORES,
     worker_memory: str = DEFAULT_WORKER_MEMORY,
@@ -122,7 +101,7 @@ def create_cluster(
             print("Cluster creation aborted.")
             return None
 
-    client = _get_authenticated_client(kbase_auth_token)
+    client = cast(SparkAuthenticatedClient, get_spark_cluster_client(authenticated=True))
     with client as client:
         # Create the config object
         config = SparkClusterConfig(
@@ -147,11 +126,11 @@ def create_cluster(
     _raise_api_error(response)
 
 
-def delete_cluster(kbase_auth_token: str | None = None) -> ClusterDeleteResponse | None:
+def delete_cluster() -> ClusterDeleteResponse | None:
     """
     Delete the user's Spark cluster.
     """
-    client = _get_authenticated_client(kbase_auth_token)
+    client = cast(SparkAuthenticatedClient, get_spark_cluster_client(authenticated=True))
     with client as client:
         response: Response[ClusterDeleteResponse] = delete_cluster_clusters_delete.sync_detailed(client=client)
 

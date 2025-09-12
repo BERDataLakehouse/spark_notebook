@@ -50,6 +50,9 @@ class BERDLSettings(BaseSettings):
     # Spark Cluster Manager API configuration
     SPARK_CLUSTER_MANAGER_API_URL: AnyHttpUrl
 
+    # Data Governance API configuration
+    GOVERNANCE_API_URL: AnyHttpUrl
+
 
 def validate_environment():
     """
