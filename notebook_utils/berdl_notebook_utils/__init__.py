@@ -67,7 +67,7 @@ def berdl_notebook_help():
     Client Functions:
     -----------------
     - get_minio_client: MinIO S3 client instance
-    - get_task_service_client: CDM Task Service client instance  
+    - get_task_service_client: CDM Task Service client instance
     - get_governance_client: Data Governance API client instance
     - get_spark_cluster_client: Spark Cluster Manager API client instance
     - get_spark_session: Create configured Spark session with Delta Lake and S3 support
