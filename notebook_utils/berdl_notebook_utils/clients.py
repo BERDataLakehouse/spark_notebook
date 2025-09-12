@@ -41,7 +41,9 @@ def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
 
 
 @lru_cache(maxsize=1)
-def get_governance_client(settings: BERDLSettings | None = None) -> GovernanceAuthenticatedClient:
+def get_governance_client(
+    settings: BERDLSettings | None = None,
+) -> GovernanceAuthenticatedClient:
     """
     Get the governance client for MinIO data management.
 
@@ -58,7 +60,9 @@ def get_governance_client(settings: BERDLSettings | None = None) -> GovernanceAu
 
 
 @lru_cache(maxsize=1)
-def get_spark_cluster_client(settings: BERDLSettings | None = None) -> SparkAuthenticatedClient:
+def get_spark_cluster_client(
+    settings: BERDLSettings | None = None,
+) -> SparkAuthenticatedClient:
     """
     Get an authenticated Spark Cluster Manager API client.
 

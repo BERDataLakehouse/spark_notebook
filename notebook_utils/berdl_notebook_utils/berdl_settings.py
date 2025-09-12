@@ -40,11 +40,15 @@ class BERDLSettings(BaseSettings):
     SPARK_WORKER_COUNT: int = Field(default=1, description="Number of Spark workers from profile")
     SPARK_WORKER_CORES: int = Field(default=1, description="Cores per Spark worker from profile")
     SPARK_WORKER_MEMORY: str = Field(
-        default="2GiB", pattern=r"^\d+[kmgKMGT]i?[bB]?$", description="Memory per Spark worker from profile"
+        default="2GiB",
+        pattern=r"^\d+[kmgKMGT]i?[bB]?$",
+        description="Memory per Spark worker from profile",
     )
     SPARK_MASTER_CORES: int = Field(default=1, description="Cores for Spark master from profile")
     SPARK_MASTER_MEMORY: str = Field(
-        default="1GiB", pattern=r"^\d+[kmgKMGT]i?[bB]?$", description="Memory for Spark master from profile"
+        default="1GiB",
+        pattern=r"^\d+[kmgKMGT]i?[bB]?$",
+        description="Memory for Spark master from profile",
     )
 
     # Spark Cluster Manager API configuration

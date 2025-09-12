@@ -1,4 +1,8 @@
-from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings, validate_environment
+from berdl_notebook_utils.berdl_settings import (
+    BERDLSettings,
+    get_settings,
+    validate_environment,
+)
 from berdl_notebook_utils.clients import (
     get_governance_client,
     get_minio_client,
