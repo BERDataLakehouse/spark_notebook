@@ -60,6 +60,6 @@ except Exception as e:
 try:
     spark_cluster = get_spark_cluster_client()  # noqa F401
 except Exception as e:
-    # Spark Cluster Manager API might not be available in the local dev environment - require Kubernetes cluster to be running
+    # Spark Cluster Manager API might not be available in local dev environment
     print(f"Warning: Could not initialize spark_cluster client: {e}")
     spark_cluster = None
