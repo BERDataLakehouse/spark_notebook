@@ -1,11 +1,13 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from cdmtaskserviceclient.client import CTSClient
+from governance_client import AuthenticatedClient as GovernanceAuthenticatedClient
+from hmsclient import HMSClient
 from minio import Minio
 from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from governance_client import AuthenticatedClient as GovernanceAuthenticatedClient
 
 
 @lru_cache(maxsize=1)
@@ -79,3 +81,28 @@ def get_spark_cluster_client(
         base_url=str(settings.SPARK_CLUSTER_MANAGER_API_URL),
         token=settings.KBASE_AUTH_TOKEN,
     )
+
+
+@lru_cache(maxsize=1)
+def get_hive_metastore_client(
+    settings: BERDLSettings | None = None,
+) -> HMSClient:
+    """
+    Get a Hive Metastore client for direct HMS operations.
+
+    Args:
+        settings: Optional BERDLSettings instance. If None, reads from environment.
+
+    Returns:
+        HMSClient configured to connect to the Hive Metastore
+    """
+    if settings is None:
+        settings = get_settings()
+
+    # Parse the thrift URI to extract host and port
+    # Format: thrift://hostname:port
+    parsed_uri = urlparse(str(settings.BERDL_HIVE_METASTORE_URI))
+    host = parsed_uri.hostname
+    port = parsed_uri.port
+
+    return HMSClient(host=host, port=port)

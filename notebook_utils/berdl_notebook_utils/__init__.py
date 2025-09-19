@@ -8,26 +8,32 @@ from berdl_notebook_utils.clients import (
     get_minio_client,
     get_spark_cluster_client,
     get_task_service_client,
+    get_hive_metastore_client,
 )
 from berdl_notebook_utils.setup_spark_session import get_spark_session
 from berdl_notebook_utils.spark import (
     # Cluster management
     check_api_health,
     create_cluster,
+    delete_cluster,
+    get_cluster_status,
     # Database operations
     create_namespace_if_not_exists,
-    delete_cluster,
-    # DataFrame operations
-    display_df,
-    display_namespace_viewer,
-    get_cluster_status,
     get_table_info,
     list_namespaces,
     list_tables,
-    read_csv,
     remove_table,
-    spark_to_pandas,
     table_exists,
+    # DataFrame operations
+    display_df,
+    display_namespace_viewer,
+    read_csv,
+    spark_to_pandas,
+    # Data store operations
+    get_databases,
+    get_tables,
+    get_table_schema,
+    get_db_structure,
 )
 
 __all__ = [
@@ -39,6 +45,7 @@ __all__ = [
     "get_governance_client",
     "get_spark_cluster_client",
     "get_spark_session",
+    "get_hive_metastore_client",
     # Database operations
     "create_namespace_if_not_exists",
     "table_exists",
@@ -56,6 +63,11 @@ __all__ = [
     "get_cluster_status",
     "create_cluster",
     "delete_cluster",
+    # Data store operations
+    "get_databases",
+    "get_tables",
+    "get_table_schema",
+    "get_db_structure",
 ]
 
 

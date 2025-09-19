@@ -7,7 +7,7 @@ and their schemas from a Spark cluster or directly from Hive metastore in Postgr
 import json
 from typing import Any, Dict, List, Optional, Union
 
-from ..postgres import hive_metastore
+from .. import hive_metastore
 from pyspark.sql import SparkSession
 from ..setup_spark_session import get_spark_session
 
@@ -30,14 +30,14 @@ def _format_output(data: Any, return_json: bool = True) -> Union[str, Any]:
 
 
 def get_databases(
-    spark: Optional[SparkSession] = None, use_postgres: bool = True, return_json: bool = True
+    spark: Optional[SparkSession] = None, use_hms: bool = True, return_json: bool = True
 ) -> Union[str, List[str]]:
     """
     Get the list of databases in the Hive metastore.
 
     Args:
-        spark: Optional SparkSession to use (if use_postgres is False)
-        use_postgres: Whether to use PostgreSQL direct query (faster) or Spark
+        spark: Optional SparkSession to use (if use_hms is False)
+        use_hms: Whether to use HMS direct client (faster) or Spark
         return_json: Whether to return JSON string or raw data
 
     Returns:
@@ -47,7 +47,7 @@ def get_databases(
     def _get_dbs(session: SparkSession) -> List[str]:
         return [db.name for db in session.catalog.listDatabases()]
 
-    if use_postgres:
+    if use_hms:
         databases = hive_metastore.get_databases()
     else:
         databases = _execute_with_spark(_get_dbs, spark)
@@ -56,15 +56,15 @@ def get_databases(
 
 
 def get_tables(
-    database: str, spark: Optional[SparkSession] = None, use_postgres: bool = True, return_json: bool = True
+    database: str, spark: Optional[SparkSession] = None, use_hms: bool = True, return_json: bool = True
 ) -> Union[str, List[str]]:
     """
     Get the list of tables in a specific database.
 
     Args:
         database: Name of the database
-        spark: Optional SparkSession to use (if use_postgres is False)
-        use_postgres: Whether to use PostgreSQL direct query (faster) or Spark
+        spark: Optional SparkSession to use (if use_hms is False)
+        use_hms: Whether to use HMS direct client (faster) or Spark
         return_json: Whether to return JSON string or raw data
 
     Returns:
@@ -74,7 +74,7 @@ def get_tables(
     def _get_tbls(session: SparkSession, db: str) -> List[str]:
         return [table.name for table in session.catalog.listTables(dbName=db)]
 
-    if use_postgres:
+    if use_hms:
         tables = hive_metastore.get_tables(database)
     else:
         tables = _execute_with_spark(_get_tbls, spark, database)
@@ -110,14 +110,12 @@ def get_table_schema(
     return _format_output(columns, return_json)
 
 
-def get_db_structure(
-    with_schema: bool = False, use_postgres: bool = True, return_json: bool = True
-) -> Union[str, Dict]:
+def get_db_structure(with_schema: bool = False, use_hms: bool = True, return_json: bool = True) -> Union[str, Dict]:
     """Get the structure of all databases in the Hive metastore.
 
     Args:
         with_schema: Whether to include table schemas
-        use_postgres: Whether to use PostgreSQL for metadata retrieval
+        use_hms: Whether to use HMS direct client for metadata retrieval
         return_json: Whether to return the result as a JSON string
 
     Returns:
@@ -133,10 +131,10 @@ def get_db_structure(
 
     def _get_structure(session: SparkSession) -> Dict[str, Union[List[str], Dict[str, List[str]]]]:
         db_structure = {}
-        databases = get_databases(spark=session, return_json=False)
+        databases = get_databases(spark=session, use_hms=False, return_json=False)
 
         for db in databases:
-            tables = get_tables(database=db, spark=session, return_json=False)
+            tables = get_tables(database=db, spark=session, use_hms=False, return_json=False)
             if with_schema:
                 db_structure[db] = {
                     table: get_table_schema(database=db, table=table, spark=session, return_json=False)
@@ -147,7 +145,7 @@ def get_db_structure(
 
         return db_structure
 
-    if use_postgres:
+    if use_hms:
         db_structure = {}
         databases = hive_metastore.get_databases()
 
