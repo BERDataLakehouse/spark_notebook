@@ -31,9 +31,9 @@ def get_tables(database: str) -> List[str]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT "TBL_NAME" 
-                FROM "TBLS" t 
-                JOIN "DBS" d ON t."DB_ID" = d."DB_ID" 
+                SELECT "TBL_NAME"
+                FROM "TBLS" t
+                JOIN "DBS" d ON t."DB_ID" = d."DB_ID"
                 WHERE d."NAME" = %s
             """,
                 (database,),
