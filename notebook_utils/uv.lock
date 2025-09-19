@@ -100,11 +100,13 @@ dev = [
     { name = "cdm-minio-service-client" },
     { name = "cdm-spark-manager-client" },
     { name = "cdm-task-service-client" },
+    { name = "cdm-tree-browser" },
     { name = "httpx" },
     { name = "ipywidgets" },
     { name = "itables" },
     { name = "minio" },
     { name = "pandas" },
+    { name = "psycopg" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyspark" },
@@ -121,11 +123,13 @@ dev = [
     { name = "cdm-minio-service-client", git = "https://github.com/kbase/cdm-minio-service-client.git?rev=0.0.1" },
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0" },
+    { name = "cdm-tree-browser", url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" },
     { name = "httpx", specifier = "==0.27.0" },
     { name = "ipywidgets", specifier = "==8.1.7" },
     { name = "itables", specifier = "==2.4.5" },
     { name = "minio", specifier = "==7.2.16" },
     { name = "pandas", specifier = "==2.3.2" },
+    { name = "psycopg", specifier = "==3.2.10" },
     { name = "pydantic", specifier = "==2.10.0" },
     { name = "pydantic-settings", specifier = "==2.10.1" },
     { name = "pyspark", specifier = "==4.0.0" },
@@ -158,6 +162,14 @@ version = "0.1.0"
 source = { git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0#2e99c61fb1300cf6014f91c17fe1d5ba60560605" }
 dependencies = [
     { name = "requests" },
+]
+
+[[package]]
+name = "cdm-tree-browser"
+version = "0.1.0"
+source = { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl", hash = "sha256:eb716c82148020ec93153bb4098ead13386260c3a9cada9936bec83ec4ab6205" },
 ]
 
 [[package]]
@@ -577,6 +589,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/96/06e01a7b38dce6fe1db213e061a4602dd6032a8a97ef6c1a862537732421/prompt_toolkit-3.0.52.tar.gz", hash = "sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855", size = 434198, upload-time = "2025-08-27T15:24:02.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/84/03/0d3ce49e2505ae70cf43bc5bb3033955d2fc9f932163e84dc0779cc47f48/prompt_toolkit-3.0.52-py3-none-any.whl", hash = "sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955", size = 391431, upload-time = "2025-08-27T15:23:59.498Z" },
+]
+
+[[package]]
+name = "psycopg"
+version = "3.2.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/f1/0258a123c045afaf3c3b60c22ccff077bceeb24b8dc2c593270899353bd0/psycopg-3.2.10.tar.gz", hash = "sha256:0bce99269d16ed18401683a8569b2c5abd94f72f8364856d56c0389bcd50972a", size = 160380, upload-time = "2025-09-08T09:13:37.775Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/90/422ffbbeeb9418c795dae2a768db860401446af0c6768bc061ce22325f58/psycopg-3.2.10-py3-none-any.whl", hash = "sha256:ab5caf09a9ec42e314a21f5216dbcceac528e0e05142e42eea83a3b28b320ac3", size = 206586, upload-time = "2025-09-08T09:07:50.121Z" },
 ]
 
 [[package]]
