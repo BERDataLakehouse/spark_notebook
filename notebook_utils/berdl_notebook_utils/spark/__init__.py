@@ -4,6 +4,7 @@ Spark utilities for BERDL notebook environments.
 This package provides comprehensive Spark utilities organized into focused modules:
 - database: Catalog and namespace management utilities
 - dataframe: DataFrame operations and display functions
+- data_store: Hive metastore and database information utilities
 
 All functions are imported at the package level for convenient access.
 """
@@ -34,6 +35,14 @@ from .cluster import (
     delete_cluster,
 )
 
+# Data store utilities
+from .data_store import (
+    get_databases,
+    get_tables,
+    get_table_schema,
+    get_db_structure,
+)
+
 
 __all__ = [
     # Database operations
@@ -53,4 +62,9 @@ __all__ = [
     "get_cluster_status",
     "create_cluster",
     "delete_cluster",
+    # Data store operations
+    "get_databases",
+    "get_tables",
+    "get_table_schema",
+    "get_db_structure",
 ]

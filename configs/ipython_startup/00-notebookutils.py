@@ -24,6 +24,11 @@ from berdl_notebook_utils.spark import (  # noqa F401
     get_cluster_status,
     create_cluster,
     delete_cluster,
+    # Data store operations
+    get_databases,
+    get_tables,
+    get_table_schema,
+    get_db_structure,
 )
 
 from berdl_notebook_utils import berdl_notebook_help  # noqa F401
@@ -43,7 +48,18 @@ from berdl_notebook_utils.minio_governance import (  # noqa F401
 )
 
 # Pre-initialize clients for easy access
-governance = get_governance_client()  # noqa F401
-minio = get_minio_client()  # noqa F401
-task_service = get_task_service_client()  # noqa F401
-spark_cluster = get_spark_cluster_client()  # noqa F401
+governance = get_governance_client()
+
+try:
+    task_service = get_task_service_client()  # noqa F401
+except Exception as e:
+    # CTS might not be available in the local dev environment
+    print(f"Warning: Could not initialize task_service client: {e}")
+    task_service = None
+
+try:
+    spark_cluster = get_spark_cluster_client()  # noqa F401
+except Exception as e:
+    # Spark Cluster Manager API might not be available in the local dev environment - require Kubernetes cluster to be running
+    print(f"Warning: Could not initialize spark_cluster client: {e}")
+    spark_cluster = None
