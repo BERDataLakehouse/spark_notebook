@@ -101,7 +101,7 @@ def get_table_schema(
     def _get_schema(session: SparkSession, db: str, tbl: str) -> List[str]:
         try:
             return [column.name for column in session.catalog.listColumns(dbName=db, tableName=tbl)]
-        except Exception as e:
+        except Exception:
             # Observed that certain tables lack their corresponding S3 files
             print(f"Error retrieving schema for table {tbl} in database {db}")
             return []
