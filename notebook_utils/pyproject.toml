@@ -11,7 +11,7 @@ dev = [
     # Runtime dependencies (provided by the spark notebook base image)
     "cdm-spark-manager-client",
     "cdm-task-service-client",
-    "cdm-minio-service-client",
+    "minio-manager-service-client",
     "cdm-tree-browser",
     "httpx==0.27.0",
     "ipywidgets==8.1.7",
@@ -33,7 +33,7 @@ dev = [
 [tool.uv.sources]
 cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client.git", rev = "0.2.0" }
 cdm-spark-manager-client = { git = "https://github.com/kbase/cdm-kube-spark-manager-client.git", rev = "0.0.1" }
-cdm-minio-service-client = { git = "https://github.com/kbase/cdm-minio-service-client.git", rev = "0.0.1" }
+minio-manager-service-client = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git", rev = "v0.0.4" }
 cdm-tree-browser = { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" }
 
 [tool.ruff]

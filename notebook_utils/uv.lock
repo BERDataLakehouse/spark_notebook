@@ -97,7 +97,6 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "attrs" },
-    { name = "cdm-minio-service-client" },
     { name = "cdm-spark-manager-client" },
     { name = "cdm-task-service-client" },
     { name = "cdm-tree-browser" },
@@ -106,6 +105,7 @@ dev = [
     { name = "ipywidgets" },
     { name = "itables" },
     { name = "minio" },
+    { name = "minio-manager-service-client" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -120,7 +120,6 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "attrs", specifier = "==25.3.0" },
-    { name = "cdm-minio-service-client", git = "https://github.com/kbase/cdm-minio-service-client.git?rev=0.0.1" },
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0" },
     { name = "cdm-tree-browser", url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" },
@@ -129,6 +128,7 @@ dev = [
     { name = "ipywidgets", specifier = "==8.1.7" },
     { name = "itables", specifier = "==2.4.5" },
     { name = "minio", specifier = "==7.2.16" },
+    { name = "minio-manager-service-client", git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.4" },
     { name = "pandas", specifier = "==2.3.2" },
     { name = "pydantic", specifier = "==2.10.0" },
     { name = "pydantic-settings", specifier = "==2.10.1" },
@@ -136,15 +136,6 @@ dev = [
     { name = "pytest", specifier = "==8.4.1" },
     { name = "ruff", specifier = "==0.13.0" },
     { name = "sidecar", specifier = "==0.7.0" },
-]
-
-[[package]]
-name = "cdm-minio-service-client"
-version = "0.0.1"
-source = { git = "https://github.com/kbase/cdm-minio-service-client.git?rev=0.0.1#1db9d2805b0a67cef603c9ba3a6284714dde6ee5" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
 ]
 
 [[package]]
@@ -484,6 +475,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f4/a0/33ea2e18d5169817950edc13eba58cd781cedefe9f6696cae26aa2d75882/minio-7.2.16.tar.gz", hash = "sha256:81e365c8494d591d8204a63ee7596bfdf8a7d06ad1b1507d6b9c1664a95f299a", size = 139149, upload-time = "2025-07-21T20:11:15.911Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/89/a3/00260f8df72b51afa1f182dd609533c77fa2407918c4c2813d87b4a56725/minio-7.2.16-py3-none-any.whl", hash = "sha256:9288ab988ca57c181eb59a4c96187b293131418e28c164392186c2b89026b223", size = 95750, upload-time = "2025-07-21T20:11:14.139Z" },
+]
+
+[[package]]
+name = "minio-manager-service-client"
+version = "0.0.1"
+source = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.4#3e81ac00b0d77c9834e3726d84a5c0020b272fa9" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
 
 [[package]]
