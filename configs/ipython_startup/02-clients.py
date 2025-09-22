@@ -7,7 +7,7 @@ All imports are available from 00-notebookutils.py.
 
 # Initialize MinIO client
 try:
-    minio = get_minio_client()
+    minio = get_minio_client() # type: ignore
     print("✅ MinIO client initialized")
 except Exception as e:
     print(f"❌ Failed to initialize MinIO client: {e}")
@@ -15,7 +15,7 @@ except Exception as e:
 
 # Initialize governance client (required for most operations)
 try:
-    governance = get_governance_client()
+    governance = get_governance_client() # type: ignore
     print("✅ Governance client initialized")
 except Exception as e:
     print(f"❌ Failed to initialize governance client: {e}")
@@ -23,7 +23,7 @@ except Exception as e:
 
 # Initialize Hive Metastore client
 try:
-    hms_client = get_hive_metastore_client()
+    hms_client = get_hive_metastore_client() # type: ignore
     print("✅ Hive Metastore client initialized")
 except Exception as e:
     print(f"❌ Failed to initialize Hive Metastore client: {e}")
@@ -31,7 +31,7 @@ except Exception as e:
 
 # Initialize Task Service client (optional - may not be available in local dev)
 try:
-    task_service = get_task_service_client()
+    task_service = get_task_service_client() # type: ignore
     print("✅ Task Service client initialized")
 except Exception as e:
     print(f"⚠️  Task Service client not available: {e}")
