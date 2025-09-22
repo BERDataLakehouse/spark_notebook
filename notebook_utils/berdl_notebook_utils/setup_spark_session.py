@@ -257,6 +257,7 @@ def get_spark_session(
     """
 
     if settings is None:
+        get_settings.cache_clear()
         settings = get_settings()
 
     # Generate app name if not provided
