@@ -24,8 +24,8 @@ class BERDLSettings(BaseSettings):
 
     # MinIO configuration
     MINIO_ENDPOINT: str = Field(..., description="MinIO endpoint (hostname:port)")
-    MINIO_ACCESS_KEY: str
-    MINIO_SECRET_KEY: str
+    MINIO_ACCESS_KEY: str = Field(default="access_key_placeholder", description="MinIO access key")
+    MINIO_SECRET_KEY: str = Field(default="secret_key_placeholder", description="MinIO secret key")
     MINIO_SECURE: bool = Field(default=False, description="Use secure connection (True/False)")
 
     # Spark configuration

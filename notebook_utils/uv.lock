@@ -97,13 +97,15 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "attrs" },
-    { name = "cdm-minio-service-client" },
     { name = "cdm-spark-manager-client" },
     { name = "cdm-task-service-client" },
+    { name = "cdm-tree-browser" },
+    { name = "hmsclient" },
     { name = "httpx" },
     { name = "ipywidgets" },
     { name = "itables" },
     { name = "minio" },
+    { name = "minio-manager-service-client" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -118,13 +120,15 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "attrs", specifier = "==25.3.0" },
-    { name = "cdm-minio-service-client", git = "https://github.com/kbase/cdm-minio-service-client.git?rev=0.0.1" },
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0" },
+    { name = "cdm-tree-browser", url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" },
+    { name = "hmsclient", specifier = "==0.1.1" },
     { name = "httpx", specifier = "==0.27.0" },
     { name = "ipywidgets", specifier = "==8.1.7" },
     { name = "itables", specifier = "==2.4.5" },
     { name = "minio", specifier = "==7.2.16" },
+    { name = "minio-manager-service-client", git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.4" },
     { name = "pandas", specifier = "==2.3.2" },
     { name = "pydantic", specifier = "==2.10.0" },
     { name = "pydantic-settings", specifier = "==2.10.1" },
@@ -132,15 +136,6 @@ dev = [
     { name = "pytest", specifier = "==8.4.1" },
     { name = "ruff", specifier = "==0.13.0" },
     { name = "sidecar", specifier = "==0.7.0" },
-]
-
-[[package]]
-name = "cdm-minio-service-client"
-version = "0.0.1"
-source = { git = "https://github.com/kbase/cdm-minio-service-client.git?rev=0.0.1#1db9d2805b0a67cef603c9ba3a6284714dde6ee5" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
 ]
 
 [[package]]
@@ -158,6 +153,14 @@ version = "0.1.0"
 source = { git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0#2e99c61fb1300cf6014f91c17fe1d5ba60560605" }
 dependencies = [
     { name = "requests" },
+]
+
+[[package]]
+name = "cdm-tree-browser"
+version = "0.1.0"
+source = { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl", hash = "sha256:eb716c82148020ec93153bb4098ead13386260c3a9cada9936bec83ec4ab6205" },
 ]
 
 [[package]]
@@ -246,6 +249,18 @@ wheels = [
 ]
 
 [[package]]
+name = "click"
+version = "8.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/46/61/de6cd827efad202d7057d93e0fed9294b96952e188f7384832791c7b2254/click-8.3.0.tar.gz", hash = "sha256:e7b8232224eba16f4ebe410c25ced9f7875cb5f3263ffc93cc3e8da705e229c4", size = 276943, upload-time = "2025-09-18T17:32:23.696Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/d3/9dcc0f5797f070ec8edf30fbadfb200e71d9db6b84d211e3b2085a7589a0/click-8.3.0-py3-none-any.whl", hash = "sha256:9b9f285302c6e3064f4330c05f05b81945b2a39544279343e6e7c5f27a9baddc", size = 107295, upload-time = "2025-09-18T17:32:22.42Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -288,6 +303,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/01/ee/02a2c011bdab74c6fb3c75474d40b3052059d95df7e73351460c8588d963/h11-0.16.0.tar.gz", hash = "sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1", size = 101250, upload-time = "2025-04-24T03:35:25.427Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", size = 37515, upload-time = "2025-04-24T03:35:24.344Z" },
+]
+
+[[package]]
+name = "hmsclient"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "thrift" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a4/b5/37ad13cc386f22ea68446aa636497082db38cff42801f9c3aefa02310eaa/hmsclient-0.1.1.tar.gz", hash = "sha256:908bdf1e082865d2b8a87a25290f8bd16b3bf4e71c028762231a9cfa49814286", size = 84432, upload-time = "2018-04-24T20:24:51.517Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/a9/c8607f2e1e4f9312767723a3a938f09cb9bd98644359569af6eddce3e8ad/hmsclient-0.1.1-py3-none-any.whl", hash = "sha256:6163c46ecbd7b97e10099039186155fe2712ade1630da7c90075e3ccac91d909", size = 90443, upload-time = "2018-04-24T20:24:49.75Z" },
 ]
 
 [[package]]
@@ -447,6 +475,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f4/a0/33ea2e18d5169817950edc13eba58cd781cedefe9f6696cae26aa2d75882/minio-7.2.16.tar.gz", hash = "sha256:81e365c8494d591d8204a63ee7596bfdf8a7d06ad1b1507d6b9c1664a95f299a", size = 139149, upload-time = "2025-07-21T20:11:15.911Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/89/a3/00260f8df72b51afa1f182dd609533c77fa2407918c4c2813d87b4a56725/minio-7.2.16-py3-none-any.whl", hash = "sha256:9288ab988ca57c181eb59a4c96187b293131418e28c164392186c2b89026b223", size = 95750, upload-time = "2025-07-21T20:11:14.139Z" },
+]
+
+[[package]]
+name = "minio-manager-service-client"
+version = "0.0.1"
+source = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.4#3e81ac00b0d77c9834e3726d84a5c0020b272fa9" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
 
 [[package]]
@@ -846,6 +883,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521, upload-time = "2023-09-30T13:58:03.53Z" },
 ]
+
+[[package]]
+name = "thrift"
+version = "0.22.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b2/c2/db648cc10dd7d15560f2eafd92a27cd280811924696e0b4a87175fb28c94/thrift-0.22.0.tar.gz", hash = "sha256:42e8276afbd5f54fe1d364858b6877bc5e5a4a5ed69f6a005b94ca4918fe1466", size = 62303, upload-time = "2025-05-23T20:49:33.309Z" }
 
 [[package]]
 name = "traitlets"
