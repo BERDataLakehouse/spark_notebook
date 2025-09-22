@@ -2,11 +2,12 @@
 Utility functions for BERDL MinIO Data Governance integration
 """
 
+import fcntl
+import json
 import logging
 import os
+from pathlib import Path
 
-from berdl_notebook_utils import get_settings
-from berdl_notebook_utils.clients import get_governance_client
 from governance_client.api.credentials import get_credentials_credentials_get
 from governance_client.api.health import health_check_health_get
 from governance_client.api.sharing import (
@@ -21,10 +22,12 @@ from governance_client.api.workspaces import (
     get_my_policies_workspaces_me_policies_get,
     get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get,
     get_my_workspace_workspaces_me_get,
+    get_namespace_prefix_workspaces_me_namespace_prefix_get,
 )
 from governance_client.models import (
     CredentialsResponse,
     HealthResponse,
+    NamespacePrefixResponse,
     PathAccessResponse,
     PathRequest,
     PublicAccessResponse,
@@ -35,6 +38,10 @@ from governance_client.models import (
     UserPoliciesResponse,
     UserSqlWarehousePrefixResponse,
 )
+from governance_client.types import UNSET
+
+from berdl_notebook_utils import get_settings
+from berdl_notebook_utils.clients import get_governance_client
 
 # =============================================================================
 # CONSTANTS
@@ -44,10 +51,39 @@ from governance_client.models import (
 SQL_WAREHOUSE_BUCKET = "cdm-lake"  # TODO: change to berdl-lake
 SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 
+# Credential caching configuration
+CREDENTIALS_CACHE_FILE = ".berdl_minio_credentials"
+
 
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
+
+def _get_credentials_cache_path() -> Path:
+    """Get the path to the credentials cache file in the user's home directory."""
+    return Path.home() / CREDENTIALS_CACHE_FILE
+
+
+def _read_cached_credentials(cache_path: Path) -> Optional[CredentialsResponse]:
+    """Read credentials from cache file. Returns None if file doesn't exist or is corrupted."""
+    try:
+        if not cache_path.exists():
+            return None
+        with open(cache_path, "r") as f:
+            data = json.load(f)
+        return CredentialsResponse.from_dict(data)
+    except (json.JSONDecodeError, TypeError, KeyError, OSError):
+        return None
+
+
+def _write_credentials_cache(cache_path: Path, credentials: CredentialsResponse) -> None:
+    """Write credentials to cache file."""
+    try:
+        with open(cache_path, "w") as f:
+            json.dump(credentials.to_dict(), f)
+    except (OSError, TypeError):
+        pass
 
 
 def _build_table_path(username: str, namespace: str, table_name: str) -> str:
@@ -84,6 +120,9 @@ def get_minio_credentials() -> CredentialsResponse:
     """
     Get MinIO credentials for the current user and set them as environment variables.
 
+    Uses file locking to prevent race conditions when multiple processes/notebooks
+    try to access credentials simultaneously.
+
     Sets the following environment variables:
     - MINIO_ACCESS_KEY: User's MinIO access key
     - MINIO_SECRET_KEY: User's MinIO secret key
@@ -91,16 +130,41 @@ def get_minio_credentials() -> CredentialsResponse:
     Returns:
         CredentialsResponse with username, access_key, and secret_key
     """
-    client = get_governance_client()
-    credentials = get_credentials_credentials_get.sync(client=client)
+    cache_path = _get_credentials_cache_path()
+    lock_path = cache_path.with_suffix(".lock")
+
+    # Use file locking to prevent concurrent access
+    with open(lock_path, "w") as lock_file:
+        try:
+            # Acquire exclusive lock (blocks until available)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            # Try to load from cache first (double-check after acquiring lock)
+            cached_credentials = _read_cached_credentials(cache_path)
+            if cached_credentials:
+                credentials = cached_credentials
+            else:
+                # No cache or cache corrupted, fetch fresh credentials
+                client = get_governance_client()
+                api_response = get_credentials_credentials_get.sync(client=client)
+                if isinstance(api_response, CredentialsResponse):
+                    credentials = api_response
+                    _write_credentials_cache(cache_path, credentials)
+                else:
+                    raise RuntimeError("Failed to fetch credentials from API")
+        finally:
+            # Lock is automatically released when file is closed
+            pass
+
+    # Clean up lock file if it exists
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
     # Set MinIO credentials as environment variables
-    if os.environ.get("USE_DATA_GOVERNANCE_CREDENTIALS", "false") == "true":
-        os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
-        os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
-    else:
-        credentials.access_key = str(os.environ.get("MINIO_ACCESS_KEY"))
-        credentials.secret_key = str(os.environ.get("MINIO_SECRET_KEY"))
+    os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
+    os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
 
     return credentials
 
@@ -129,6 +193,34 @@ def get_group_sql_warehouse(group_name: str):
     client = get_governance_client()
     return get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get.sync(
         client=client, group_name=group_name
+    )
+
+
+def get_namespace_prefix(tenant: Optional[str] = None) -> NamespacePrefixResponse:
+    """
+    Get governance namespace prefix for the current user or a specific tenant.
+
+    Args:
+        tenant: Optional tenant (group) name. If provided, returns tenant namespace prefix
+               (requires group membership). If None, returns user namespace prefix.
+
+    Returns:
+        NamespacePrefixResponse with username, user_namespace_prefix, and optionally
+        tenant and tenant_namespace_prefix if tenant is specified
+
+    Example:
+        # Get user namespace prefix
+        response = get_namespace_prefix()
+        user_prefix = response.user_namespace_prefix  # e.g., "u_tgu2__"
+
+        # Get tenant namespace prefix
+        response = get_namespace_prefix(tenant="research_team")
+        tenant_prefix = response.tenant_namespace_prefix  # e.g., "t_research_team__"
+    """
+
+    client = get_governance_client()
+    return get_namespace_prefix_workspaces_me_namespace_prefix_get.sync(
+        client=client, tenant=tenant if tenant is not None else UNSET
     )
 
 

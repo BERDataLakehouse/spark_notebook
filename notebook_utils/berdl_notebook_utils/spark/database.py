@@ -6,6 +6,7 @@ including tenant-aware namespace management for BERDL SQL warehouses.
 """
 
 from pyspark.sql import SparkSession
+from ..minio_governance.operations import get_namespace_prefix
 
 
 def create_namespace_if_not_exists(
@@ -16,18 +17,16 @@ def create_namespace_if_not_exists(
     """
     Create a namespace in the Spark catalog if it does not exist.
 
-    If append_target is True, automatically prepends the target name (user/tenant)
-    from the Spark warehouse configuration to create {target_name}_{namespace}.
+    If append_target is True, automatically prepends the governance-provided namespace prefix
+    based on the warehouse directory type (user vs tenant) to create the properly formatted namespace.
 
     :param spark: The Spark session.
     :param namespace: The name of the namespace.
-    :param append_target: If True, prepends target name from warehouse directory
-                         (e.g., "john_default" or "research_team_experiments").
+    :param append_target: If True, prepends governance namespace prefix based on warehouse type.
                          If False, uses namespace as-is.
     :return: The name of the namespace.
     """
     try:
-        # Extract user/tenant name from warehouse directory if append_target is enabled
         if append_target:
             warehouse_dir = spark.conf.get("spark.sql.warehouse.dir", "")
 
@@ -36,9 +35,16 @@ def create_namespace_if_not_exists(
                 # e.g. s3a://cdm-lake/users-sql-warehouse/tgu2
                 # e.g. s3a://cdm-lake/tenant-sql-warehouse/global-user-group
                 target_name = warehouse_dir.rstrip("/").split("/")[-1]
-                # Sanitize target_name to only contain valid characters (alphanumeric and underscore)
-                sanitized_target_name = "".join(c if c.isalnum() or c == "_" else "_" for c in target_name)
-                namespace = f"{sanitized_target_name}_{namespace}"
+
+                # Get namespace prefix from governance client based on warehouse type
+                if "users-sql-warehouse" in warehouse_dir:
+                    # User warehouse - get user namespace prefix
+                    prefix_response = get_namespace_prefix()
+                    namespace = prefix_response.user_namespace_prefix + namespace
+                else:
+                    # Tenant warehouse - get tenant namespace prefix
+                    prefix_response = get_namespace_prefix(tenant=target_name)
+                    namespace = prefix_response.tenant_namespace_prefix + namespace
             else:
                 # Keep original namespace if warehouse path doesn't match expected patterns
                 print(
