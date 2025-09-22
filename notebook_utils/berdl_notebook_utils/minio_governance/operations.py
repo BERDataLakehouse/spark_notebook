@@ -65,7 +65,7 @@ def _get_credentials_cache_path() -> Path:
     return Path.home() / CREDENTIALS_CACHE_FILE
 
 
-def _read_cached_credentials(cache_path: Path) -> Optional[CredentialsResponse]:
+def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
     """Read credentials from cache file. Returns None if file doesn't exist or is corrupted."""
     try:
         if not cache_path.exists():
@@ -196,7 +196,7 @@ def get_group_sql_warehouse(group_name: str):
     )
 
 
-def get_namespace_prefix(tenant: Optional[str] = None) -> NamespacePrefixResponse:
+def get_namespace_prefix(tenant: str | None = None) -> NamespacePrefixResponse:
     """
     Get governance namespace prefix for the current user or a specific tenant.
 
