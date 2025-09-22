@@ -7,7 +7,7 @@ All imports are available from 00-notebookutils.py.
 
 # Initialize MinIO client
 try:
-    minio = get_minio_client() # type: ignore
+    minio = get_minio_client() # noqa: F821
     print("✅ MinIO client initialized")
 except Exception as e:
     print(f"❌ Failed to initialize MinIO client: {e}")
@@ -15,7 +15,7 @@ except Exception as e:
 
 # Initialize governance client (required for most operations)
 try:
-    governance = get_governance_client() # type: ignore
+    governance = get_governance_client() # noqa: F821
     print("✅ Governance client initialized")
 except Exception as e:
     print(f"❌ Failed to initialize governance client: {e}")
@@ -23,7 +23,7 @@ except Exception as e:
 
 # Initialize Hive Metastore client
 try:
-    hms_client = get_hive_metastore_client() # type: ignore
+    hms_client = get_hive_metastore_client() # noqa: F821
     print("✅ Hive Metastore client initialized")
 except Exception as e:
     print(f"❌ Failed to initialize Hive Metastore client: {e}")
@@ -31,7 +31,7 @@ except Exception as e:
 
 # Initialize Task Service client (optional - may not be available in local dev)
 try:
-    task_service = get_task_service_client() # type: ignore
+    task_service = get_task_service_client() # noqa: F821
     print("✅ Task Service client initialized")
 except Exception as e:
     print(f"⚠️  Task Service client not available: {e}")
@@ -39,7 +39,7 @@ except Exception as e:
 
 # Initialize Spark Cluster Manager client (optional - may not be available in local dev)
 try:
-    spark_cluster = get_spark_cluster_client()
+    spark_cluster = get_spark_cluster_client() # noqa: F821
     print("✅ Spark Cluster Manager client initialized")
 except Exception as e:
     print(f"⚠️  Spark Cluster Manager client not available: {e}")
