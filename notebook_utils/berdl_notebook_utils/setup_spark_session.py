@@ -175,7 +175,7 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
     config = {
-        "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT,
+        "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
         "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
         "spark.hadoop.fs.s3a.connection.ssl.enabled": "false",

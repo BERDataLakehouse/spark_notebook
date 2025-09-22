@@ -35,7 +35,7 @@ def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
         settings = get_settings()
 
     return Minio(
-        endpoint=str(settings.MINIO_ENDPOINT),
+        endpoint=str(settings.MINIO_ENDPOINT_URL),
         access_key=settings.MINIO_ACCESS_KEY,
         secret_key=settings.MINIO_SECRET_KEY,
         secure=settings.MINIO_SECURE,

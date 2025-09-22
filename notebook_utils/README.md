@@ -103,7 +103,7 @@ The package uses Pydantic Settings for configuration management. Required enviro
 - `USER`: KBase username
 
 ### MinIO Configuration
-- `MINIO_ENDPOINT`: MinIO endpoint (hostname:port)
+- `MINIO_ENDPOINT_URL`: MinIO endpoint (hostname:port)
 - `MINIO_ACCESS_KEY`: MinIO access key
 - `MINIO_SECRET_KEY`: MinIO secret key
 - `MINIO_SECURE`: Use secure connection (default: False)
@@ -233,6 +233,6 @@ print(f"Cluster API Status: {cluster_health.status}")
 # Inspect current settings
 from berdl_notebook_utils import get_settings
 settings = get_settings()
-print(f"MinIO Endpoint: {settings.MINIO_ENDPOINT}")
+print(f"MinIO Endpoint: {settings.MINIO_ENDPOINT_URL}")
 print(f"Governance API: {settings.GOVERNANCE_API_URL}")
 ```
