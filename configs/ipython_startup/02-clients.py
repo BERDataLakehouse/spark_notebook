@@ -5,44 +5,49 @@ This runs after credentials are set up in 01-minio-credentials.py.
 All imports are available from 00-notebookutils.py.
 """
 
+# Setup logging
+import logging
+
+logger = logging.getLogger("berdl.startup")
+
 # Initialize MinIO client
 try:
     minio = get_minio_client()  # noqa: F821
-    print("✅ MinIO client initialized")
+    logger.info("✅ MinIO client initialized")
 except Exception as e:
-    print(f"❌ Failed to initialize MinIO client: {e}")
+    logger.error(f"❌ Failed to initialize MinIO client: {e}")
     minio = None
 
 # Initialize governance client (required for most operations)
 try:
     governance = get_governance_client()  # noqa: F821
-    print("✅ Governance client initialized")
+    logger.info("✅ Governance client initialized")
 except Exception as e:
-    print(f"❌ Failed to initialize governance client: {e}")
+    logger.error(f"❌ Failed to initialize governance client: {e}")
     governance = None
 
 # Initialize Hive Metastore client
 try:
     hms_client = get_hive_metastore_client()  # noqa: F821
-    print("✅ Hive Metastore client initialized")
+    logger.info("✅ Hive Metastore client initialized")
 except Exception as e:
-    print(f"❌ Failed to initialize Hive Metastore client: {e}")
+    logger.error(f"❌ Failed to initialize Hive Metastore client: {e}")
     hms_client = None
 
 # Initialize Task Service client (optional - may not be available in local dev)
 try:
     task_service = get_task_service_client()  # noqa: F821
-    print("✅ Task Service client initialized")
+    logger.info("✅ Task Service client initialized")
 except Exception as e:
-    print(f"⚠️  Task Service client not available: {e}")
+    logger.warning(f"⚠️  Task Service client not available: {e}")
     task_service = None
 
 # Initialize Spark Cluster Manager client (optional - may not be available in local dev)
 try:
     spark_cluster = get_spark_cluster_client()  # noqa: F821
-    print("✅ Spark Cluster Manager client initialized")
+    logger.info("✅ Spark Cluster Manager client initialized")
 except Exception as e:
-    print(f"⚠️  Spark Cluster Manager client not available: {e}")
+    logger.warning(f"⚠️  Spark Cluster Manager client not available: {e}")
     spark_cluster = None
 
-print("🔧 All available clients initialized and ready for use!")
+logger.info("🔧 All available clients initialized and ready for use!")
