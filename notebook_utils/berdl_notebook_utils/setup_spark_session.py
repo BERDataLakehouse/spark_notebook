@@ -14,8 +14,8 @@ from pyspark.sql import SparkSession
 
 from berdl_notebook_utils import BERDLSettings, get_settings
 from berdl_notebook_utils.minio_governance import (
-    get_my_sql_warehouse,
     get_group_sql_warehouse,
+    get_my_sql_warehouse,
 )
 
 # =============================================================================
@@ -182,7 +182,7 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_dir,
-        "spark.eventLog.enabled": "true",
+        "spark.eventLog.enabled": "false",  # TODO: Enable event logging
         "spark.eventLog.dir": event_log_dir,
         "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
         "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
