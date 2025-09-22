@@ -5,8 +5,6 @@ This module contains utility functions to interact with the Spark catalog,
 including tenant-aware namespace management for BERDL SQL warehouses.
 """
 
-from typing import Optional
-
 from pyspark.sql import SparkSession
 from ..minio_governance.operations import get_namespace_prefix
 
@@ -116,7 +114,7 @@ def remove_table(
     print(f"Table {spark_catalog} removed.")
 
 
-def list_tables(spark: SparkSession, namespace: Optional[str] = None) -> list:
+def list_tables(spark: SparkSession, namespace: str | None = None) -> list:
     """
     List all tables in a namespace or all namespaces.
 
