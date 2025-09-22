@@ -7,7 +7,7 @@ is already available in the global namespace.
 
 try:
     # Set MinIO credentials to environment - also creates user if they don't exist
-    credentials = get_minio_credentials() # noqa: F821
+    credentials = get_minio_credentials()  # noqa: F821
     print(f"✅ MinIO credentials set for user: {credentials.username}")
 
 except Exception as e:
