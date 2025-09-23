@@ -178,7 +178,7 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
         "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
-        "spark.hadoop.fs.s3a.connection.ssl.enabled": "true",
+        "spark.hadoop.fs.s3a.connection.ssl.enabled": settings.MINIO_SECURE,
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_dir,
