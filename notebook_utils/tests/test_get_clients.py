@@ -12,7 +12,7 @@ from berdl_notebook_utils import get_task_service_client
 env_vars = {
     "KBASE_AUTH_TOKEN": "test-token-123",
     "CDM_TASK_SERVICE_URL": "https://ci.kbase.us/services/ctsfake",
-    "MINIO_ENDPOINT": "http://localhost:9000",
+    "MINIO_ENDPOINT_URL": "http://localhost:9000",
     "MINIO_ACCESS_KEY": "minioadmin",
     "MINIO_SECRET_KEY": "minioadmin",
     "MINIO_SECURE_FLAG": "false",

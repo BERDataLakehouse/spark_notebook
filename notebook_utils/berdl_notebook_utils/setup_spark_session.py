@@ -175,14 +175,14 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
     config = {
-        "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT,
+        "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
         "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
-        "spark.hadoop.fs.s3a.connection.ssl.enabled": "false",
+        "spark.hadoop.fs.s3a.connection.ssl.enabled": settings.MINIO_SECURE,
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_dir,
-        "spark.eventLog.enabled": "false",  # TODO: Enable event logging
+        "spark.eventLog.enabled": "true",
         "spark.eventLog.dir": event_log_dir,
         "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
         "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
@@ -257,6 +257,7 @@ def get_spark_session(
     """
 
     if settings is None:
+        get_settings.cache_clear()
         settings = get_settings()
 
     # Generate app name if not provided
