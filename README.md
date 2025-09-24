@@ -19,7 +19,6 @@ MINIO_SECURE=true
 # Spark Configuration
 BERDL_POD_IP=10.0.0.1
 SPARK_MASTER_URL=spark://spark-master:7077
-SPARK_JOB_LOG_DIR_CATEGORY=your_kbase_username
 
 # Hive Configuration
 BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
