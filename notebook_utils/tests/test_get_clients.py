@@ -18,7 +18,6 @@ env_vars = {
     "MINIO_SECURE_FLAG": "false",
     "BERDL_POD_IP": "192.168.1.100",
     "SPARK_MASTER_URL": "spark://localhost:7077",
-    "SPARK_JOB_LOG_DIR_CATEGORY": "test-user",
     "BERDL_HIVE_METASTORE_URI": "thrift://localhost:9083",
     "SPARK_CLUSTER_MANAGER_API_URL": "http://localhost:8000",
     "GOVERNANCE_API_URL": "http://localhost:8000",
