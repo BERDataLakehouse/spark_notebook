@@ -254,11 +254,6 @@ def get_my_groups() -> UserGroupsResponse:
 
     Returns:
         UserGroupsResponse with username, groups list, and group_count
-
-    Example:
-        response = get_my_groups()
-        for group in response.groups:
-            print(f"Member of: {group}")
     """
     client = get_governance_client()
     return get_my_groups_workspaces_me_groups_get.sync(client=client)
