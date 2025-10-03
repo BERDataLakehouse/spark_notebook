@@ -19,6 +19,7 @@ from governance_client.api.sharing import (
 )
 from governance_client.api.workspaces import (
     get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get,
+    get_my_groups_workspaces_me_groups_get,
     get_my_policies_workspaces_me_policies_get,
     get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get,
     get_my_workspace_workspaces_me_get,
@@ -35,6 +36,7 @@ from governance_client.models import (
     ShareResponse,
     UnshareRequest,
     UnshareResponse,
+    UserGroupsResponse,
     UserPoliciesResponse,
     UserSqlWarehousePrefixResponse,
 )
@@ -244,6 +246,22 @@ def get_my_policies() -> UserPoliciesResponse:
     """
     client = get_governance_client()
     return get_my_policies_workspaces_me_policies_get.sync(client=client)
+
+
+def get_my_groups() -> UserGroupsResponse:
+    """
+    Get list of groups the current user belongs to.
+
+    Returns:
+        UserGroupsResponse with username, groups list, and group_count
+
+    Example:
+        response = get_my_groups()
+        for group in response.groups:
+            print(f"Member of: {group}")
+    """
+    client = get_governance_client()
+    return get_my_groups_workspaces_me_groups_get.sync(client=client)
 
 
 def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse:
