@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Union
 from .. import hive_metastore
 from pyspark.sql import SparkSession
 from ..setup_spark_session import get_spark_session
+from ..minio_governance import get_my_groups, get_namespace_prefix
 
 
 def _execute_with_spark(func: Any, spark: Optional[SparkSession] = None, *args, **kwargs) -> Any:
@@ -30,7 +31,10 @@ def _format_output(data: Any, return_json: bool = True) -> Union[str, Any]:
 
 
 def get_databases(
-    spark: Optional[SparkSession] = None, use_hms: bool = True, return_json: bool = True
+    spark: Optional[SparkSession] = None,
+    use_hms: bool = True,
+    return_json: bool = True,
+    filter_by_namespace: bool = True,
 ) -> Union[str, List[str]]:
     """
     Get the list of databases in the Hive metastore.
@@ -39,6 +43,7 @@ def get_databases(
         spark: Optional SparkSession to use (if use_hms is False)
         use_hms: Whether to use HMS direct client (faster) or Spark
         return_json: Whether to return JSON string or raw data
+        filter_by_namespace: Whether to filter databases by user/tenant namespace prefixes
 
     Returns:
         List of database names, either as JSON string or raw list
@@ -51,6 +56,24 @@ def get_databases(
         databases = hive_metastore.get_databases()
     else:
         databases = _execute_with_spark(_get_dbs, spark)
+
+    # Apply namespace filtering if requested
+    if filter_by_namespace:
+        try:
+            # Get user's namespace prefix
+            user_prefix_response = get_namespace_prefix()
+            prefixes = [user_prefix_response.user_namespace_prefix]
+
+            # Get all group namespace prefixes
+            groups_response = get_my_groups()
+            for group_name in groups_response.groups:
+                tenant_prefix_response = get_namespace_prefix(tenant=group_name)
+                prefixes.append(tenant_prefix_response.tenant_namespace_prefix)
+
+            # Filter databases by any of the user's prefixes
+            databases = [db for db in databases if db.startswith(tuple(prefixes))]
+        except Exception as e:
+            raise Exception(f"Could not filter databases by namespace: {e}") from e
 
     return _format_output(databases, return_json)
 
@@ -110,13 +133,19 @@ def get_table_schema(
     return _format_output(columns, return_json)
 
 
-def get_db_structure(with_schema: bool = False, use_hms: bool = True, return_json: bool = True) -> Union[str, Dict]:
+def get_db_structure(
+    with_schema: bool = False,
+    use_hms: bool = True,
+    return_json: bool = True,
+    filter_by_namespace: bool = True,
+) -> Union[str, Dict]:
     """Get the structure of all databases in the Hive metastore.
 
     Args:
         with_schema: Whether to include table schemas
         use_hms: Whether to use HMS direct client for metadata retrieval
         return_json: Whether to return the result as a JSON string
+        filter_by_namespace: Whether to filter databases by user/tenant namespace prefixes
 
     Returns:
         Database structure as either JSON string or dictionary:
@@ -131,7 +160,9 @@ def get_db_structure(with_schema: bool = False, use_hms: bool = True, return_jso
 
     def _get_structure(session: SparkSession) -> Dict[str, Union[List[str], Dict[str, List[str]]]]:
         db_structure = {}
-        databases = get_databases(spark=session, use_hms=False, return_json=False)
+        databases = get_databases(
+            spark=session, use_hms=False, return_json=False, filter_by_namespace=filter_by_namespace
+        )
 
         for db in databases:
             tables = get_tables(database=db, spark=session, use_hms=False, return_json=False)
@@ -147,7 +178,7 @@ def get_db_structure(with_schema: bool = False, use_hms: bool = True, return_jso
 
     if use_hms:
         db_structure = {}
-        databases = hive_metastore.get_databases()
+        databases = get_databases(use_hms=True, return_json=False, filter_by_namespace=filter_by_namespace)
 
         for db in databases:
             tables = hive_metastore.get_tables(db)
