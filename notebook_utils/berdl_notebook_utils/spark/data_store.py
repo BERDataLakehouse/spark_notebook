@@ -71,7 +71,7 @@ def get_databases(
                 prefixes.append(tenant_prefix_response.tenant_namespace_prefix)
 
             # Filter databases by any of the user's prefixes
-            databases = [db for db in databases if any(db.startswith(prefix) for prefix in prefixes)]
+            databases = [db for db in databases if db.startswith(tuple(prefixes))]
         except Exception as e:
             raise Exception(f"Could not filter databases by namespace: {e}") from e
 
