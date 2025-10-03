@@ -73,7 +73,7 @@ def get_databases(
             # Filter databases by any of the user's prefixes
             databases = [db for db in databases if any(db.startswith(prefix) for prefix in prefixes)]
         except Exception as e:
-            raise Exception(f"Could not filter databases by namespace: {e}")
+            raise Exception(f"Could not filter databases by namespace: {e}") from e
 
     return _format_output(databases, return_json)
 
