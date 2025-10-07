@@ -34,7 +34,7 @@ class SparkConnectServerConfig:
         self.username = settings.USER
 
         # Spark directories
-        self.spark_home = os.environ.get("SPARK_HOME", "/usr/local/spark")
+        self.spark_home = settings.SPARK_HOME
         self.user_spark_dir = Path.home() / ".spark"
         self.user_conf_dir = self.user_spark_dir / "conf"
         self.spark_event_log_dir = self.user_spark_dir / "spark-events"
@@ -42,11 +42,13 @@ class SparkConnectServerConfig:
 
         # Configuration files
         self.spark_defaults_path = self.user_conf_dir / "spark-defaults.conf"
-        self.template_path = os.environ.get("SPARK_CONNECT_DEFAULTS_TEMPLATE", "/configs/spark-defaults.conf.template")
+        self.template_path = settings.SPARK_CONNECT_DEFAULTS_TEMPLATE
 
-        # Server configuration
-        self.spark_connect_port = int(os.environ.get("SPARK_CONNECT_PORT", "15002"))
-        self.spark_master_url = os.environ.get("SPARK_MASTER_URL", "spark://spark-master:7077")
+        # Server configuration - extract from BERDLSettings
+        # Parse port from SPARK_CONNECT_URL (e.g., "sc://localhost:15002" -> 15002)
+        connect_url = str(settings.SPARK_CONNECT_URL)
+        self.spark_connect_port = int(connect_url.split(":")[-1]) if ":" in connect_url else 15002
+        self.spark_master_url = str(settings.SPARK_MASTER_URL)
 
         # Process management
         self.pid_file_path = Path(f"/tmp/spark-connect-server-{self.username}.pid")
@@ -98,6 +100,32 @@ class SparkConnectServerManager:
         """
         self.config = config or SparkConnectServerConfig()
 
+    def get_server_info(self) -> Optional[dict]:
+        """
+        Get information about the running Spark Connect server.
+
+        Returns:
+            Dictionary with server info (pid, port, url, log_file, master_url) or None if not running.
+        """
+        try:
+            with open(self.config.pid_file_path, "r") as f:
+                pid = int(f.read().strip())
+
+            # Verify process is still running
+            os.kill(pid, 0)
+
+            return {
+                "pid": pid,
+                "port": self.config.spark_connect_port,
+                "url": f"sc://localhost:{self.config.spark_connect_port}",
+                "log_file": str(self.config.log_file_path),
+                "master_url": self.config.spark_master_url,
+            }
+        except (OSError, ProcessLookupError, ValueError, FileNotFoundError):
+            # Process not running, invalid PID file, or PID file doesn't exist
+            self.config.pid_file_path.unlink(missing_ok=True)
+            return None
+
     def is_running(self) -> bool:
         """
         Check if Spark Connect server is already running.
@@ -105,40 +133,7 @@ class SparkConnectServerManager:
         Returns:
             True if server is running, False otherwise.
         """
-        if not self.config.pid_file_path.exists():
-            return False
-
-        try:
-            with open(self.config.pid_file_path, "r") as f:
-                pid = int(f.read().strip())
-            # Check if process exists (doesn't actually kill it)
-            os.kill(pid, 0)
-            return True
-        except (OSError, ProcessLookupError, ValueError):
-            # Process not running or invalid PID file
-            self.config.pid_file_path.unlink(missing_ok=True)
-            return False
-
-    def get_server_info(self) -> Optional[dict]:
-        """
-        Get information about the running Spark Connect server.
-
-        Returns:
-            Dictionary with server info (pid, port, url, log_file) or None if not running.
-        """
-        if not self.is_running():
-            return None
-
-        with open(self.config.pid_file_path, "r") as f:
-            pid = int(f.read().strip())
-
-        return {
-            "pid": pid,
-            "port": self.config.spark_connect_port,
-            "url": f"sc://localhost:{self.config.spark_connect_port}",
-            "log_file": str(self.config.log_file_path),
-            "master_url": self.config.spark_master_url,
-        }
+        return self.get_server_info() is not None
 
     def start(self, force_restart: bool = False) -> dict:
         """
