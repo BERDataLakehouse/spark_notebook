@@ -45,9 +45,9 @@ class SparkConnectServerConfig:
         self.template_path = settings.SPARK_CONNECT_DEFAULTS_TEMPLATE
 
         # Server configuration - extract from BERDLSettings
-        # Parse port from SPARK_CONNECT_URL (e.g., "sc://localhost:15002" -> 15002)
-        connect_url = str(settings.SPARK_CONNECT_URL)
-        self.spark_connect_port = int(connect_url.split(":")[-1]) if ":" in connect_url else 15002
+        # Use validated Pydantic AnyUrl object to get port robustly
+        connect_url = settings.SPARK_CONNECT_URL
+        self.spark_connect_port = connect_url.port if connect_url.port is not None else 15002
         self.spark_master_url = str(settings.SPARK_MASTER_URL)
 
         # Process management
