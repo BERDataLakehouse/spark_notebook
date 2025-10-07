@@ -29,9 +29,7 @@ class SparkConnectServerConfig:
             settings: BERDLSettings instance. If None, loads from environment.
         """
         if settings is None:
-            get_settings.cache_clear()
             settings = get_settings()
-
         self.settings = settings
         self.username = settings.USER
 
