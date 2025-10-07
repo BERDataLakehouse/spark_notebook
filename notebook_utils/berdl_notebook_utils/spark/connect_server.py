@@ -44,7 +44,7 @@ class SparkConnectServerConfig:
 
         # Configuration files
         self.spark_defaults_path = self.user_conf_dir / "spark-defaults.conf"
-        self.template_path = os.environ.get("SPARK_DEFAULTS_TEMPLATE", "/configs/spark-defaults.conf.template")
+        self.template_path = os.environ.get("SPARK_CONNECT_DEFAULTS_TEMPLATE", "/configs/spark-defaults.conf.template")
 
         # Server configuration
         self.spark_connect_port = int(os.environ.get("SPARK_CONNECT_PORT", "15002"))
