@@ -1,7 +1,54 @@
+# ==============================================================================
 # Spark Connect Server Configuration
-# These configurations are required for Delta Lake and Hive support
+# ==============================================================================
+#
+# IMPORTANT: Why These Configurations Must Be Set Server-Side
+#
+# Spark Connect introduced a decoupled client-server architecture in Spark 3.4+
+# where the client and Spark driver run in SEPARATE PROCESSES. This architectural
+# change has important implications for configuration management:
+#
+# 1. CLIENT-SERVER SEPARATION:
+#    - Client: Thin API that translates DataFrame operations into logical plans
+#    - Server: Spark driver that executes queries and manages cluster resources
+#    - Communication: gRPC protocol with Protocol Buffers encoding
+#
+# 2. CONFIGURATION CATEGORIES:
+#
+#    a) STATIC CONFIGURATIONS (Server-Side Only):
+#       - Must be set when the Spark Connect server starts
+#       - Cannot be modified by clients after server initialization
+#       - Affect core Spark behavior, JVM settings, and cluster setup
+#       - Examples: extensions, catalogs, warehouse dir, resource allocation
+#       - Attempting to set these from client causes CANNOT_MODIFY_CONFIG errors
+#
+#    b) RUNTIME CONFIGURATIONS (Client-Side Allowed):
+#       - Can be set via spark.conf.set() from client applications
+#       - Affect query execution behavior (e.g., shuffle partitions, AQE)
+#       - Session-specific and don't impact other connected clients
+#
+# 3. WHY IMMUTABLE ON CLIENT:
+#    - Security: Prevents clients from modifying global cluster settings
+#    - Stability: Ensures consistent behavior across all client sessions
+#    - Isolation: Multiple clients can't interfere with each other's resources
+#    - JVM Constraints: Some configs require JVM restart to take effect
+#
+# 4. CHECKING MUTABILITY:
+#    You can check if a config is mutable: spark.conf.isModifiable("config.name")
+#
+# References:
+# - https://spark.apache.org/docs/latest/spark-connect-overview.html
+# - https://spark.apache.org/docs/latest/configuration.html
+#
+# ==============================================================================
 
-# Delta Lake extensions and catalog
+# ------------------------------------------------------------------------------
+# Delta Lake Configuration (STATIC - Server-Side Only)
+# ------------------------------------------------------------------------------
+# These SQL extensions must be loaded when the Spark server starts.
+# They initialize Delta Lake support by registering custom SparkSessionExtensions
+# and catalog implementations that handle Delta table operations.
+
 spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
 spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 
