@@ -5,6 +5,7 @@ This package provides comprehensive Spark utilities organized into focused modul
 - database: Catalog and namespace management utilities
 - dataframe: DataFrame operations and display functions
 - data_store: Hive metastore and database information utilities
+- connect_server: Spark Connect server management
 
 All functions are imported at the package level for convenient access.
 """
@@ -43,6 +44,12 @@ from .data_store import (
     get_db_structure,
 )
 
+# Spark Connect server management
+from .connect_server import (
+    start_spark_connect_server,
+    get_spark_connect_status,
+)
+
 
 __all__ = [
     # Database operations
@@ -67,4 +74,7 @@ __all__ = [
     "get_tables",
     "get_table_schema",
     "get_db_structure",
+    # Spark Connect server management
+    "start_spark_connect_server",
+    "get_spark_connect_status",
 ]

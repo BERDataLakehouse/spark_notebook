@@ -30,7 +30,15 @@ class BERDLSettings(BaseSettings):
 
     # Spark configuration
     BERDL_POD_IP: str
+    SPARK_HOME: str = Field(default="/usr/local/spark", description="Spark installation directory")
     SPARK_MASTER_URL: AnyUrl  # Accepts spark://, http://, https://
+    SPARK_CONNECT_URL: AnyUrl = Field(
+        default=AnyUrl("sc://localhost:15002"), description="Spark Connect URL (sc://host:port)"
+    )
+    SPARK_CONNECT_DEFAULTS_TEMPLATE: str = Field(
+        default="/configs/spark-defaults.conf.template",
+        description="Path to Spark Connect server configuration template file",
+    )
 
     # Hive configuration
     BERDL_HIVE_METASTORE_URI: AnyUrl  # Accepts thrift://
