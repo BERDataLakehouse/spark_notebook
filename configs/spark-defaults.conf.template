@@ -1,0 +1,33 @@
+# Spark Connect Server Configuration
+# These configurations are required for Delta Lake and Hive support
+
+# Delta Lake extensions and catalog
+spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
+spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+
+# Delta Lake settings
+spark.databricks.delta.retentionDurationCheck.enabled=false
+
+# Event logging (will be set to user directory by startup script)
+spark.eventLog.enabled=true
+# spark.eventLog.dir will be set dynamically
+
+# Warehouse directory - DO NOT SET globally!
+# Each database should specify its own LOCATION when created via create_namespace_if_not_exists()
+# This allows user warehouses and tenant warehouses to coexist in the same Spark session
+# Tables created without a database will fail (which is the intended behavior)
+
+# Hive metastore
+spark.sql.catalogImplementation=hive
+spark.sql.hive.metastore.version=4.0.0
+spark.sql.hive.metastore.jars=path
+spark.sql.hive.metastore.jars.path=/usr/local/spark/jars/*
+# hive.metastore.uris will be set dynamically from BERDL_HIVE_METASTORE_URI
+
+# MinIO S3 configuration - will be set dynamically by startup script
+# spark.hadoop.fs.s3a.endpoint will be set from MINIO_ENDPOINT_URL
+# spark.hadoop.fs.s3a.access.key will be set from user's credentials
+# spark.hadoop.fs.s3a.secret.key will be set from user's credentials
+spark.hadoop.fs.s3a.path.style.access=true
+spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+spark.hadoop.fs.s3a.connection.ssl.enabled=false

@@ -20,7 +20,7 @@ dev = [
     "pandas==2.3.2",
     "pydantic==2.10.0",
     "pydantic-settings==2.10.1",
-    "pyspark==4.0.0",
+    "pyspark[connect]==4.0.0",
     "sidecar==0.7.0",
     "attrs==25.3.0",
     "hmsclient==0.1.1",

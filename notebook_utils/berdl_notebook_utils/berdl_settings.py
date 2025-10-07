@@ -31,6 +31,7 @@ class BERDLSettings(BaseSettings):
     # Spark configuration
     BERDL_POD_IP: str
     SPARK_MASTER_URL: AnyUrl  # Accepts spark://, http://, https://
+    SPARK_CONNECT_URL: AnyUrl = Field(..., description="Spark Connect URL (sc://host:port)")
 
     # Hive configuration
     BERDL_HIVE_METASTORE_URI: AnyUrl  # Accepts thrift://

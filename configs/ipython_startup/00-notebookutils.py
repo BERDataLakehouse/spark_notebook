@@ -30,6 +30,9 @@ from berdl_notebook_utils.spark import (  # noqa F401
     get_tables,
     get_table_schema,
     get_db_structure,
+    # Spark Connect server management
+    start_spark_connect_server,
+    get_spark_connect_status,
 )
 
 from berdl_notebook_utils import berdl_notebook_help  # noqa F401
