@@ -85,6 +85,12 @@ class SparkConnectServerConfig:
             f.write(f"spark.hadoop.fs.s3a.access.key={self.settings.MINIO_ACCESS_KEY}\n")
             f.write(f"spark.hadoop.fs.s3a.secret.key={self.settings.MINIO_SECRET_KEY}\n")
 
+            # Spark resource configuration from profile
+            f.write("\n# Spark cluster resource configuration\n")
+            f.write(f"spark.cores.max={self.settings.SPARK_WORKER_COUNT * self.settings.SPARK_WORKER_CORES}\n")
+            f.write(f"spark.executor.cores={self.settings.SPARK_WORKER_CORES}\n")
+            f.write(f"spark.executor.memory={self.settings.SPARK_WORKER_MEMORY}\n")
+
         logger.info(f"Spark configuration written to {self.spark_defaults_path}")
 
 
