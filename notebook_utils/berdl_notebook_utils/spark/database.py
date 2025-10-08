@@ -38,14 +38,8 @@ def create_namespace_if_not_exists(
         if append_target:
             # Always fetch warehouse directory from governance API for proper S3 location
             # Don't rely on spark.sql.warehouse.dir as it may be set to local path by Spark Connect server
-            if tenant_name:
-                # Get tenant SQL warehouse
-                warehouse_response = get_group_sql_warehouse(tenant_name)
-                warehouse_dir = warehouse_response.sql_warehouse_prefix
-            else:
-                # Get user SQL warehouse
-                warehouse_response = get_my_sql_warehouse()
-                warehouse_dir = warehouse_response.sql_warehouse_prefix
+            warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
+            warehouse_dir = warehouse_response.sql_warehouse_prefix
 
             if warehouse_dir and ("users-sql-warehouse" in warehouse_dir or "tenant-sql-warehouse" in warehouse_dir):
                 # Extract target name (username or tenant name) from path

@@ -15,7 +15,7 @@ BERDL uses **Spark Connect**, which provides a client-server architecture:
 - **Connection Protocol**: Uses gRPC for efficient communication with remote Spark clusters
 - **Spark Connect Server**: Runs locally in your notebook pod as a proxy
 - **Spark Connect URL**: `sc://localhost:15002`
-- **Driver and Executors**: Run on the remote Spark cluster (not in notebook pod)
+- **Driver and Executors**: Runs locally in your notebook pod
 
 ### Automatic Credential Management
 
