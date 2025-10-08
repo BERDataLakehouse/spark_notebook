@@ -7,7 +7,6 @@ that run alongside notebook kernels, enabling remote Spark session connectivity.
 
 import logging
 import os
-import re
 import shutil
 import subprocess
 import time
@@ -15,74 +14,9 @@ from pathlib import Path
 from typing import Optional
 
 from ..berdl_settings import BERDLSettings, get_settings
+from ..setup_spark_session import DRIVER_MEMORY_OVERHEAD, EXECUTOR_MEMORY_OVERHEAD, convert_memory_format
 
 logger = logging.getLogger(__name__)
-
-# Memory overhead percentages for Spark components
-EXECUTOR_MEMORY_OVERHEAD = 0.1  # 10% overhead for executors (accounts for JVM + system overhead)
-DRIVER_MEMORY_OVERHEAD = 0.05  # 5% overhead for driver (typically less memory pressure)
-
-
-def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) -> str:
-    """
-    Convert memory format from profile format to Spark format with overhead adjustment.
-
-    Args:
-        memory_str: Memory string in profile format (supports B, KiB, MiB, GiB, TiB)
-        overhead_percentage: Percentage of memory to reserve for system overhead (default: 0.1 = 10%)
-
-    Returns:
-        Memory string in Spark format with overhead accounted for
-    """
-    # Extract number and unit from memory string
-    match = re.match(r"^(\d+(?:\.\d+)?)\s*([kmgtKMGT]i?[bB]?)$", memory_str)
-    if not match:
-        raise ValueError(f"Invalid memory format: {memory_str}")
-
-    value, unit = match.groups()
-    value = float(value)
-
-    # Convert to bytes for calculation
-    unit_lower = unit.lower()
-    multipliers = {
-        "b": 1,
-        "kb": 1024,
-        "kib": 1024,
-        "mb": 1024**2,
-        "mib": 1024**2,
-        "gb": 1024**3,
-        "gib": 1024**3,
-        "tb": 1024**4,
-        "tib": 1024**4,
-    }
-
-    # Remove trailing 'b' if present for lookup
-    unit_key = unit_lower.rstrip("b") + "b" if unit_lower.endswith("b") else unit_lower + "b"
-    if unit_key not in multipliers:
-        unit_key = unit_lower
-
-    bytes_value = value * multipliers.get(unit_key, multipliers["b"])
-
-    # Apply overhead reduction (reserve percentage for system)
-    adjusted_bytes = bytes_value * (1 - overhead_percentage)
-
-    # Convert back to appropriate Spark unit (prefer GiB for larger values)
-    if adjusted_bytes >= 1024**3:
-        adjusted_value = adjusted_bytes / (1024**3)
-        spark_unit = "g"
-    elif adjusted_bytes >= 1024**2:
-        adjusted_value = adjusted_bytes / (1024**2)
-        spark_unit = "m"
-    elif adjusted_bytes >= 1024:
-        adjusted_value = adjusted_bytes / 1024
-        spark_unit = "k"
-    else:
-        adjusted_value = adjusted_bytes
-        spark_unit = ""
-
-    # Format as integer to ensure Spark compatibility
-    # Some Spark versions don't accept fractional memory values
-    return f"{int(round(adjusted_value))}{spark_unit}"
 
 
 class SparkConnectServerConfig:
@@ -137,8 +71,8 @@ class SparkConnectServerConfig:
         logger.info(f"Copied base config from {self.template_path}")
 
         # Convert memory values with overhead
-        executor_memory = _convert_memory_format(self.settings.SPARK_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
-        driver_memory = _convert_memory_format(self.settings.SPARK_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
+        executor_memory = convert_memory_format(self.settings.SPARK_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
+        driver_memory = convert_memory_format(self.settings.SPARK_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
 
         # Append dynamic user-specific configurations
         with open(self.spark_defaults_path, "a") as f:
