@@ -7,6 +7,7 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 # This file must be loaded AFTER the 02-get_minio_client.py file
 """
 
+import warnings
 from datetime import datetime
 
 from pyspark.conf import SparkConf
@@ -17,6 +18,12 @@ from berdl_notebook_utils.minio_governance import (
     get_group_sql_warehouse,
     get_my_sql_warehouse,
 )
+
+# Suppress Protobuf version warnings from PySpark Spark Connect
+warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf.runtime_version")
+
+# Suppress CANNOT_MODIFY_CONFIG warnings for Hive metastore settings in Spark Connect
+warnings.filterwarnings("ignore", category=UserWarning, module="pyspark.sql.connect.conf")
 
 # =============================================================================
 # CONSTANTS
@@ -192,6 +199,48 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     return config
 
 
+def _filter_immutable_spark_connect_configs(config: dict[str, str]) -> dict[str, str]:
+    """
+    Filter out configurations that cannot be modified in Spark Connect mode.
+
+    These configs must be set server-side when the Spark Connect server starts.
+    Attempting to set them from the client results in CANNOT_MODIFY_CONFIG warnings.
+
+    Args:
+        config: Dictionary of Spark configurations
+
+    Returns:
+        Filtered configuration dictionary with only mutable configs
+    """
+    immutable_configs = {
+        # Cluster-level settings (must be set at master startup)
+        "spark.decommission.enabled",
+        "spark.storage.decommission.rddBlocks.enabled",
+        "spark.reducer.maxSizeInFlight",
+        "spark.shuffle.file.buffer",
+        # Driver and executor resource configs (locked at server startup)
+        "spark.driver.memory",
+        "spark.driver.cores",
+        "spark.executor.instances",
+        "spark.executor.cores",
+        "spark.executor.memory",
+        "spark.dynamicAllocation.enabled",
+        "spark.dynamicAllocation.shuffleTracking.enabled",
+        # Event logging (locked at server startup)
+        "spark.eventLog.enabled",
+        "spark.eventLog.dir",
+        # SQL extensions (must be loaded at startup)
+        "spark.sql.extensions",
+        "spark.sql.catalog.spark_catalog",
+        # Hive catalog (locked at startup)
+        "spark.sql.catalogImplementation",
+        # Warehouse directory (locked at server startup)
+        "spark.sql.warehouse.dir",
+    }
+
+    return {k: v for k, v in config.items() if k not in immutable_configs}
+
+
 def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
     """Set the scheduler pool for the Spark session."""
     if scheduler_pool not in SPARK_POOLS:
@@ -217,6 +266,7 @@ def get_spark_session(
     use_hive: bool = True,
     settings: BERDLSettings | None = None,
     tenant_name: str | None = None,
+    use_spark_connect: bool = True,
 ) -> SparkSession:
     """
     Create and configure a Spark session with BERDL-specific settings.
@@ -234,6 +284,7 @@ def get_spark_session(
         tenant_name: Tenant/group name to use for SQL warehouse location. If specified,
                      tables will be written to the tenant's SQL warehouse instead
                      of the user's personal warehouse.
+        use_spark_connect: If True, uses Spark Connect instead of legacy mode
 
     Returns:
         Configured SparkSession instance
@@ -269,12 +320,8 @@ def get_spark_session(
     if local:
         return SparkSession.builder.appName(app_name).getOrCreate()
 
-    # Build configuration dictionary
-    config: dict[str, str] = {
-        "spark.app.name": app_name,
-        "spark.driver.host": settings.BERDL_POD_IP,
-        "spark.master": str(settings.SPARK_MASTER_URL),
-    }
+    # Build common configuration dictionary
+    config: dict[str, str] = {"spark.app.name": app_name}
 
     # Add default Spark configurations
     config.update(_get_spark_defaults_conf())
@@ -286,18 +333,34 @@ def get_spark_session(
     if delta_lake:
         config.update(_get_s3_conf(settings, tenant_name))
     if use_hive:
-        config["hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
+        config["spark.hadoop.hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
         config["spark.sql.catalogImplementation"] = "hive"
         config["spark.sql.hive.metastore.version"] = "4.0.0"
         config["spark.sql.hive.metastore.jars"] = "path"
         config["spark.sql.hive.metastore.jars.path"] = "/usr/local/spark/jars/*"
 
-    # Create and configure Spark session
+    # Branch: add mode-specific configurations
+    if use_spark_connect:
+        # Spark Connect: filter out immutable configs and use remote URL
+        # Filter out configs that cannot be modified from the client
+        config = _filter_immutable_spark_connect_configs(config)
+        config["spark.remote"] = str(settings.SPARK_CONNECT_URL)
+    else:
+        # Legacy mode: add driver/executor configs
+        config.update(
+            {
+                "spark.driver.host": settings.BERDL_POD_IP,
+                "spark.master": str(settings.SPARK_MASTER_URL),
+            }
+        )
+
+    # Create and configure Spark session (unified for both modes)
     spark_conf = SparkConf().setAll(list(config.items()))
     spark = SparkSession.builder.config(conf=spark_conf).getOrCreate()
-    spark.sparkContext.setLogLevel("DEBUG")
 
-    # Set scheduler pool
-    _set_scheduler_pool(spark, scheduler_pool)
+    # Post-creation configuration (only for legacy mode with SparkContext)
+    if not use_spark_connect:
+        spark.sparkContext.setLogLevel("DEBUG")
+        _set_scheduler_pool(spark, scheduler_pool)
 
     return spark
