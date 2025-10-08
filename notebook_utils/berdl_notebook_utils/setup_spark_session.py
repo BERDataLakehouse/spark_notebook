@@ -333,7 +333,7 @@ def get_spark_session(
     if delta_lake:
         config.update(_get_s3_conf(settings, tenant_name))
     if use_hive:
-        config["spark.hadoop.hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
+        config["hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
         config["spark.sql.catalogImplementation"] = "hive"
         config["spark.sql.hive.metastore.version"] = "4.0.0"
         config["spark.sql.hive.metastore.jars"] = "path"
