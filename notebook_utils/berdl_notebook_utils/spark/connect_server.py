@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..berdl_settings import BERDLSettings, get_settings
+from ..setup_spark_session import DRIVER_MEMORY_OVERHEAD, EXECUTOR_MEMORY_OVERHEAD, convert_memory_format
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,10 @@ class SparkConnectServerConfig:
         shutil.copy(self.template_path, self.spark_defaults_path)
         logger.info(f"Copied base config from {self.template_path}")
 
+        # Convert memory values with overhead
+        executor_memory = convert_memory_format(self.settings.SPARK_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
+        driver_memory = convert_memory_format(self.settings.SPARK_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
+
         # Append dynamic user-specific configurations
         with open(self.spark_defaults_path, "a") as f:
             f.write("\n# Dynamic user-specific configurations\n")
@@ -84,6 +89,21 @@ class SparkConnectServerConfig:
             f.write(f"spark.hadoop.fs.s3a.endpoint={self.settings.MINIO_ENDPOINT_URL}\n")
             f.write(f"spark.hadoop.fs.s3a.access.key={self.settings.MINIO_ACCESS_KEY}\n")
             f.write(f"spark.hadoop.fs.s3a.secret.key={self.settings.MINIO_SECRET_KEY}\n")
+
+            # Spark resource configuration from profile (with overhead accounted for)
+            f.write("\n# Spark cluster resource configuration\n")
+            f.write(f"spark.cores.max={self.settings.SPARK_WORKER_COUNT * self.settings.SPARK_WORKER_CORES}\n")
+            f.write(f"spark.executor.instances={self.settings.SPARK_WORKER_COUNT}\n")
+            f.write(f"spark.executor.cores={self.settings.SPARK_WORKER_CORES}\n")
+            f.write(f"spark.executor.memory={executor_memory}\n")
+            f.write(f"spark.driver.cores={self.settings.SPARK_MASTER_CORES}\n")
+            f.write(f"spark.driver.memory={driver_memory}\n")
+            # Disable dynamic allocation since we're setting explicit instances
+            f.write("spark.dynamicAllocation.enabled=false\n")
+            f.write("spark.dynamicAllocation.shuffleTracking.enabled=false\n")
+
+            f.write(f"spark.driver.host={self.settings.BERDL_POD_IP}\n")
+            f.write(f"spark.master={self.settings.SPARK_MASTER_URL}\n")
 
         logger.info(f"Spark configuration written to {self.spark_defaults_path}")
 

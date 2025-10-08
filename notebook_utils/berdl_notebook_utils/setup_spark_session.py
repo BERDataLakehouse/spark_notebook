@@ -42,7 +42,7 @@ DRIVER_MEMORY_OVERHEAD = 0.05  # 5% overhead for driver (typically less memory p
 # =============================================================================
 
 
-def _convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) -> str:
+def convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) -> str:
     """
     Convert memory format from profile format to Spark format with overhead adjustment.
 
@@ -117,8 +117,8 @@ def _get_executor_config(settings: BERDLSettings) -> dict[str, str]:
         Dictionary of Spark executor and driver configuration
     """
     # Convert memory formats from profile to Spark format with overhead adjustment
-    executor_memory = _convert_memory_format(settings.SPARK_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
-    driver_memory = _convert_memory_format(settings.SPARK_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
+    executor_memory = convert_memory_format(settings.SPARK_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
+    driver_memory = convert_memory_format(settings.SPARK_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
 
     config = {
         # Driver configuration (critical for remote cluster connections)
