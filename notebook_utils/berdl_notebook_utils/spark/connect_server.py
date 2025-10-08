@@ -168,6 +168,9 @@ class SparkConnectServerConfig:
             f.write("spark.dynamicAllocation.enabled=false\n")
             f.write("spark.dynamicAllocation.shuffleTracking.enabled=false\n")
 
+            f.write(f"spark.driver.host={self.settings.BERDL_POD_IP}\n")
+            f.write(f"spark.master={self.settings.SPARK_MASTER_URL}\n")
+
         logger.info(f"Spark configuration written to {self.spark_defaults_path}")
 
 
