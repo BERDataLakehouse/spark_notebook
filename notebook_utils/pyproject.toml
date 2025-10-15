@@ -27,6 +27,14 @@ dev = [
     # Development tools
     "pytest==8.4.1",
     "ruff==0.13.0",
+
+    # Jupyter AI libraries
+    "jupyter-ai==2.31.6",
+    "langchain-openai==0.3.35",
+    "langchain-anthropic==0.3.22",
+    "langchain-ollama==0.3.10",
+    "huggingface_hub==0.35.3",
+    "jupyter-ai-cborg",
 ]
 
 
@@ -35,6 +43,7 @@ cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-cli
 cdm-spark-manager-client = { git = "https://github.com/kbase/cdm-kube-spark-manager-client.git", rev = "0.0.1" }
 minio-manager-service-client = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git", rev = "v0.0.4" }
 cdm-tree-browser = { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" }
+jupyter-ai-cborg = { git = "https://github.com/kbaseincubator/cdm-jupyter-ai-cborg.git", rev = "v0.1.0" }
 
 [tool.ruff]
 
