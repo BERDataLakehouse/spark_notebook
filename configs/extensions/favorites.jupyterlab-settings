@@ -1,18 +1,19 @@
 {
     "favorites": [
         {
-            "root": "/",
-            "path": "global_share",
+            "root": "/home",
+            "path": "${NB_USER}/global_share",
             "contentType": "directory",
             "iconLabel": "ui-components:folder",
             "name": "Global Share"
         },
         {
-            "root": "/",
-            "path": "home/${NB_USER}",
+            "root": "/home",
+            "path": "${NB_USER}",
             "contentType": "directory",
             "iconLabel": "ui-components:folder",
-            "name": "/home/${NB_USER}"
+            "name": "${NB_USER}"
         }
-    ]
+    ],
+    "showWidget": true
 }
