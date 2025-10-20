@@ -338,7 +338,7 @@ dependencies = [
     { name = "jupyterlab" },
 ]
 wheels = [
-    { url = "https://github.com/kbaseincubator/cdm_jupyterlab_brand_extension/raw/main/dist/cdm_jupyterlab_brand_extension-0.1.0-py3-none-any.whl", hash = "sha256:2aedaef8f76b7ee330dd123cb3a2e665cf451ebb19df6e4451bc59aceeda375e" },
+    { url = "https://github.com/kbaseincubator/cdm_jupyterlab_brand_extension/raw/main/dist/cdm_jupyterlab_brand_extension-0.1.0-py3-none-any.whl", hash = "sha256:9ba1a80f1285685109bdc27f89944a6257df3bd9370aae9f64f217d44adb8568" },
 ]
 
 [package.metadata]
