@@ -35,6 +35,9 @@ dev = [
     "langchain-ollama==0.3.10",
     "huggingface_hub==0.35.3",
     "jupyter-ai-cborg",
+
+    # JupyterLab Brand Extension
+    "cdm-jupyterlab-brand-extension",
 ]
 
 
@@ -44,6 +47,7 @@ cdm-spark-manager-client = { git = "https://github.com/kbase/cdm-kube-spark-mana
 minio-manager-service-client = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git", rev = "v0.0.4" }
 cdm-tree-browser = { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" }
 jupyter-ai-cborg = { git = "https://github.com/kbaseincubator/cdm-jupyter-ai-cborg.git", rev = "v0.1.0" }
+cdm-jupyterlab-brand-extension = {url = "https://github.com/kbaseincubator/cdm_jupyterlab_brand_extension/raw/main/dist/cdm_jupyterlab_brand_extension-0.1.0-py3-none-any.whl" }
 
 [tool.ruff]
 
