@@ -8,6 +8,7 @@ import logging
 import os
 from pathlib import Path
 import time
+from typing import TypedDict
 
 from governance_client.api.credentials import get_credentials_credentials_get
 from governance_client.api.health import health_check_health_get
@@ -51,6 +52,17 @@ from governance_client.types import UNSET
 
 from berdl_notebook_utils import get_settings
 from berdl_notebook_utils.clients import get_governance_client
+
+# =============================================================================
+# TYPE DEFINITIONS
+# =============================================================================
+
+
+class TenantCreationResult(TypedDict):
+    """Result of tenant creation and user assignment operation."""
+    create_tenant: GroupManagementResponse | ErrorResponse
+    add_members: list[tuple[str, GroupManagementResponse | ErrorResponse]]
+
 
 # =============================================================================
 # CONSTANTS
@@ -269,7 +281,7 @@ def get_my_groups() -> UserGroupsResponse:
 def create_tenant_and_assign_users(
     tenant_name: str,
     usernames: list[str] | None = None,
-) -> dict[str, GroupManagementResponse | ErrorResponse]:
+) -> TenantCreationResult:
     """
     Create a new tenant (group) and assign users to it.
 
@@ -297,7 +309,7 @@ def create_tenant_and_assign_users(
         group_name=tenant_name,
     )
 
-    result = {
+    result: TenantCreationResult = {
         "create_tenant": create_response,
         "add_members": [],
     }
@@ -327,6 +339,11 @@ def create_tenant_and_assign_users(
 
             except Exception as e:
                 logger.error(f"Error adding user {username} to tenant {tenant_name}: {e}")
+                error_response = ErrorResponse(
+                    message=f"Exception occurred while adding {username}: {str(e)}",
+                    error_type="Exception"
+                )
+                result["add_members"].append((username, error_response))
                 # Continue with other users even if one fails
 
     return result
