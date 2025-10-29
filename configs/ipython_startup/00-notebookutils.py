@@ -40,16 +40,17 @@ from berdl_notebook_utils import berdl_notebook_help  # noqa F401
 # MinIO Data Governance integration
 from berdl_notebook_utils.minio_governance import (  # noqa F401
     check_governance_health,
-    get_minio_credentials,
-    get_my_sql_warehouse,
+    create_tenant_and_assign_users,
     get_group_sql_warehouse,
-    get_my_workspace,
-    get_my_policies,
+    get_minio_credentials,
     get_my_groups,
+    get_my_policies,
+    get_my_sql_warehouse,
+    get_my_workspace,
     get_namespace_prefix,
     get_table_access_info,
+    make_table_private,
+    make_table_public,
     share_table,
     unshare_table,
-    make_table_public,
-    make_table_private,
 )

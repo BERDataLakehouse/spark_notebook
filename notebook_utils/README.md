@@ -50,6 +50,12 @@ from berdl_notebook_utils.minio_governance import *
 workspace = get_my_workspace()
 print(f"Username: {workspace.username}")
 
+# Create a tenant and assign users
+result = create_tenant_and_assign_users(
+    tenant_name="research_team",
+    usernames=["alice", "bob", "charlie"]
+)
+
 # Share a table with colleagues
 share_table("analytics", "user_metrics", with_users=["alice", "bob"])
 
@@ -183,11 +189,14 @@ from berdl_notebook_utils.spark import (
 from berdl_notebook_utils.minio_governance import (
     # Health and credentials
     check_governance_health, get_minio_credentials,
-    
+
     # Workspace management
     get_my_sql_warehouse, get_group_sql_warehouse,
-    get_my_workspace, get_my_policies,
-    
+    get_my_workspace, get_my_policies, get_my_groups,
+
+    # Tenant management
+    create_tenant_and_assign_users,
+
     # Table sharing
     share_table, unshare_table, make_table_public, make_table_private,
     get_table_access_info,

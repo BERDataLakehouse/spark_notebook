@@ -290,7 +290,7 @@ dev = [
     { name = "attrs", specifier = "==25.3.0" },
     { name = "cdm-jupyterlab-brand-extension", url = "https://github.com/kbaseincubator/cdm_jupyterlab_brand_extension/raw/main/dist/cdm_jupyterlab_brand_extension-0.1.0-py3-none-any.whl" },
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
-    { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0" },
+    { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.1" },
     { name = "cdm-tree-browser", url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" },
     { name = "hmsclient", specifier = "==0.1.1" },
     { name = "httpx", specifier = "==0.27.0" },
@@ -355,8 +355,8 @@ dependencies = [
 
 [[package]]
 name = "cdm-task-service-client"
-version = "0.1.0"
-source = { git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.0#2e99c61fb1300cf6014f91c17fe1d5ba60560605" }
+version = "0.2.1"
+source = { git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.1#db1dccf3c9fcddc83c0a3881337fe4ebafcd1cba" }
 dependencies = [
     { name = "requests" },
 ]

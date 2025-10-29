@@ -7,9 +7,14 @@ import json
 import logging
 import os
 from pathlib import Path
+import time
 
 from governance_client.api.credentials import get_credentials_credentials_get
 from governance_client.api.health import health_check_health_get
+from governance_client.api.management import (
+    add_group_member_management_groups_group_name_members_username_post,
+    create_group_management_groups_group_name_post,
+)
 from governance_client.api.sharing import (
     get_path_access_info_sharing_get_path_access_info_post,
     make_path_private_sharing_make_private_post,
@@ -27,6 +32,8 @@ from governance_client.api.workspaces import (
 )
 from governance_client.models import (
     CredentialsResponse,
+    ErrorResponse,
+    GroupManagementResponse,
     HealthResponse,
     NamespacePrefixResponse,
     PathAccessResponse,
@@ -257,6 +264,72 @@ def get_my_groups() -> UserGroupsResponse:
     """
     client = get_governance_client()
     return get_my_groups_workspaces_me_groups_get.sync(client=client)
+
+
+def create_tenant_and_assign_users(
+    tenant_name: str,
+    usernames: list[str] | None = None,
+) -> dict[str, GroupManagementResponse | ErrorResponse]:
+    """
+    Create a new tenant (group) and assign users to it.
+
+    This is a convenience function that combines tenant creation and user assignment
+    into a single operation. It creates a new group with shared workspace and policy
+    configuration, then adds the specified users as members.
+
+    Args:
+        tenant_name: Name of the tenant/group to create
+        usernames: List of usernames to add as members (optional)
+
+    Returns:
+        Dictionary with the following keys:
+        - 'create_tenant': GroupManagementResponse or ErrorResponse from tenant creation
+        - 'add_members': List of tuples (username, GroupManagementResponse or ErrorResponse)
+                        for each user addition attempt
+    """
+    client = get_governance_client()
+    logger = logging.getLogger(__name__)
+
+    # Step 1: Create the tenant/group
+    logger.info(f"Creating tenant: {tenant_name}")
+    create_response = create_group_management_groups_group_name_post.sync(
+        client=client,
+        group_name=tenant_name,
+    )
+
+    result = {
+        "create_tenant": create_response,
+        "add_members": [],
+    }
+
+    # Check if tenant creation was successful
+    if isinstance(create_response, ErrorResponse):
+        logger.error(f"Failed to create tenant {tenant_name}: {create_response.message}")
+        return result
+
+    # Step 2: Add users to the tenant if provided
+    if usernames:
+        logger.info(f"Adding {len(usernames)} users to tenant {tenant_name}")
+        for username in usernames:
+            time.sleep(1)
+            try:
+                add_response = add_group_member_management_groups_group_name_members_username_post.sync(
+                    client=client,
+                    group_name=tenant_name,
+                    username=username,
+                )
+                result["add_members"].append((username, add_response))
+
+                if isinstance(add_response, ErrorResponse):
+                    logger.warning(f"Failed to add user {username} to tenant {tenant_name}: {add_response.message}")
+                else:
+                    logger.info(f"Successfully added user {username} to tenant {tenant_name}")
+
+            except Exception as e:
+                logger.error(f"Error adding user {username} to tenant {tenant_name}: {e}")
+                # Continue with other users even if one fails
+
+    return result
 
 
 def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse:
