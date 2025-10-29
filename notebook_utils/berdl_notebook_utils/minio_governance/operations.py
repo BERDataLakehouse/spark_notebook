@@ -60,6 +60,7 @@ from berdl_notebook_utils.clients import get_governance_client
 
 class TenantCreationResult(TypedDict):
     """Result of tenant creation and user assignment operation."""
+
     create_tenant: GroupManagementResponse | ErrorResponse
     add_members: list[tuple[str, GroupManagementResponse | ErrorResponse]]
 
@@ -340,8 +341,7 @@ def create_tenant_and_assign_users(
             except Exception as e:
                 logger.error(f"Error adding user {username} to tenant {tenant_name}: {e}")
                 error_response = ErrorResponse(
-                    message=f"Exception occurred while adding {username}: {str(e)}",
-                    error_type="Exception"
+                    message=f"Exception occurred while adding {username}: {str(e)}", error_type="Exception"
                 )
                 result["add_members"].append((username, error_response))
                 # Continue with other users even if one fails
