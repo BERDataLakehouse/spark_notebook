@@ -50,4 +50,12 @@ except Exception as e:
     logger.warning(f"⚠️  Spark Cluster Manager client not available: {e}")
     spark_cluster = None
 
+# Initialize Datalake MCP Server client (optional - may not be available in local dev)
+try:
+    mcp_client = get_datalake_mcp_client()  # noqa: F821
+    logger.info("✅ Datalake MCP Server client initialized")
+except Exception as e:
+    logger.warning(f"⚠️  Datalake MCP Server client not available: {e}")
+    mcp_client = None
+
 logger.info("🔧 All available clients initialized and ready for use!")
