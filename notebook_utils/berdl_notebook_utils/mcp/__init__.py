@@ -27,4 +27,3 @@ __all__ = [
     "mcp_sample_table",
     "mcp_query_table",
 ]
-

@@ -55,4 +55,3 @@ def get_datalake_mcp_client() -> AuthenticatedClient:
 
     logger.debug("Datalake MCP client created successfully")
     return client
-
