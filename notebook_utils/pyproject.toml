@@ -3,7 +3,7 @@ name = "berdl_notebook_utils"
 version = "0.0.1"
 description = "berdl_notebook_utils"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"  # Allow Python 3.12+ for MCP server compatibility
 dependencies = []
 
 [dependency-groups]
