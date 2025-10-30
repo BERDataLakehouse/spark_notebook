@@ -262,6 +262,7 @@ dev = [
     { name = "cdm-spark-manager-client" },
     { name = "cdm-task-service-client" },
     { name = "cdm-tree-browser" },
+    { name = "datalake-mcp-server-client" },
     { name = "hmsclient" },
     { name = "httpx" },
     { name = "huggingface-hub" },
@@ -292,6 +293,7 @@ dev = [
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client.git?rev=0.2.1" },
     { name = "cdm-tree-browser", url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" },
+    { name = "datalake-mcp-server-client", git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.1" },
     { name = "hmsclient", specifier = "==0.1.1" },
     { name = "httpx", specifier = "==0.27.0" },
     { name = "huggingface-hub", specifier = "==0.35.3" },
@@ -527,6 +529,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/64/a4/f71d9cf3a5ac257c993b5ca3f93df5f7fb395c725e7f1e6479d2514173c3/dataclasses_json-0.6.7.tar.gz", hash = "sha256:b6b3e528266ea45b9535223bc53ca645f5208833c29229e847b3f26a1cc55fc0", size = 32227, upload-time = "2024-06-09T16:20:19.103Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c3/be/d0d44e092656fe7a06b55e6103cbce807cdbdee17884a5367c68c9860853/dataclasses_json-0.6.7-py3-none-any.whl", hash = "sha256:0dbf33f26c8d5305befd61b39d2b3414e8a407bedc2834dea9b8d642666fb40a", size = 28686, upload-time = "2024-06-09T16:20:16.715Z" },
+]
+
+[[package]]
+name = "datalake-mcp-server-client"
+version = "0.0.1"
+source = { git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.1#241521c96eedec625cb0eea8d2f5ffdfc9c2c8df" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
 
 [[package]]
