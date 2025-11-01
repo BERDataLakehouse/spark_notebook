@@ -64,6 +64,9 @@ class BERDLSettings(BaseSettings):
     # Data Governance API configuration
     GOVERNANCE_API_URL: AnyHttpUrl
 
+    # Datalake MCP Server configuration
+    DATALAKE_MCP_SERVER_URL: AnyHttpUrl
+
 
 def validate_environment():
     """

@@ -37,6 +37,17 @@ from berdl_notebook_utils.spark import (  # noqa F401
 
 from berdl_notebook_utils import berdl_notebook_help  # noqa F401
 
+# MCP Server operations
+from berdl_notebook_utils.mcp import (  # noqa F401
+    mcp_list_databases,
+    mcp_list_tables,
+    mcp_get_table_schema,
+    mcp_get_database_structure,
+    mcp_count_table,
+    mcp_sample_table,
+    mcp_query_table,
+)
+
 # MinIO Data Governance integration
 from berdl_notebook_utils.minio_governance import (  # noqa F401
     check_governance_health,

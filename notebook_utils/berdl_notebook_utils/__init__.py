@@ -35,6 +35,19 @@ from berdl_notebook_utils.spark import (
     get_table_schema,
     get_db_structure,
 )
+from berdl_notebook_utils.mcp import (
+    # MCP Client
+    get_datalake_mcp_client,
+    # MCP Database operations
+    mcp_list_databases,
+    mcp_list_tables,
+    mcp_get_table_schema,
+    mcp_get_database_structure,
+    # MCP Query operations
+    mcp_count_table,
+    mcp_sample_table,
+    mcp_query_table,
+)
 
 __all__ = [
     "BERDLSettings",
@@ -68,6 +81,17 @@ __all__ = [
     "get_tables",
     "get_table_schema",
     "get_db_structure",
+    # MCP Client
+    "get_datalake_mcp_client",
+    # MCP Database operations
+    "mcp_list_databases",
+    "mcp_list_tables",
+    "mcp_get_table_schema",
+    "mcp_get_database_structure",
+    # MCP Query operations
+    "mcp_count_table",
+    "mcp_sample_table",
+    "mcp_query_table",
 ]
 
 
@@ -87,6 +111,7 @@ def berdl_notebook_help():
     - get_governance_client: Data Governance API client instance
     - get_spark_cluster_client: Spark Cluster Manager API client instance
     - get_spark_session: Create configured Spark session with Delta Lake and S3 support
+    - get_datalake_mcp_client: Datalake MCP Server client instance
 
     Database Operations:
     -------------------
@@ -111,6 +136,16 @@ def berdl_notebook_help():
     - create_cluster: Create new Spark cluster
     - delete_cluster: Delete Spark cluster
 
+    MCP Server Operations (via Global Datalake MCP Server):
+    -------------------------------------------------------
+    - mcp_list_databases: List all databases via MCP server
+    - mcp_list_tables: List tables in a database via MCP server
+    - mcp_get_table_schema: Get table schema via MCP server
+    - mcp_get_database_structure: Get complete database structure via MCP server
+    - mcp_count_table: Count rows in a table via MCP server
+    - mcp_sample_table: Sample data from a table via MCP server
+    - mcp_query_table: Execute SQL queries via MCP server
+
     Usage:
     ------
     from berdl_notebook_utils import get_spark_session, display_df
@@ -125,6 +160,12 @@ def berdl_notebook_help():
 
     # Share table with colleagues
     share_table("analytics", "user_metrics", with_users=["alice", "bob"])
+
+    # Use MCP server for queries
+    from berdl_notebook_utils import mcp_list_databases, mcp_query_table
+
+    databases = mcp_list_databases()
+    results = mcp_query_table("SELECT * FROM my_db.my_table LIMIT 10")
 
     For detailed documentation, see the README.md or individual module docstrings.
     """
