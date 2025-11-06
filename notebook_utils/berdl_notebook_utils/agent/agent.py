@@ -182,10 +182,7 @@ class BERDLAgent:
             max_execution_time=self.settings.AGENT_MAX_EXECUTION_TIME,
         )
 
-        logger.info(
-            f"BERDL Agent initialized: provider={self.model_provider}, "
-            f"model={self.model}"
-        )
+        logger.info(f"BERDL Agent initialized: provider={self.model_provider}, model={self.model}")
 
     def _create_llm(self) -> Any:
         """Create LLM based on configured provider."""
@@ -304,10 +301,7 @@ class BERDLAgent:
 
     def __repr__(self) -> str:
         """String representation of the agent."""
-        return (
-            f"BERDLAgent(provider={self.model_provider}, model={self.model}, "
-            f"tools={len(self.tools)})"
-        )
+        return f"BERDLAgent(provider={self.model_provider}, model={self.model}, tools={len(self.tools)})"
 
 
 # =============================================================================
