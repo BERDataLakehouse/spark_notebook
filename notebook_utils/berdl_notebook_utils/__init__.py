@@ -48,6 +48,13 @@ from berdl_notebook_utils.mcp import (
     mcp_sample_table,
     mcp_query_table,
 )
+from berdl_notebook_utils.agent import (
+    # Agent
+    create_berdl_agent,
+    BERDLAgent,
+    AgentSettings,
+    get_agent_settings,
+)
 
 __all__ = [
     "BERDLSettings",
@@ -92,6 +99,11 @@ __all__ = [
     "mcp_count_table",
     "mcp_sample_table",
     "mcp_query_table",
+    # Agent
+    "create_berdl_agent",
+    "BERDLAgent",
+    "AgentSettings",
+    "get_agent_settings",
 ]
 
 
@@ -146,6 +158,12 @@ def berdl_notebook_help():
     - mcp_sample_table: Sample data from a table via MCP server
     - mcp_query_table: Execute SQL queries via MCP server
 
+    BERDL Agent (AI Assistant):
+    ---------------------------
+    - create_berdl_agent: Create an AI agent for natural language data lake interactions
+    - BERDLAgent: Agent class for advanced configuration
+    - AgentSettings: Agent configuration settings
+
     Usage:
     ------
     from berdl_notebook_utils import get_spark_session, display_df
@@ -166,6 +184,13 @@ def berdl_notebook_help():
 
     databases = mcp_list_databases()
     results = mcp_query_table("SELECT * FROM my_db.my_table LIMIT 10")
+
+    # Use AI Agent for natural language queries
+    from berdl_notebook_utils import create_berdl_agent
+
+    agent = create_berdl_agent()
+    result = agent.run("What databases do I have access to?")
+    result = agent.run("Show me the top 10 rows from my_db.user_activity")
 
     For detailed documentation, see the README.md or individual module docstrings.
     """
