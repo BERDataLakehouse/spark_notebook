@@ -316,7 +316,7 @@ def create_berdl_agent(
     enable_sql_execution: bool | None = True,
     verbose: bool | None = False,
     enable_memory: bool | None = True,
-    discover_tools_from_server: bool = True,
+    discover_tools_from_server: bool = False,
     mcp_server_url: str | None = None,
 ) -> BERDLAgent:
     """
