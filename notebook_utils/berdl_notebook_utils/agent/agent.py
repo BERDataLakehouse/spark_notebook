@@ -82,7 +82,7 @@ class BERDLAgent:
         enable_sql_execution: bool | None = None,
         verbose: bool | None = True,
         enable_memory: bool | None = None,
-        use_mcp_tools: bool = True,
+        discover_tools_from_server: bool = False,
         mcp_server_url: str | None = None,
     ):
         """
@@ -95,7 +95,7 @@ class BERDLAgent:
             enable_sql_execution: Enable SQL query execution tools
             verbose: Enable verbose logging of agent reasoning
             enable_memory: Enable conversation memory
-            use_mcp_tools: Use native MCP tools instead of manual wrappers (default: False)
+            discover_tools_from_server: Discover tools from MCP server instead of using local wrappers (default: True)
             mcp_server_url: MCP server URL (default: http://localhost:8005/apis/mcp/mcp)
         """
         # Load settings with overrides
@@ -111,18 +111,18 @@ class BERDLAgent:
         )
         self.verbose = verbose if verbose is not None else self.settings.AGENT_VERBOSE
         self.enable_memory = enable_memory if enable_memory is not None else self.settings.AGENT_ENABLE_MEMORY
-        self.use_mcp_tools = use_mcp_tools
+        self.discover_tools_from_server = discover_tools_from_server
 
         # Initialize LLM
         self.llm = self._create_llm()
 
-        # Initialize tools - use MCP or manual wrappers
-        if self.use_mcp_tools:
-            logger.info("Loading tools from MCP server")
+        # Initialize tools - discover from MCP server or use manual wrappers
+        if self.discover_tools_from_server:
+            logger.info("Discovering tools from MCP server")
             self.tools = get_mcp_tools(server_url=mcp_server_url)
             logger.info(f"Loaded {len(self.tools)} tools from MCP server")
         else:
-            # Use manual tool wrappers (default behavior)
+            # Use manual tool wrappers
             self.tools = get_all_tools(
                 enable_sql_execution=self.enable_sql_execution,
             )
@@ -316,7 +316,7 @@ def create_berdl_agent(
     enable_sql_execution: bool | None = True,
     verbose: bool | None = False,
     enable_memory: bool | None = True,
-    use_mcp_tools: bool = True,
+    discover_tools_from_server: bool = True,
     mcp_server_url: str | None = None,
 ) -> BERDLAgent:
     """
@@ -332,7 +332,7 @@ def create_berdl_agent(
         enable_sql_execution: Enable SQL query execution tools (default: from settings)
         verbose: Show agent reasoning steps (default: True)
         enable_memory: Enable conversation memory (default: from settings)
-        use_mcp_tools: Use native MCP tools from running server (default: True)
+        discover_tools_from_server: Discover tools from MCP server instead of using local wrappers (default: True)
         mcp_server_url: MCP server URL (default: http://localhost:8005/apis/mcp/mcp)
 
     Returns:
@@ -356,6 +356,6 @@ def create_berdl_agent(
         enable_sql_execution=enable_sql_execution,
         verbose=verbose,
         enable_memory=enable_memory,
-        use_mcp_tools=use_mcp_tools,
+        discover_tools_from_server=discover_tools_from_server,
         mcp_server_url=mcp_server_url,
     )
