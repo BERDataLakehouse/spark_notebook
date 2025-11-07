@@ -314,7 +314,7 @@ def create_berdl_agent(
     model_provider: str | None = None,
     temperature: float | None = 0,
     enable_sql_execution: bool | None = True,
-    verbose: bool | None = True,
+    verbose: bool | None = False,
     enable_memory: bool | None = True,
     use_mcp_tools: bool = True,
     mcp_server_url: str | None = None,
