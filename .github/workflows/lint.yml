@@ -55,10 +55,9 @@ jobs:
             exit 1
           }
 
-      - name: tmate
-        uses: mxschmitt/action-tmate@v3
-
       - name: Run container test
         run: |
           echo "Running test inside container..."
-          docker run --rm -e NB_USER=test_user -v ./notebook_utils:/tmp/notebook_utils spark-notebook-test:latest /bin/bash /tmp/notebook_utils/run_tests.sh
+          # slightly nasty hack
+          chmod 777 ./notebook_utils
+          docker run --rm -e NB_USER=runner -v ./notebook_utils:/tmp/notebook_utils spark-notebook-test:latest /bin/bash /tmp/notebook_utils/run_tests.sh
