@@ -29,15 +29,17 @@
 
 services:
   spark-notebook:
+    # image: ghcr.io/berdatalakehouse/spark_notebook:pr-38
     build:
       context: .
       dockerfile: Dockerfile
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
-    platform: linux/amd64
+    # platform: linux/amd64
     ports:
       - "8888:8888"  # Jupyter notebook
+      - "15002:15002"  # Spark Connect server
     environment:
       # CORE BERDL CONFIGURATION
       - CDM_TASK_SERVICE_URL=http://localhost:8080
@@ -52,23 +54,28 @@ services:
       # DATA GOVERNANCE CONFIGURATION
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
 
+      # DATALAKE MCP SERVER CONFIGURATION
+      - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
+
       # AUTHENTICATION CONFIGURATION
       - KBASE_AUTH_TOKEN=YOUR_CI_KBASE_AUTH_TOKEN # <- Update this with your KBase CI auth token
       - NB_USER=YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username associated with the auth token above
-
+    volumes:
+      - users_home:/home
+      - global_share:/home/YOUR_CI_KBASE_USERNAME/global_share # <- Update this with your KBase CI username
     depends_on:
       - spark-master
       - minio
       - postgres
       - hive-metastore
-    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password=''
+    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username
 
   minio-manager-service:
     # image: ghcr.io/kbase/cdm-minio-service:latest-rc
     build:
       context: ../minio_manager_service
       dockerfile: Dockerfile
-    platform: linux/amd64
+    # platform: linux/amd64
     ports:
       - "8003:8000"
     environment:
@@ -79,12 +86,53 @@ services:
       - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
       - REDIS_URL=redis://redis:6379
 
+  datalake-mcp-server:
+    build:
+      context: ../datalake-mcp-server
+      dockerfile: Dockerfile
+      args:
+        BASE_TAG: local
+        BASE_REGISTRY: ""
+    # platform: linux/amd64
+    ports:
+      - "8005:8000"  # MCP server port
+    environment:
+      # Shared MCP service - connects to user-specific Spark Connect servers
+      # For docker-compose local dev, we default to the primary notebook (tgu2)
+      # NOTE: Due to different port mappings in docker-compose (tgu2:15002, tgu1:15003),
+      #       the MCP server will primarily work with tgu2. In Kubernetes, all users
+      #       follow the same pattern: sc://jupyter-{username}.jupyterhub-{env}:15002
+      - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
+      - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
+      - MINIO_ENDPOINT_URL=minio:9002
+      - GOVERNANCE_API_URL=http://minio-manager-service:8000
+      - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
+      # PostgreSQL connection (readonly user created by init script)
+      - POSTGRES_URL=postgres:5432
+      - POSTGRES_DB=hive
+      - POSTGRES_USER=readonly_user
+      - POSTGRES_PASSWORD=readonly_password
+    volumes:
+      # Mount the shared /home directory to access all users' credentials
+      # This allows the MCP server to dynamically read any user's credentials
+      # from /home/{username}/.berdl_minio_credentials
+      # In K8s: mount the parent directory or use a shared volume
+      - users_home:/home:ro
+    depends_on:
+      - hive-metastore
+      - minio
+      - minio-manager-service
+      - postgres
+
   spark-master:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
     build:
       context: ../kube_spark_manager_image
       dockerfile: Dockerfile
-    platform: linux/amd64
+      args:
+        BASE_TAG: local
+        BASE_REGISTRY: ""
+    # platform: linux/amd64
     ports:
       - "8090:8080"  # Spark Master Web UI
       - "7077:7077"  # Spark Master
@@ -99,7 +147,10 @@ services:
     build:
       context: ../kube_spark_manager_image
       dockerfile: Dockerfile
-    platform: linux/amd64
+      args:
+        BASE_TAG: local
+        BASE_REGISTRY: ""
+    # platform: linux/amd64
     ports:
       - "8081:8081"  # Spark Worker Web UI
     environment:
@@ -134,6 +185,7 @@ services:
       - POSTGRES_DB=hive
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres-readonly.sh:/docker-entrypoint-initdb.d/init-postgres-readonly.sh:ro
 
   hive-metastore:
     # image: ghcr.io/berdatalakehouse/hive_metastore:main
@@ -144,7 +196,7 @@ services:
         # IMPORTANT: Spark 4.0.0 is only officially compatible with Hive Metastore 4.0.0
         # Using newer Hive versions (4.1.0+) causes Thrift protocol incompatibilities
         HIVE_IMAGE_TAG: "4.0.0"
-    platform: linux/amd64
+    # platform: linux/amd64
     ports:
       - "9083:9083"
     environment:
@@ -191,3 +243,5 @@ volumes:
   postgres_data:
   minio_data:
   redis_data:
+  global_share:
+  users_home:  # Shared volume for all user home directories
