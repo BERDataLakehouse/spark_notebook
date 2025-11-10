@@ -15,19 +15,19 @@ dev = [
     "cdm-tree-browser",
     "datalake-mcp-server-client",
     "httpx==0.28.1",
-    "ipywidgets==8.1.7",
-    "itables==2.4.5",
+    "ipywidgets==8.1.8",
+    "itables==2.5.2",
     "minio==7.2.18",
     "pandas==2.3.3",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.11.0",
-    "pyspark[connect]==4.0.0",
-    "sidecar==0.7.0",
+    "pyspark[connect]==4.0.1",
+    "sidecar==0.8.0",
     "attrs==25.4.0",
     "hmsclient==0.1.1",
     # Development tools
-    "pytest==8.4.1",
-    "ruff==0.13.0",
+    "pytest==8.4.2",
+    "ruff==0.14.4",
 
     # Jupyter AI libraries
     "jupyter-ai==2.31.6",
@@ -36,7 +36,7 @@ dev = [
     "langchain-ollama==0.3.10",  # Keep at 0.3.x for jupyter-ai compatibility
     "langchain-mcp-tools==0.2.13",  # Automatic MCP tool discovery for FastApiMCP servers
     "websockets==15.0.1",  # Required by langchain-mcp-tools
-    "huggingface_hub==1.1.1",
+    "huggingface_hub==1.1.2",
     "jupyter-ai-cborg",
 
     # JupyterLab Brand Extension

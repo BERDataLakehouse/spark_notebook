@@ -21,6 +21,7 @@ env_vars = {
     "BERDL_HIVE_METASTORE_URI": "thrift://localhost:9083",
     "SPARK_CLUSTER_MANAGER_API_URL": "http://localhost:8000",
     "GOVERNANCE_API_URL": "http://localhost:8000",
+    "DATALAKE_MCP_SERVER_URL": "http://localhost:8080",
 }
 
 
