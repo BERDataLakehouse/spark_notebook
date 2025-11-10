@@ -62,12 +62,13 @@ services:
       - NB_USER=YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username associated with the auth token above
     volumes:
       - users_home:/home
+      - global_share:/home/YOUR_CI_KBASE_USERNAME/global_share # <- Update this with your KBase CI username
     depends_on:
       - spark-master
       - minio
       - postgres
       - hive-metastore
-    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/tgu2
+    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username
 
   minio-manager-service:
     # image: ghcr.io/kbase/cdm-minio-service:latest-rc
