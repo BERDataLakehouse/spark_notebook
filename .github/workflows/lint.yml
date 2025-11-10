@@ -55,6 +55,9 @@ jobs:
             exit 1
           }
 
+      - name: tmate
+        uses: mxschmitt/action-tmate@v3
+
       - name: Run container test
         run: |
           echo "Running test inside container..."
