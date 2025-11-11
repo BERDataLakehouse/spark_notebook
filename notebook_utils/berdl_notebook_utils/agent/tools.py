@@ -3,16 +3,27 @@ LangChain tools wrapping BERDL MCP operations.
 
 This module provides tool definitions that allow the agent to interact with
 the BERDL data lake through the MCP server.
+
+All tools follow these conventions:
+- Use StructuredTool with Pydantic schemas for multi-parameter functions
+- Use Tool with single string parameter for simple operations
+- Consistent error handling with user-friendly messages
+- JSON formatting for structured results
 """
 
 import json
+import logging
 from typing import Any
 
 from langchain.tools import Tool
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, Field
 
 from berdl_notebook_utils.agent.prompts import TOOL_DESCRIPTIONS
 from berdl_notebook_utils.agent.settings import get_agent_settings
 from berdl_notebook_utils.mcp import operations as mcp_ops
+
+logger = logging.getLogger(__name__)
 
 
 def _format_result(result: Any) -> str:
@@ -23,7 +34,7 @@ def _format_result(result: Any) -> str:
         result: Result from MCP or governance operation
 
     Returns:
-        Formatted string representation
+        Formatted string representation suitable for LLM consumption
     """
     if isinstance(result, (list, dict)):
         # Pretty print JSON for structured data
@@ -32,60 +43,102 @@ def _format_result(result: Any) -> str:
 
 
 # =============================================================================
+# Pydantic Input Schemas
+# =============================================================================
+
+
+class TableIdentifierInput(BaseModel):
+    """Input schema for operations that require database and table names."""
+
+    database: str = Field(description="Database name (e.g., 'u_tgu2__demo_personal')")
+    table: str = Field(description="Table name (e.g., 'personal_test_table')")
+
+
+class SampleTableInput(BaseModel):
+    """Input schema for sampling table data with optional filters."""
+
+    database: str = Field(description="Database name (e.g., 'u_tgu2__demo_personal')")
+    table: str = Field(description="Table name (e.g., 'personal_test_table')")
+    limit: int = Field(default=10, description="Maximum number of rows to return (default: 10)")
+    columns: list[str] | None = Field(default=None, description="Specific columns to select (optional)")
+    where_clause: str | None = Field(
+        default=None, description="SQL WHERE clause filter without WHERE keyword (optional)"
+    )
+
+
+# =============================================================================
 # Discovery Tools
 # =============================================================================
 
 
-def list_databases_wrapper(dummy_input: str = "") -> str:
-    """Wrapper for mcp_list_databases that accepts string input (LangChain requirement)."""
-    databases = mcp_ops.mcp_list_databases(use_hms=True)
-    if not databases:
-        return "No databases found. You may need to create a database first."
-    return _format_result(databases)
-
-
-def list_tables_wrapper(database: str) -> str:
-    """Wrapper for mcp_list_tables."""
-    tables = mcp_ops.mcp_list_tables(database=database, use_hms=True)
-    if not tables:
-        return f"No tables found in database '{database}'. The database may be empty."
-    return _format_result(tables)
-
-
-def get_table_schema_wrapper(input_str: str) -> str:
+def list_databases(dummy_input: str = "") -> str:
     """
-    Wrapper for mcp_get_table_schema.
+    List all databases accessible to the user.
 
-    Input format: "database.table" or JSON: {"database": "db", "table": "tbl"}
+    Args:
+        dummy_input: Unused parameter (LangChain Tool requires string input)
+
+    Returns:
+        JSON-formatted list of database names or error message
     """
     try:
-        # Try parsing as JSON first
-        if input_str.startswith("{"):
-            params = json.loads(input_str)
-            database = params["database"]
-            table = params["table"]
-        else:
-            # Parse "database.table" format
-            parts = input_str.split(".", 1)
-            if len(parts) != 2:
-                return f"Error: Invalid format. Use 'database.table' or JSON. Got: {input_str}"
-            database, table = parts
+        databases = mcp_ops.mcp_list_databases(use_hms=True)
+        if not databases:
+            return "No databases found. You may need to create a database first."
+        return _format_result(databases)
+    except Exception as e:
+        logger.error(f"Error listing databases: {e}")
+        return f"Error listing databases: {e}"
 
+
+def list_tables(database: str) -> str:
+    """
+    List all tables in a specific database.
+
+    Args:
+        database: Name of the database to query
+
+    Returns:
+        JSON-formatted list of table names or error message
+    """
+    try:
+        tables = mcp_ops.mcp_list_tables(database=database, use_hms=True)
+        if not tables:
+            return f"No tables found in database '{database}'. The database may be empty."
+        return _format_result(tables)
+    except Exception as e:
+        logger.error(f"Error listing tables in '{database}': {e}")
+        return f"Error listing tables in '{database}': {e}"
+
+
+def get_table_schema(database: str, table: str) -> str:
+    """
+    Get the schema (column names and types) for a specific table.
+
+    Args:
+        database: Name of the database
+        table: Name of the table
+
+    Returns:
+        JSON-formatted list of column definitions or error message
+    """
+    try:
         schema = mcp_ops.mcp_get_table_schema(database=database, table=table)
         return _format_result(schema)
-    except json.JSONDecodeError as e:
-        return f"Error parsing input: {e}"
-    except KeyError as e:
-        return f"Error: Missing required key {e}"
     except Exception as e:
-        return f"Error getting table schema: {e}"
+        logger.error(f"Error getting schema for '{database}.{table}': {e}")
+        return f"Error getting table schema for '{database}.{table}': {e}"
 
 
-def get_database_structure_wrapper(input_str: str = "false") -> str:
+def get_database_structure(input_str: str = "false") -> str:
     """
-    Wrapper for mcp_get_database_structure.
+    Get the complete structure of all databases and tables.
 
-    Input: "true" or "false" (string) for with_schema parameter.
+    Args:
+        input_str: "true" or "false" string indicating whether to include schemas
+
+    Returns:
+        JSON-formatted database structure or error message
     """
     try:
         # Parse boolean input
@@ -93,6 +146,7 @@ def get_database_structure_wrapper(input_str: str = "false") -> str:
         structure = mcp_ops.mcp_get_database_structure(with_schema=with_schema, use_hms=True)
         return _format_result(structure)
     except Exception as e:
+        logger.error(f"Error getting database structure: {e}")
         return f"Error getting database structure: {e}"
 
 
@@ -101,21 +155,27 @@ def get_database_structure_wrapper(input_str: str = "false") -> str:
 # =============================================================================
 
 
-def sample_table_wrapper(input_str: str) -> str:
+def sample_table(
+    database: str,
+    table: str,
+    limit: int = 10,
+    columns: list[str] | None = None,
+    where_clause: str | None = None,
+) -> str:
     """
-    Wrapper for mcp_sample_table.
+    Sample data from a Delta Lake table.
 
-    Input format: JSON with keys: database, table, limit (optional), columns (optional), where_clause (optional)
-    Example: {"database": "mydb", "table": "mytable", "limit": 10}
+    Args:
+        database: Name of the database
+        table: Name of the table
+        limit: Maximum number of rows to return (default: 10)
+        columns: Optional list of column names to select
+        where_clause: Optional SQL WHERE clause (without WHERE keyword)
+
+    Returns:
+        JSON-formatted sample data or error message
     """
     try:
-        params = json.loads(input_str)
-        database = params["database"]
-        table = params["table"]
-        limit = params.get("limit", 10)
-        columns = params.get("columns")
-        where_clause = params.get("where_clause")
-
         result = mcp_ops.mcp_sample_table(
             database=database,
             table=table,
@@ -124,41 +184,28 @@ def sample_table_wrapper(input_str: str) -> str:
             where_clause=where_clause,
         )
         return _format_result(result)
-    except json.JSONDecodeError as e:
-        return f"Error parsing input JSON: {e}"
-    except KeyError as e:
-        return f"Error: Missing required key {e}. Need at least 'database' and 'table'."
     except Exception as e:
-        return f"Error sampling table: {e}"
+        logger.error(f"Error sampling table '{database}.{table}': {e}")
+        return f"Error sampling table '{database}.{table}': {e}"
 
 
-def count_table_rows_wrapper(input_str: str) -> str:
+def count_table_rows(database: str, table: str) -> str:
     """
-    Wrapper for mcp_count_table.
+    Count the number of rows in a Delta Lake table.
 
-    Input format: "database.table" or JSON: {"database": "db", "table": "tbl"}
+    Args:
+        database: Name of the database
+        table: Name of the table
+
+    Returns:
+        Human-readable row count message or error message
     """
     try:
-        # Try parsing as JSON first
-        if input_str.startswith("{"):
-            params = json.loads(input_str)
-            database = params["database"]
-            table = params["table"]
-        else:
-            # Parse "database.table" format
-            parts = input_str.split(".", 1)
-            if len(parts) != 2:
-                return f"Error: Invalid format. Use 'database.table' or JSON. Got: {input_str}"
-            database, table = parts
-
         count = mcp_ops.mcp_count_table(database=database, table=table)
         return f"Table {database}.{table} has {count:,} rows."
-    except json.JSONDecodeError as e:
-        return f"Error parsing input: {e}"
-    except KeyError as e:
-        return f"Error: Missing required key {e}"
     except Exception as e:
-        return f"Error counting rows: {e}"
+        logger.error(f"Error counting rows in '{database}.{table}': {e}")
+        return f"Error counting rows in '{database}.{table}': {e}"
 
 
 # =============================================================================
@@ -166,11 +213,15 @@ def count_table_rows_wrapper(input_str: str) -> str:
 # =============================================================================
 
 
-def query_table_wrapper(query: str) -> str:
+def query_table(query: str) -> str:
     """
-    Wrapper for mcp_query_table.
+    Execute a SQL query against Delta Lake tables.
 
-    Input: SQL query string.
+    Args:
+        query: SQL query string (must be valid Spark SQL)
+
+    Returns:
+        JSON-formatted query results or error message
     """
     try:
         # Check row limit from settings
@@ -198,6 +249,7 @@ def query_table_wrapper(query: str) -> str:
 
         return _format_result(result)
     except Exception as e:
+        logger.error(f"Error executing query: {e}")
         return f"Error executing query: {e}"
 
 
@@ -206,60 +258,78 @@ def query_table_wrapper(query: str) -> str:
 # =============================================================================
 
 
-def get_discovery_tools() -> list[Tool]:
-    """Get data discovery tools."""
+def get_discovery_tools() -> list[Tool | StructuredTool]:
+    """
+    Get data discovery tools for exploring databases and tables.
+
+    Returns:
+        List of discovery tools (mix of Tool and StructuredTool)
+    """
     return [
         Tool(
             name="list_databases",
-            func=list_databases_wrapper,
+            func=list_databases,
             description=TOOL_DESCRIPTIONS["list_databases"],
         ),
         Tool(
             name="list_tables",
-            func=list_tables_wrapper,
+            func=list_tables,
             description=TOOL_DESCRIPTIONS["list_tables"],
         ),
-        Tool(
+        StructuredTool(
             name="get_table_schema",
-            func=get_table_schema_wrapper,
             description=TOOL_DESCRIPTIONS["get_table_schema"],
+            func=get_table_schema,
+            args_schema=TableIdentifierInput,
         ),
         Tool(
             name="get_database_structure",
-            func=get_database_structure_wrapper,
+            func=get_database_structure,
             description=TOOL_DESCRIPTIONS["get_database_structure"],
         ),
     ]
 
 
-def get_data_inspection_tools() -> list[Tool]:
-    """Get data inspection tools."""
+def get_data_inspection_tools() -> list[StructuredTool]:
+    """
+    Get data inspection tools for sampling and counting table data.
+
+    Returns:
+        List of data inspection tools
+    """
     return [
-        Tool(
+        StructuredTool(
             name="sample_table",
-            func=sample_table_wrapper,
             description=TOOL_DESCRIPTIONS["sample_table"],
+            func=sample_table,
+            args_schema=SampleTableInput,
         ),
-        Tool(
+        StructuredTool(
             name="count_table_rows",
-            func=count_table_rows_wrapper,
             description=TOOL_DESCRIPTIONS["count_table_rows"],
+            func=count_table_rows,
+            args_schema=TableIdentifierInput,
         ),
     ]
 
 
 def get_query_tools() -> list[Tool]:
-    """Get SQL query execution tools."""
+    """
+    Get SQL query execution tools.
+
+    Returns:
+        List of query execution tools
+    """
     return [
         Tool(
             name="query_table",
-            func=query_table_wrapper,
+            func=query_table,
             description=TOOL_DESCRIPTIONS["query_table"],
         ),
     ]
 
 
-def get_all_tools(enable_sql_execution: bool = True) -> list[Tool]:
+def get_all_tools(enable_sql_execution: bool = True) -> list[Tool | StructuredTool]:
     """
     Get all available tools for the agent.
 
@@ -267,7 +337,7 @@ def get_all_tools(enable_sql_execution: bool = True) -> list[Tool]:
         enable_sql_execution: Include SQL query execution tools
 
     Returns:
-        List of LangChain Tool objects
+        List of LangChain Tool objects (mix of Tool and StructuredTool)
     """
     tools = []
 
