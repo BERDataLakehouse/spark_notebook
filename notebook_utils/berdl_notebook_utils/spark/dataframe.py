@@ -14,7 +14,7 @@ from IPython.display import display
 from ipywidgets import Accordion, VBox, HTML
 from itables import init_notebook_mode, show
 from pandas import DataFrame as PandasDataFrame
-from pyspark.sql import DataFrame as SparkDataFrame, SparkSession, DataFrame
+from pyspark.sql import DataFrame as SparkDataFrame, SparkSession
 from sidecar import Sidecar
 
 from berdl_notebook_utils import get_minio_client
@@ -140,7 +140,7 @@ def read_csv(
     header: bool = True,
     sep: str | None = None,
     **kwargs,
-) -> DataFrame:
+) -> SparkDataFrame:
     """
     Read CSV file from MinIO into a Spark DataFrame with automatic delimiter detection.
 

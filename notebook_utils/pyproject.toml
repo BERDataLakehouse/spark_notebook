@@ -4,16 +4,7 @@ version = "0.0.1"
 description = "berdl_notebook_utils"
 readme = "README.md"
 requires-python = ">=3.12"  # Allow Python 3.12+ for MCP server compatibility
-dependencies = []
-
-[dependency-groups]
-dev = [
-    # Runtime dependencies (provided by the spark notebook base image)
-    "cdm-spark-manager-client",
-    "cdm-task-service-client",
-    "minio-manager-service-client",
-    "cdm-tree-browser",
-    "datalake-mcp-server-client",
+dependencies = [
     "httpx==0.28.1",
     "ipywidgets==8.1.8",
     "itables==2.5.2",
@@ -25,10 +16,14 @@ dev = [
     "sidecar==0.8.0",
     "attrs==25.4.0",
     "hmsclient==0.1.1",
-    # Development tools
-    "pytest==8.4.2",
-    "ruff==0.14.4",
-
+    # Runtime dependencies (provided by the spark notebook base image)
+    "cdm-spark-manager-client",
+    "cdm-task-service-client",
+    "minio-manager-service-client",
+    "cdm-tree-browser",
+    "datalake-mcp-server-client",
+    # JupyterLab Brand Extension
+    "cdm-jupyterlab-brand-extension",
     # Jupyter AI libraries
     "jupyter-ai==2.31.6",
     "langchain-openai==0.3.35",  # Keep at 0.3.x for jupyter-ai compatibility
@@ -38,11 +33,14 @@ dev = [
     "websockets==15.0.1",  # Required by langchain-mcp-tools
     "huggingface_hub==1.1.2",
     "jupyter-ai-cborg",
-
-    # JupyterLab Brand Extension
-    "cdm-jupyterlab-brand-extension",
 ]
 
+[dependency-groups]
+dev = [
+    # Development tools
+    "pytest==8.4.2",
+    "ruff==0.14.4",
+]
 
 [tool.uv.sources]
 cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client.git", rev = "0.2.1" }
