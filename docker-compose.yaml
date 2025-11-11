@@ -4,39 +4,77 @@
 # INSTRUCTIONS:
 # =============
 #
-# 1. AUTHENTICATION SETUP:
-#    - Update KBASE_AUTH_TOKEN in spark-notebook service with your KBase CI auth token
-#    - Update NB_USER in spark-notebook service with your KBase CI username associated
-#      with the auth token above
+# OPTION A: USING PRE-BUILT IMAGES (RECOMMENDED FOR MOST USERS)
+# --------------------------------------------------------------
+# If you want to use pre-built images from the registry:
+# 1. Uncomment the 'image:' and 'platform:' lines in each service
+# 2. Comment out the 'build:' sections
+# 3. Run: docker compose up -d
 #
-# 2. USING LOCAL SOURCE CODE:
-#    For each service, if you have cloned the corresponding repositories at the same
-#    level as spark-notebook directory, you can:
-#    - Comment out the 'image:' line (if present)
-#    - Uncomment the 'build:' section to build from local Dockerfile
+# No build steps required!
 #
-#    Example for minio-manager-service:
-#    # image: ghcr.io/kbase/cdm-minio-service:latest-rc  # <- Comment this out
-#       build:                                              # <- Uncomment this
-#         context: ../minio_manager_service                 # <- And its contents
-#         dockerfile: Dockerfile
+# OPTION B: BUILDING FROM LOCAL SOURCE CODE (FOR DEVELOPERS)
+# -----------------------------------------------------------
+# If you're developing and want to build from local source:
 #
-#    This applies to: spark-master, spark-worker, hive-metastore
+# 1. CLONE REQUIRED REPOSITORIES:
+#    You need to clone the following repos from https://github.com/BERDataLakehouse
+#    at the same directory level as this spark_notebook directory:
 #
-# 3. DEFAULT CREDENTIALS:
-#    - MinIO: minio/minio123 (configured in minio and minio-manager-service)
-#    - PostgreSQL: hive/hivepassword (configured in postgres and hive-metastore)
-
+#    git clone https://github.com/BERDataLakehouse/spark_notebook_base.git
+#    git clone https://github.com/BERDataLakehouse/kube_spark_manager_image.git
+#    git clone https://github.com/BERDataLakehouse/hive_metastore.git
+#    git clone https://github.com/BERDataLakehouse/datalake-mcp-server.git
+#    git clone https://github.com/kbase/minio_manager_service.git
+#
+#    Your directory structure should look like:
+#    parent/
+#      ├── spark_notebook/           (this directory)
+#      ├── spark_notebook_base/
+#      ├── kube_spark_manager_image/
+#      ├── hive_metastore/
+#      ├── datalake-mcp-server/
+#      └── minio_manager_service/
+#
+# 2. BUILD REQUIRED BASE IMAGES FIRST:
+#    cd ../spark_notebook_base && \
+#    docker build -t spark_notebook_base:local .
+#
+#    cd ../spark_notebook && \
+#    docker build \
+#      -t spark_notebook:local \
+#      --build-arg BASE_TAG=local \
+#      --build-arg BASE_REGISTRY="" \
+#      .
+#
+# 3. ENSURE BUILD SECTIONS ARE UNCOMMENTED:
+#    The docker-compose.yaml should have 'build:' sections uncommented
+#    and 'image:' lines commented out for services you want to build locally.
+#
+# 4. RUN DOCKER COMPOSE:
+#    docker compose up -d --build
+#
+#    NOTE: Base images must be rebuilt when Dockerfiles or dependencies change.
+#
+# AUTHENTICATION SETUP (REQUIRED FOR BOTH OPTIONS):
+# --------------------------------------------------
+# - Update KBASE_AUTH_TOKEN with your KBase CI auth token
+# - Update NB_USER with your KBase CI username
+#
+# DEFAULT CREDENTIALS:
+# --------------------
+# - MinIO: minio/minio123
+# - PostgreSQL: hive/hivepassword
 services:
   spark-notebook:
-    # image: ghcr.io/berdatalakehouse/spark_notebook:pr-38
+    # image: ghcr.io/berdatalakehouse/spark_notebook:main
+    # platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
-    # platform: linux/amd64
     ports:
       - "8888:8888"  # Jupyter notebook
       - "15002:15002"  # Spark Connect server
@@ -72,10 +110,10 @@ services:
 
   minio-manager-service:
     # image: ghcr.io/kbase/cdm-minio-service:latest-rc
+    # platform: linux/amd64
     build:
       context: ../minio_manager_service
       dockerfile: Dockerfile
-    # platform: linux/amd64
     ports:
       - "8003:8000"
     environment:
@@ -87,13 +125,14 @@ services:
       - REDIS_URL=redis://redis:6379
 
   datalake-mcp-server:
+    # image: ghcr.io/berdatalakehouse/datalake-mcp-server:main
+    # platform: linux/amd64
     build:
       context: ../datalake-mcp-server
       dockerfile: Dockerfile
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
-    # platform: linux/amd64
     ports:
       - "8005:8000"  # MCP server port
     environment:
@@ -126,13 +165,13 @@ services:
 
   spark-master:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
+    # platform: linux/amd64
     build:
       context: ../kube_spark_manager_image
       dockerfile: Dockerfile
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
-    # platform: linux/amd64
     ports:
       - "8090:8080"  # Spark Master Web UI
       - "7077:7077"  # Spark Master
@@ -144,13 +183,13 @@ services:
 
   spark-worker:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
+    # platform: linux/amd64
     build:
       context: ../kube_spark_manager_image
       dockerfile: Dockerfile
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
-    # platform: linux/amd64
     ports:
       - "8081:8081"  # Spark Worker Web UI
     environment:
@@ -189,6 +228,7 @@ services:
 
   hive-metastore:
     # image: ghcr.io/berdatalakehouse/hive_metastore:main
+    # platform: linux/amd64
     build:
       context: ../hive_metastore
       dockerfile: Dockerfile
@@ -196,7 +236,6 @@ services:
         # IMPORTANT: Spark 4.0.0 is only officially compatible with Hive Metastore 4.0.0
         # Using newer Hive versions (4.1.0+) causes Thrift protocol incompatibilities
         HIVE_IMAGE_TAG: "4.0.0"
-    # platform: linux/amd64
     ports:
       - "9083:9083"
     environment:
