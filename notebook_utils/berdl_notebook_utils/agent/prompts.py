@@ -174,7 +174,8 @@ TOOL_DESCRIPTIONS = {
     ),
     "get_table_schema": (
         "Get the schema (column names and types) for a specific table. "
-        "Input: database name (string) and table name (string). "
+        "Input: Either 'database.table' format (e.g., 'u_tgu2__demo_personal.personal_test_table') "
+        'or JSON: {"database": "u_tgu2__demo_personal", "table": "personal_test_table"}. '
         "Returns column definitions including names and data types. "
         "Use this before querying a table to understand its structure."
     ),
@@ -187,14 +188,17 @@ TOOL_DESCRIPTIONS = {
     ),
     "sample_table": (
         "Get a sample of data from a table. "
-        "Input: database (string), table (string), limit (int, default 10), "
-        "columns (list of strings, optional), where_clause (string, optional). "
+        "Input: JSON string with keys: 'database' (string, required), 'table' (string, required), "
+        "'limit' (int, optional, default 10), 'columns' (list of strings, optional), "
+        "'where_clause' (string, optional). "
+        'Example: {"database": "u_tgu2__demo_personal", "table": "personal_test_table", "limit": 5} '
         "Returns sample rows from the table. "
         "Use this to preview data before running larger queries."
     ),
     "count_table_rows": (
         "Count the total number of rows in a table. "
-        "Input: database name (string) and table name (string). "
+        "Input: Either 'database.table' format (e.g., 'u_tgu2__demo_personal.personal_test_table') "
+        'or JSON: {"database": "u_tgu2__demo_personal", "table": "personal_test_table"}. '
         "Returns the row count. "
         "Use this to understand table size before querying."
     ),
