@@ -278,6 +278,22 @@ services:
     volumes:
       - minio_data:/data
 
+  minio-create-buckets:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Configuring MinIO...';
+      mc alias set local http://minio:9002 minio minio123;
+
+      echo 'Creating buckets...';
+      mc mb --ignore-existing local/cdm-lake;
+
+      echo 'MinIO bucket creation complete.';
+      "
+
 volumes:
   postgres_data:
   minio_data:
