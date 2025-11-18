@@ -3,36 +3,9 @@ name = "berdl_notebook_utils"
 version = "0.0.1"
 description = "berdl_notebook_utils"
 readme = "README.md"
-requires-python = ">=3.12"  # Allow Python 3.12+ for MCP server compatibility
+requires-python = ">=3.13"
 dependencies = [
-    "httpx==0.28.1",
-    "ipywidgets==8.1.8",
-    "itables==2.5.2",
-    "minio==7.2.18",
-    "pandas==2.3.3",
-    "pydantic>=2.11.7",
-    "pydantic-settings>=2.11.0",
-    "pyspark[connect]==4.0.1",
-    "sidecar==0.8.0",
-    "attrs==25.4.0",
-    "hmsclient==0.1.1",
-    # Runtime dependencies (provided by the spark notebook base image)
-    "cdm-spark-manager-client",
-    "cdm-task-service-client",
-    "minio-manager-service-client",
-    "cdm-tree-browser",
-    "datalake-mcp-server-client",
-    # JupyterLab Brand Extension
-    "cdm-jupyterlab-brand-extension",
-    # Jupyter AI libraries
-    "jupyter-ai==2.31.6",
-    "langchain-openai==0.3.35",  # Keep at 0.3.x for jupyter-ai compatibility
-    "langchain-anthropic==0.3.22",  # Keep at 0.3.x for jupyter-ai compatibility
-    "langchain-ollama==0.3.10",  # Keep at 0.3.x for jupyter-ai compatibility
-    "langchain-mcp-tools==0.2.13",  # Automatic MCP tool discovery for FastApiMCP servers
-    "websockets==15.0.1",  # Required by langchain-mcp-tools
-    "huggingface_hub==1.1.2",
-    "jupyter-ai-cborg",
+    "berdl-notebook-python-base",
 ]
 
 [dependency-groups]
@@ -41,15 +14,6 @@ dev = [
     "pytest==8.4.2",
     "ruff==0.14.4",
 ]
-
-[tool.uv.sources]
-cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client.git", rev = "0.2.1" }
-cdm-spark-manager-client = { git = "https://github.com/kbase/cdm-kube-spark-manager-client.git", rev = "0.0.1" }
-minio-manager-service-client = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git", rev = "v0.0.5" }
-cdm-tree-browser = { url = "https://github.com/kbaseincubator/cdm-tree-browser/releases/download/0.0.2/cdm_tree_browser-0.1.0-py3-none-any.whl" }
-jupyter-ai-cborg = { git = "https://github.com/kbaseincubator/cdm-jupyter-ai-cborg.git", rev = "v0.1.0" }
-cdm-jupyterlab-brand-extension = {url = "https://github.com/kbaseincubator/cdm_jupyterlab_brand_extension/raw/main/dist/cdm_jupyterlab_brand_extension-0.1.0-py3-none-any.whl" }
-datalake-mcp-server-client = { git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git", rev = "v0.0.2" }
 
 [tool.ruff]
 
@@ -85,6 +49,9 @@ docstring-code-line-length = "dynamic"
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v"
+
+[tool.uv.sources]
+berdl-notebook-python-base = { git = "https://github.com/BERDataLakehouse/spark_notebook_base.git" }
 
 [tool.ruff.lint.per-file-ignores]
 "**/cdm_spark_cluster_manager_api_client/**/*.py" = ["E501"]
