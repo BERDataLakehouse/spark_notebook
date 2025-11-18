@@ -68,16 +68,18 @@
 services:
   spark-notebook:
     # image: ghcr.io/berdatalakehouse/spark_notebook:main
+    image: spark_notebook:latest
+    pull_policy: never
     # platform: linux/amd64
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BASE_TAG: local
-        BASE_REGISTRY: ""
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     BASE_TAG: local
+    #     BASE_REGISTRY: ""
     ports:
-      - "8888:8888"  # Jupyter notebook
-      - "15002:15002"  # Spark Connect server
+      - "8888:8888" # Jupyter notebook
+      - "15002:15002" # Spark Connect server
     environment:
       # CORE BERDL CONFIGURATION
       - CDM_TASK_SERVICE_URL=http://localhost:8080
@@ -93,27 +95,26 @@ services:
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
 
       # DATALAKE MCP SERVER CONFIGURATION
-      - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
+      - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcpdocker
 
       # AUTHENTICATION CONFIGURATION
-      - KBASE_AUTH_TOKEN=YOUR_CI_KBASE_AUTH_TOKEN # <- Update this with your KBase CI auth token
-      - NB_USER=YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username associated with the auth token above
+      - KBASE_AUTH_TOKEN=${CI_KBASE_PASSWORD} # <- Update this with your KBase CI auth token
+      - NB_USER=${CI_KBASE_USERNAME} # <- Update this with your KBase CI username associated with the auth token above
     volumes:
       - users_home:/home
-      - global_share:/home/YOUR_CI_KBASE_USERNAME/global_share # <- Update this with your KBase CI username
+      - global_share:/home/${CI_KBASE_USERNAME}/global_share # <- Update this with your KBase CI username
     depends_on:
       - spark-master
       - minio
       - postgres
       - hive-metastore
-    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username
-
+    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME} # <- Update this with your KBase CI username
   minio-manager-service:
-    # image: ghcr.io/kbase/cdm-minio-service:latest-rc
-    # platform: linux/amd64
-    build:
-      context: ../minio_manager_service
-      dockerfile: Dockerfile
+    image: ghcr.io/kbase/cdm-minio-service:latest-rc
+    platform: linux/amd64
+    # build:
+    #   context: ../minio_manager_service
+    #   dockerfile: Dockerfile
     ports:
       - "8003:8000"
     environment:
@@ -124,57 +125,57 @@ services:
       - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
       - REDIS_URL=redis://redis:6379
 
-  datalake-mcp-server:
-    # image: ghcr.io/berdatalakehouse/datalake-mcp-server:main
-    # platform: linux/amd64
-    build:
-      context: ../datalake-mcp-server
-      dockerfile: Dockerfile
-      args:
-        BASE_TAG: local
-        BASE_REGISTRY: ""
-    ports:
-      - "8005:8000"  # MCP server port
-    environment:
-      # Shared MCP service - connects to user-specific Spark Connect servers
-      # For docker-compose local dev, we default to the primary notebook (tgu2)
-      # NOTE: Due to different port mappings in docker-compose (tgu2:15002, tgu1:15003),
-      #       the MCP server will primarily work with tgu2. In Kubernetes, all users
-      #       follow the same pattern: sc://jupyter-{username}.jupyterhub-{env}:15002
-      - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
-      - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
-      - MINIO_ENDPOINT_URL=minio:9002
-      - GOVERNANCE_API_URL=http://minio-manager-service:8000
-      - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
-      # PostgreSQL connection (readonly user created by init script)
-      - POSTGRES_URL=postgres:5432
-      - POSTGRES_DB=hive
-      - POSTGRES_USER=readonly_user
-      - POSTGRES_PASSWORD=readonly_password
-    volumes:
-      # Mount the shared /home directory to access all users' credentials
-      # This allows the MCP server to dynamically read any user's credentials
-      # from /home/{username}/.berdl_minio_credentials
-      # In K8s: mount the parent directory or use a shared volume
-      - users_home:/home:ro
-    depends_on:
-      - hive-metastore
-      - minio
-      - minio-manager-service
-      - postgres
+  # datalake-mcp-server:
+  #   image: ghcr.io/berdatalakehouse/datalake-mcp-server:main
+  #   platform: linux/amd64
+  #   # build:
+  #   #   context: ../datalake-mcp-server
+  #   #   dockerfile: Dockerfile
+  #   #   args:
+  #   #     BASE_TAG: local
+  #   #     BASE_REGISTRY: ""
+  #   ports:
+  #     - "8005:8000" # MCP server port
+  #   environment:
+  #     # Shared MCP service - connects to user-specific Spark Connect servers
+  #     # For docker-compose local dev, we default to the primary notebook (tgu2)
+  #     # NOTE: Due to different port mappings in docker-compose (tgu2:15002, tgu1:15003),
+  #     #       the MCP server will primarily work with tgu2. In Kubernetes, all users
+  #     #       follow the same pattern: sc://jupyter-{username}.jupyterhub-{env}:15002
+  #     - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
+  #     - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
+  #     - MINIO_ENDPOINT_URL=minio:9002
+  #     - GOVERNANCE_API_URL=http://minio-manager-service:8000
+  #     - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
+  #     # PostgreSQL connection (readonly user created by init script)
+  #     - POSTGRES_URL=postgres:5432
+  #     - POSTGRES_DB=hive
+  #     - POSTGRES_USER=readonly_user
+  #     - POSTGRES_PASSWORD=readonly_password
+  #   volumes:
+  #     # Mount the shared /home directory to access all users' credentials
+  #     # This allows the MCP server to dynamically read any user's credentials
+  #     # from /home/{username}/.berdl_minio_credentials
+  #     # In K8s: mount the parent directory or use a shared volume
+  #     - users_home:/home:ro
+  #   depends_on:
+  #     - hive-metastore
+  #     - minio
+  #     - minio-manager-service
+  #     - postgres
 
   spark-master:
-    # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
-    # platform: linux/amd64
+    image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
+    platform: linux/amd64
     build:
-      context: ../kube_spark_manager_image
+      #   context: ../kube_spark_manager_image
       dockerfile: Dockerfile
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
     ports:
-      - "8090:8080"  # Spark Master Web UI
-      - "7077:7077"  # Spark Master
+      - "8090:8080" # Spark Master Web UI
+      - "7077:7077" # Spark Master
     environment:
       - SPARK_MODE=master
       - SPARK_MASTER_HOST=0.0.0.0
@@ -182,16 +183,16 @@ services:
       - SPARK_MASTER_WEBUI_PORT=8080
 
   spark-worker:
-    # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
-    # platform: linux/amd64
+    image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
+    platform: linux/amd64
     build:
-      context: ../kube_spark_manager_image
+      # context: ../kube_spark_manager_image
       dockerfile: Dockerfile
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
     ports:
-      - "8081:8081"  # Spark Worker Web UI
+      - "8081:8081" # Spark Worker Web UI
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -227,10 +228,10 @@ services:
       - ./scripts/init-postgres-readonly.sh:/docker-entrypoint-initdb.d/init-postgres-readonly.sh:ro
 
   hive-metastore:
-    # image: ghcr.io/berdatalakehouse/hive_metastore:main
-    # platform: linux/amd64
+    image: ghcr.io/berdatalakehouse/hive_metastore:main
+    platform: linux/amd64
     build:
-      context: ../hive_metastore
+      # context: ../hive_metastore
       dockerfile: Dockerfile
       args:
         # IMPORTANT: Spark 4.0.0 is only officially compatible with Hive Metastore 4.0.0
@@ -245,7 +246,7 @@ services:
       - POSTGRES_PASSWORD=hivepassword
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      
+
       # MinIO S3 configuration
       - S3_ENDPOINT=http://minio:9002
       - S3_ACCESS_KEY=minio
@@ -264,8 +265,8 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
     ports:
-      - "9002:9002"  # MinIO API
-      - "9003:9003"  # MinIO Console
+      - "9002:9002" # MinIO API
+      - "9003:9003" # MinIO Console
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
@@ -299,4 +300,4 @@ volumes:
   minio_data:
   redis_data:
   global_share:
-  users_home:  # Shared volume for all user home directories
+  users_home: # Shared volume for all user home directories

@@ -1,6 +1,7 @@
 ARG BASE_TAG=main
 ARG BASE_REGISTRY=ghcr.io/berdatalakehouse/
-FROM ${BASE_REGISTRY}spark_notebook_base:${BASE_TAG}
+# FROM ${BASE_REGISTRY}spark_notebook_base:${BASE_TAG}
+FROM spark_notebook_base:local
 
 COPY configs/extensions /configs/extensions/
 COPY configs/skel/* /etc/skel
