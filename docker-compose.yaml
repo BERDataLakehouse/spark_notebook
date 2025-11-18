@@ -58,8 +58,8 @@
 #
 # AUTHENTICATION SETUP (REQUIRED FOR BOTH OPTIONS):
 # --------------------------------------------------
-# - Update KBASE_AUTH_TOKEN with your KBase CI auth token
-# - Update NB_USER with your KBase CI username
+# - rename the file `.env.sample` to `.env`
+# - update the file with your KBase CI user name and auth token
 #
 # DEFAULT CREDENTIALS:
 # --------------------
@@ -96,17 +96,17 @@ services:
       - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
 
       # AUTHENTICATION CONFIGURATION
-      - KBASE_AUTH_TOKEN=YOUR_CI_KBASE_AUTH_TOKEN # <- Update this with your KBase CI auth token
-      - NB_USER=YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username associated with the auth token above
+      - KBASE_AUTH_TOKEN=${CI_KBASE_AUTH_TOKEN}
+      - NB_USER=${CI_KBASE_USERNAME}
     volumes:
       - users_home:/home
-      - global_share:/home/YOUR_CI_KBASE_USERNAME/global_share # <- Update this with your KBase CI username
+      - global_share:/home/${CI_KBASE_USERNAME}/global_share
     depends_on:
       - spark-master
       - minio
       - postgres
       - hive-metastore
-    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/YOUR_CI_KBASE_USERNAME # <- Update this with your KBase CI username
+    command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
   minio-manager-service:
     # image: ghcr.io/kbase/cdm-minio-service:latest-rc
