@@ -1,0 +1,180 @@
+
+# MinIO Guide
+
+This guide provides an overview of using MinIO with the `mc` (MinIO Client) tool and a sample Python script for 
+interacting with MinIO.
+
+## Using MinIO UI
+
+BERDL provides MinIO UI access through the following URLs based on your environment:
+
+**Development Environment:**
+```
+https://minio-ui.dev.berdl.kbase.us
+```
+
+**Staging Environment:**
+```
+https://minio-ui.stage.berdl.kbase.us
+```
+
+**Production Environment:**
+```
+https://minio-ui.berdl.kbase.us
+```
+
+Log in using your MinIO credentials (access key and secret key).
+
+### Getting Your MinIO Credentials
+
+**From within JupyterHub notebooks**, your MinIO credentials are automatically available as environment variables:
+
+```python
+import os
+
+# Get your MinIO credentials
+access_key, secret_key = os.environ['MINIO_ACCESS_KEY'], os.environ['MINIO_SECRET_KEY']
+
+print(f"Access Key (username for MinIO UI): {access_key}")
+# Note: Keep your secret key secure - don't share or print it in shared notebooks
+```
+
+These are the same credentials you use to:
+- Log in to the MinIO UI (username = access key, password = secret key)
+- Configure the MinIO Client (`mc`)
+- Access MinIO via Python/boto3
+
+## Prerequisites (For Local MinIO Client Access)
+
+If you need to access MinIO from your local machine using the MinIO Client (`mc`), you'll need to set up SSH tunneling and browser proxy configuration.
+
+Please refer to the [BERDL JupyterHub User Guide](user_guide.md) for detailed instructions on:
+- Setting up SSH tunnels
+- Configuring browser proxy settings
+
+Once your tunnel and proxy are configured, you can proceed with the MinIO Client setup below.
+
+## Using MinIO Client (`mc`)
+
+### Installation
+
+Download and install the MinIO Client (`mc`) from the [MinIO official website](https://min.io/download?license=agpl&platform=macos).
+
+### Configuration
+
+1. Add MinIO server to the `mc` configuration based on your environment:
+
+    **Development Environment:**
+    ```bash
+    mc alias set berdl-minio https://minio-ui.dev.berdl.kbase.us
+    ```
+
+    **Staging Environment:**
+    ```bash
+    mc alias set berdl-minio https://minio-ui.stage.berdl.kbase.us
+    ```
+
+    **Production Environment:**
+    ```bash
+    mc alias set berdl-minio https://minio-ui.berdl.kbase.us
+    ```
+
+    It will prompt you to enter the access key and secret key. See the "Getting Your MinIO Credentials" section above for how to retrieve these values.
+
+2. Verify the configuration and connection:
+
+    ```bash
+    mc ls berdl-minio
+    ```
+
+
+### Basic Commands
+
+* List all buckets:
+
+    ```bash
+    mc ls berdl-minio
+    ```
+
+* Upload a file:
+
+    ```bash
+    mc cp <local_file_path> berdl-minio/<bucket_name>
+    ```
+* Upload a directory:
+
+    ```bash
+    mc cp --recursive <local_directory_path> berdl-minio/<bucket_name>
+    ```
+
+* Download a file:
+
+    ```bash
+    mc cp berdl-minio/<bucket_name>/<file_name> <local_file_path>
+    ```
+
+* Download a directory:
+
+    ```bash
+    mc cp --recursive berdl-minio/<bucket_name> <local_directory_path>
+    ```
+  
+## Using MinIO with Python
+
+The following Python script demonstrates how to interact with MinIO using the `boto3` library.
+
+Ensure you have the `boto3` library installed:
+
+```bash
+pip install boto3
+```
+
+### Sample Python Script
+
+**From within JupyterHub** (credentials auto-injected):
+```python
+from pathlib import Path
+import os
+import boto3
+
+# MinIO configuration - adjust endpoint based on your environment
+# Development:   endpoint_url = 'https://minio-ui.dev.berdl.kbase.us'
+# Staging:       endpoint_url = 'https://minio-ui.stage.berdl.kbase.us'
+# Production:    endpoint_url = 'https://minio-ui.berdl.kbase.us'
+
+endpoint_url = 'https://minio-ui.berdl.kbase.us'
+
+# Get credentials from environment variables (automatically set in JupyterHub)
+access_key = os.environ['MINIO_ACCESS_KEY']
+secret_key = os.environ['MINIO_SECRET_KEY']
+
+# Create S3 client
+s3 = boto3.client('s3',
+                  endpoint_url=endpoint_url,
+                  aws_access_key_id=access_key,
+                  aws_secret_access_key=secret_key)
+
+def upload_to_s3(
+        upload_file: Path,
+        s3_key: str,
+        s3: boto3.client,
+        bucket: str):
+    """
+    Upload the specified file to the specified S3 bucket.
+
+    :param upload_file: path of the file to upload
+    :param s3_key: key of the file in the S3 bucket
+    :param s3: boto3 client for S3
+    :param bucket: name of the S3 bucket
+    """
+    try:
+        # Skip uploading if the file already exists in the bucket
+        s3.head_object(Bucket=bucket, Key=s3_key)
+    except s3.exceptions.ClientError:
+        s3.upload_file(str(upload_file), bucket, s3_key)
+```
+
+## Additional Resources
+* [MinIO Client (mc) Official Guide](https://min.io/docs/minio/linux/reference/minio-mc.html?ref=docs)
+* [MinIO Python SDK](https://docs.min.io/docs/python-client-quickstart-guide.html)
+* [Boto3 Documentation](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html#using-boto3)
