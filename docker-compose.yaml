@@ -122,6 +122,7 @@ services:
       - MINIO_ROOT_PASSWORD=minio123
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
       - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
+      - KBASE_APPROVED_ROLES=BERDL_USER
       - REDIS_URL=redis://redis:6379
 
   datalake-mcp-server:
@@ -151,6 +152,7 @@ services:
       - POSTGRES_DB=hive
       - POSTGRES_USER=readonly_user
       - POSTGRES_PASSWORD=readonly_password
+      - KBASE_REQUIRED_ROLES=BERDL_USER
     volumes:
       # Mount the shared /home directory to access all users' credentials
       # This allows the MCP server to dynamically read any user's credentials
