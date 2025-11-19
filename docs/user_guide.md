@@ -252,3 +252,21 @@ for table_info in db_structure:
     print(f"Table: {table_info['table']}")
     print(f"Columns: {table_info['columns']}")
 ```
+
+## Troubleshooting
+
+### Restarting Your Server
+
+If you encounter issues with your notebook environment (such as kernel errors, connection problems, or need to apply environment updates), you can restart your JupyterHub server:
+
+**Step 1:** In JupyterLab, click **File** → **Hub Control Panel**
+
+**Step 2:** Click the **Stop My Server** button
+
+**Step 3:** Wait for the "Stop My Server" button to disappear (this may take 10-30 seconds)
+
+**Step 4:** Once the button disappears, click **My Server** to start a fresh server instance
+
+> **⚠️ Note:** Stopping your server will close all running notebooks and kernels. Make sure to save your work before restarting.
+
+> **💡 Tip:** Your files in your home directory are persistent and will not be deleted when you restart your server.
