@@ -18,8 +18,8 @@ def _execute_with_spark(func: Any, spark: Optional[SparkSession] = None, *args, 
     Execute a function with a SparkSession, creating one if not provided.
     """
     if spark is None:
-        with get_spark_session() as spark:
-            return func(spark, *args, **kwargs)
+        spark = get_spark_session()
+        return func(spark, *args, **kwargs)
     return func(spark, *args, **kwargs)
 
 
@@ -183,12 +183,12 @@ def get_db_structure(
         for db in databases:
             tables = hive_metastore.get_tables(db)
             if with_schema:
-                with get_spark_session() as spark:
-                    # Get schema using Spark session
-                    db_structure[db] = {
-                        table: get_table_schema(database=db, table=table, spark=spark, return_json=False)
-                        for table in tables
-                    }
+                # Get schema using Spark session
+                spark = get_spark_session()
+                db_structure[db] = {
+                    table: get_table_schema(database=db, table=table, spark=spark, return_json=False)
+                    for table in tables
+                }
             else:
                 db_structure[db] = tables
 
