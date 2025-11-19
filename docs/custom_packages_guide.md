@@ -36,17 +36,16 @@ You should see `(my_venv)` appear in your terminal prompt.
 
 ### Step 4: Verify Inherited Packages (Optional)
 
-You can verify that you have access to the default BERDL packages:
+You can verify that you have access to the default BERDL packages by importing them:
 
 ```bash
-pip list | grep pyspark
-pip list | grep delta-spark
-pip list | grep pandas
-pip list | grep berdl_notebook_utils
-pip list | grep datalake-mcp-server-client
+# Verify system packages are accessible
+python -c "import pyspark; print('PySpark:', pyspark.__version__)"
+python -c "import pandas; print('Pandas:', pandas.__version__)"
+python -c "from berdl_notebook_utils import get_spark_session; print('BERDL utils: OK')"
 ```
 
-You should see all the pre-installed packages from the base environment.
+> **💡 Note:** Running `pip list` with `--system-site-packages` can be very slow (30-60 seconds) as it scans hundreds of system packages. The commands above verify package access much faster. If you want to see all packages, be patient or skip this step and proceed directly to installing your additional packages.
 
 ### Step 5: Install Additional Packages
 
