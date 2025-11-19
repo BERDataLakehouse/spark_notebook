@@ -235,6 +235,195 @@ If the environment doesn't exist, create it first with `python -m venv ~/my_venv
 3. **Clean up unused environments**: Regularly remove environments you no longer use
 4. **Request common packages**: If you find yourself installing the same packages repeatedly, contact the BERDL Platform team to have them added to the base image
 
+## Using Claude Code CLI with BERDL Datalake MCP Server
+
+Claude Code CLI is an AI-powered development assistant that can interact with your BERDL data lake through the Model Context Protocol (MCP). This allows you to query your Delta Lake tables using natural language directly from your JupyterHub terminal.
+
+> **⚠️ Important Security Warning:**
+> - Query results will be sent to Anthropic's servers
+> - Only use with data that is safe to share publicly
+
+### Prerequisites
+
+Before setting up Claude Code CLI in JupyterHub, ensure you have:
+- **Access to BERDL JupyterHub** (see [User Guide](user_guide.md))
+- **Active Anthropic subscription** (Claude Pro/Max) or API access with billing enabled at [console.anthropic.com](https://console.anthropic.com)
+
+### Step 1: Install Claude Code CLI
+
+**Open a terminal in JupyterLab** (File → New → Terminal):
+
+```bash
+# Install Claude Code CLI using the native installer
+curl -fsSL https://claude.ai/install.sh | bash
+
+# Verify installation
+claude --version
+```
+
+The native installer handles all dependencies automatically and doesn't require Node.js.
+
+> **💡 Tip:** If the installation script fails, you may need to add the Claude Code binary to your PATH:
+> ```bash
+> echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.bashrc
+> source ~/.bashrc
+> ```
+
+### Step 2: Authenticate Claude Code
+
+Before configuring MCP servers, authenticate with your Anthropic account:
+
+```bash
+# Start authentication flow
+claude auth login
+```
+
+This will open an OAuth flow. Follow the prompts to complete authentication.
+
+> **Note:** You need an active Claude Pro/Max subscription or API billing enabled at console.anthropic.com
+
+### Step 3: Get Your KBase Authentication Token
+
+In a JupyterHub notebook cell, run:
+
+```python
+import os
+token = os.environ.get('KBASE_AUTH_TOKEN')
+print(f"Your KBase Token: {token}")
+```
+
+**Important:** Keep this token secure and never commit it to version control.
+
+### Step 4: Configure BERDL MCP Server
+
+Create an MCP configuration file in your home directory:
+
+```bash
+# Create the .claude.json configuration file
+cat > ~/.claude.json << 'EOF'
+{
+  "mcpServers": {
+    "berdl-datalake": {
+      "type": "sse",
+      "url": "http://datalake-mcp-server.prod:8000/apis/mcp/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_KBASE_TOKEN_HERE"
+      }
+    }
+  }
+}
+EOF
+
+# Secure the configuration file
+chmod 600 ~/.claude.json
+```
+
+**Replace `YOUR_KBASE_TOKEN_HERE` with the token from Step 3.**
+
+> **💡 Note:** Claude Code CLI reads MCP configuration from `~/.claude.json` (not `~/.mcp.json`). The `.mcp.json` file is only used for project-scoped configurations in the current directory.
+
+### Step 5: Verify MCP Server Connection
+
+Test that the MCP server is accessible:
+
+```bash
+# Test the list databases endpoint
+curl -X 'POST' \
+  'http://datalake-mcp-server.prod:8000/apis/mcp/delta/databases/list' \
+  -H 'accept: application/json' \
+  -H 'Authorization: Bearer YOUR_KBASE_TOKEN_HERE' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "use_postgres": true
+}'
+```
+
+**Replace `YOUR_KBASE_TOKEN` with your actual token from Step 3.**
+
+You should see a JSON response listing your accessible databases.
+
+**Verify Claude Code recognizes the MCP server:**
+
+```bash
+# List configured MCP servers
+claude mcp list
+
+# Check MCP server health
+claude doctor
+```
+
+### Step 6: Start Using Claude Code
+
+Launch Claude Code in your project directory:
+
+```bash
+# Navigate to your work directory
+cd ~/your-project
+
+# Start Claude Code
+claude
+```
+
+Claude Code will start an interactive session. You can now ask questions about your BERDL data!
+
+**Example first prompt:**
+```
+List all databases in the BERDL data lake
+```
+
+## Using Claude Code with Your Data
+
+Once configured, you can interact with your BERDL data using natural language. Claude Code will use the MCP server to execute queries against your Delta Lake tables.
+
+### Example Prompts
+
+**Database Exploration:**
+- "List all databases in the BERDL data lake"
+- "Show me the tables in my personal database u_username__demo_personal"
+- "What's the schema of the personal_test_table in u_username__demo_personal?"
+- "List all tables in the kbase_ontology_source database"
+
+**Data Analysis:**
+```markdown
+- "Count the total rows in kbase_ontology_source.entailed_edge"
+- "Show me 10 sample rows from the kbase_ontology_source.entailed_edge"
+- "What columns are available in the kbase_ke_pangenome database tables?"
+- "Get the schema for all tables in globalusers_demo_shared"
+```
+
+### Best Practices for Claude Code Queries
+
+1. **Be specific about database and table names**: Use the full qualified name (e.g., `u_username__analytics.products`)
+2. **Start with small queries**: Use `LIMIT` to avoid fetching large datasets
+3. **Verify schemas first**: Ask for table schemas before running complex queries
+4. **Test queries incrementally**: Build up complex queries step by step
+5. **Remember data privacy**: Only query data that's safe to share with Anthropic's servers
+
+## Troubleshooting Claude Code CLI Integration
+
+### "Authentication Failed" for MCP Server
+
+If you see KBase authentication errors or KBase token is expired:
+
+1. **Get a fresh token** from your JupyterHub session:
+   ```python
+   import os
+   print(os.environ.get('KBASE_AUTH_TOKEN'))
+   ```
+
+2. **Update ~/.claude.json** with the new token:
+   ```bash
+   vim ~/.claude.json
+   # Replace the Bearer token in the Authorization header
+   ```
+
+3. **Verify the update**:
+   ```bash
+   grep -m 1 '"Authorization"' ~/.claude.json
+   ```
+
+4. **Restart Claude Code** to reload the configuration
+
 ## Getting Help
 
 If you need packages added to the default BERDL environment or encounter issues with custom kernels, please contact the BERDL Platform team for assistance.
