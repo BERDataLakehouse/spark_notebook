@@ -114,10 +114,10 @@ def _update_namespace_view(
     """
     Update the namespace viewer in the sidecar with the latest namespaces and tables.
     """
-    with get_spark_session() as spark:
-        namespaces = spark.sql("SHOW DATABASES").collect()
-        print("Available Namespaces:", [ns.namespace for ns in namespaces])
-        updated_accordion = _create_namespace_accordion(spark, namespaces)
+    spark = get_spark_session()
+    namespaces = spark.sql("SHOW DATABASES").collect()
+    print("Available Namespaces:", [ns.namespace for ns in namespaces])
+    updated_accordion = _create_namespace_accordion(spark, namespaces)
 
     ui = VBox([updated_accordion])
 
