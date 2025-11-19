@@ -320,8 +320,6 @@ chmod 600 ~/.claude.json
 
 **Replace `YOUR_KBASE_TOKEN_HERE` with the token from Step 3.**
 
-> **💡 Note:** Claude Code CLI reads MCP configuration from `~/.claude.json` (not `~/.mcp.json`). The `.mcp.json` file is only used for project-scoped configurations in the current directory.
-
 ### Step 5: Verify MCP Server Connection
 
 Test that the MCP server is accessible:
@@ -378,10 +376,12 @@ Once configured, you can interact with your BERDL data using natural language. C
 ### Example Prompts
 
 **Database Exploration:**
+```markdown
 - "List all databases in the BERDL data lake"
 - "Show me the tables in my personal database u_username__demo_personal"
 - "What's the schema of the personal_test_table in u_username__demo_personal?"
 - "List all tables in the kbase_ontology_source database"
+```
 
 **Data Analysis:**
 ```markdown
