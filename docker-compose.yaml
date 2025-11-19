@@ -25,7 +25,7 @@
 #    git clone https://github.com/BERDataLakehouse/kube_spark_manager_image.git
 #    git clone https://github.com/BERDataLakehouse/hive_metastore.git
 #    git clone https://github.com/BERDataLakehouse/datalake-mcp-server.git
-#    git clone https://github.com/kbase/minio_manager_service.git
+#    git clone https://github.com/BERDataLakehouse/minio_manager_service.git
 #
 #    Your directory structure should look like:
 #    parent/
@@ -109,7 +109,7 @@ services:
     command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
   minio-manager-service:
-    # image: ghcr.io/kbase/cdm-minio-service:latest-rc
+    # image: ghcr.io/berdatalakehouse/minio_manager_service:main
     # platform: linux/amd64
     build:
       context: ../minio_manager_service
@@ -247,7 +247,7 @@ services:
       - POSTGRES_PASSWORD=hivepassword
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      
+
       # MinIO S3 configuration
       - S3_ENDPOINT=http://minio:9002
       - S3_ACCESS_KEY=minio
