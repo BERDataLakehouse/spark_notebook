@@ -33,7 +33,7 @@ This ensures secure, per-user S3 access without exposing credentials in code.
 | Configuration | Warehouse Location | Tables Location | Default Namespace |
 |--------------|-------------------|----------------|-------------------|
 | `create_namespace_if_not_exists(spark)` | `s3a://cdm-lake/users-sql-warehouse/{username}/` | Personal workspace | `u_{username}__default` |
-| `create_namespace_if_not_exists(spark, tenant_name="kbase")` | `s3a://cdm-lake/tenant-sql-warehouse/kbase/` | Tenant workspace | `t_kbase__default` |
+| `create_namespace_if_not_exists(spark, tenant_name="kbase")` | `s3a://cdm-lake/tenant-sql-warehouse/kbase/` | Tenant workspace | `kbase_default` |
 
 ## Personal SQL Warehouse (Default)
 
@@ -94,8 +94,8 @@ namespace = create_namespace_if_not_exists(spark, tenant_name="kbase")
 
 ### Where Your Tables Go
 - **Warehouse Directory**: `s3a://cdm-lake/tenant-sql-warehouse/{tenant}/`
-- **Default Namespace**: `t_{tenant}__default` (tenant prefix added automatically)
-- **Table Location**: `s3a://cdm-lake/tenant-sql-warehouse/{tenant}/t_{tenant}__default.db/your_table/`
+- **Default Namespace**: `{tenant}_default` (tenant prefix added automatically)
+- **Table Location**: `s3a://cdm-lake/tenant-sql-warehouse/{tenant}/{tenant}_default.db/your_table/`
 
 ### Requirements
 - You must be a member of the specified tenant/group
@@ -109,20 +109,20 @@ from berdl_notebook_utils.spark.database import create_namespace_if_not_exists
 # Create Spark session
 spark = get_spark_session("TeamAnalysis")
 
-# Create default namespace in tenant warehouse (creates "t_{tenant}__default" with tenant prefix)
+# Create default namespace in tenant warehouse (creates "{tenant}_default" with tenant prefix)
 namespace = create_namespace_if_not_exists(spark, tenant_name="kbase")
-print(f"Created namespace: {namespace}")  # Output: "Created namespace: t_kbase__default"
+print(f"Created namespace: {namespace}")  # Output: "Created namespace: kbase_default"
 
-# Or create custom namespace (creates "t_{tenant}__research" with tenant prefix)
+# Or create custom namespace (creates "{tenant}_research" with tenant prefix)
 research_namespace = create_namespace_if_not_exists(spark, namespace="research", tenant_name="kbase")
-print(f"Created namespace: {research_namespace}")  # Output: "Created namespace: t_kbase__research"
+print(f"Created namespace: {research_namespace}")  # Output: "Created namespace: kbase_research"
 
 # Create a DataFrame and save as table using returned namespace
 df = spark.createDataFrame([(1, "Dataset A"), (2, "Dataset B")], ["id", "dataset"])
 df.write.format("delta").saveAsTable(f"{namespace}.shared_analysis")
 
 # Table will be stored at:
-# s3a://cdm-lake/tenant-sql-warehouse/kbase/t_kbase__default.db/shared_analysis/
+# s3a://cdm-lake/tenant-sql-warehouse/kbase/kbase_default.db/shared_analysis/
 ```
 
 ## Advanced Namespace Management
@@ -134,7 +134,7 @@ spark = get_spark_session()
 exp_namespace = create_namespace_if_not_exists(spark, "experiments")  # Returns "u_{username}__experiments"
 
 # Tenant warehouse with custom namespace (prefix enabled by default)
-data_namespace = create_namespace_if_not_exists(spark, "research_data", tenant_name="kbase")  # Returns "t_kbase__research_data"
+data_namespace = create_namespace_if_not_exists(spark, "research_data", tenant_name="kbase")  # Returns "kbase_research_data"
 
 # Use returned namespace names for table operations
 df.write.format("delta").saveAsTable(f"{exp_namespace}.my_experiment_table")
@@ -142,15 +142,15 @@ df.write.format("delta").saveAsTable(f"{data_namespace}.shared_dataset")
 
 # Tables will be stored at:
 # s3a://cdm-lake/users-sql-warehouse/{username}/u_{username}__experiments.db/my_experiment_table/
-# s3a://cdm-lake/tenant-sql-warehouse/kbase/t_kbase__research_data.db/shared_dataset/
+# s3a://cdm-lake/tenant-sql-warehouse/kbase/kbase_research_data.db/shared_dataset/
 ```
 
 ## Tips
 
 - **Always use the returned namespace**: `create_namespace_if_not_exists()` returns the actual namespace name (with prefixes applied). Always use this value when creating tables.
-- **Permission issues with manual namespaces**: If you create namespaces manually (without using `create_namespace_if_not_exists()`) and the namespace doesn't follow the expected naming rules (e.g., missing the `u_{username}__` or `t_{tenant}__` prefix), you may not have the correct permissions to read/write to that namespace. The governance system enforces permissions based on namespace naming conventions:
+- **Permission issues with manual namespaces**: If you create namespaces manually (without using `create_namespace_if_not_exists()`) and the namespace doesn't follow the expected naming rules (e.g., missing the `u_{username}__` or `{tenant}_` prefix), you may not have the correct permissions to read/write to that namespace. The governance system enforces permissions based on namespace naming conventions:
   - User namespaces must start with `u_{username}__` to grant you access
-  - Tenant namespaces must start with `t_{tenant}__` and you must be a member of that tenant
+  - Tenant namespaces must start with `{tenant}_` and you must be a member of that tenant
   - Namespaces without proper prefixes will result in "Access Denied" errors from MinIO
 - **Tenant membership required**: Attempting to access a tenant warehouse without membership will fail.
 - **Credentials are automatic**: MinIO credentials are set by JupyterHub - you don't need to call any API to get them.
