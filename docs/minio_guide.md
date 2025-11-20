@@ -62,7 +62,19 @@ Download and install the MinIO Client (`mc`) from the [MinIO official website](h
 
 ### Configuration
 
-1. Add MinIO server to the `mc` configuration based on your environment:
+**⚠️ IMPORTANT**: The proxy settings below will route ALL HTTP/HTTPS traffic through the SOCKS proxy. This may affect normal web access in the same terminal session.
+
+**Recommendation**: Open a **dedicated terminal window** for MinIO operations, or revert the proxy settings when done (see cleanup instructions at the end of this section).
+
+1. **Set up proxy environment variables** (required for accessing MinIO through the SOCKS proxy):
+
+    ```bash
+    unset ALL_PROXY
+    export HTTP_PROXY="socks5://127.0.0.1:1338"
+    export HTTPS_PROXY="socks5://127.0.0.1:1338"
+    ```
+
+2. Add MinIO server to the `mc` configuration based on your environment:
 
     **Development Environment:**
     ```bash
@@ -81,12 +93,21 @@ Download and install the MinIO Client (`mc`) from the [MinIO official website](h
 
     It will prompt you to enter the access key and secret key. See the "Getting Your MinIO Credentials" section above for how to retrieve these values.
 
-2. Verify the configuration and connection:
+3. Verify the configuration and connection:
 
     ```bash
     mc ls berdl-minio
     ```
 
+4. **Clean up proxy settings** (optional - do this when you're done with MinIO operations):
+
+    ```bash
+    # Unset proxy variables to restore normal web access
+    unset HTTP_PROXY
+    unset HTTPS_PROXY
+    ```
+
+    **Note**: These proxy settings only affect the current terminal session. Opening a new terminal will start fresh without these settings.
 
 ### Basic Commands
 
