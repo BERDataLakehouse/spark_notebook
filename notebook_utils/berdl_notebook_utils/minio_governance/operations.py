@@ -396,7 +396,7 @@ def share_table(
     username = get_settings().USER
 
     table_path = _build_table_path(username, namespace, table_name)
-    request = ShareRequest(path=table_path, users=with_users or [], groups=with_groups or [])
+    request = ShareRequest(path=table_path, with_users=with_users or [], with_groups=with_groups or [])
     response = share_data_sharing_share_post.sync(client=client, body=request)
 
     # Log warnings if there were errors
@@ -434,7 +434,7 @@ def unshare_table(
     username = get_settings().USER
 
     table_path = _build_table_path(username, namespace, table_name)
-    request = UnshareRequest(path=table_path, users=from_users or [], groups=from_groups or [])
+    request = UnshareRequest(path=table_path, from_users=from_users or [], from_groups=from_groups or [])
     response = unshare_data_sharing_unshare_post.sync(client=client, body=request)
 
     # Log warnings if there were errors
