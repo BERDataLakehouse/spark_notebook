@@ -197,7 +197,6 @@ def test_get_spark_session_spark_connect(
             assert set(conf_dict) == {"spark.app.name"}
         return
 
-
     # check the defaults
     for s in conf_settings["defaults"]:
         if s in IMMUTABLE_CONFIGS and use_spark_connect:
