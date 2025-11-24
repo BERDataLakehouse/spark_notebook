@@ -106,12 +106,13 @@ def convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) -> 
     return f"{int(round(adjusted_value))}{spark_unit}"
 
 
-def _get_executor_config(settings: BERDLSettings) -> dict[str, str]:
+def _get_executor_conf(settings: BERDLSettings, use_spark_connect: bool) -> dict[str, str]:
     """
     Get Spark executor and driver configuration based on profile settings.
 
     Args:
         settings: BERDLSettings instance with profile-specific configuration
+        use_spark_connect: bool indicating whether or not spark connect is to be used
 
     Returns:
         Dictionary of Spark executor and driver configuration
@@ -120,7 +121,17 @@ def _get_executor_config(settings: BERDLSettings) -> dict[str, str]:
     executor_memory = convert_memory_format(settings.SPARK_WORKER_MEMORY, EXECUTOR_MEMORY_OVERHEAD)
     driver_memory = convert_memory_format(settings.SPARK_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
 
-    config = {
+    if use_spark_connect:
+        conf_base = {"spark.remote": str(settings.SPARK_CONNECT_URL)}
+    else:
+        # Legacy mode: add driver/executor configs
+        conf_base = {
+            "spark.driver.host": settings.BERDL_POD_IP,
+            "spark.master": str(settings.SPARK_MASTER_URL),
+        }
+
+    return {
+        **conf_base,
         # Driver configuration (critical for remote cluster connections)
         "spark.driver.memory": driver_memory,
         "spark.driver.cores": str(settings.SPARK_MASTER_CORES),
@@ -133,14 +144,11 @@ def _get_executor_config(settings: BERDLSettings) -> dict[str, str]:
         "spark.dynamicAllocation.shuffleTracking.enabled": "false",
     }
 
-    return config
-
 
 def _get_spark_defaults_conf() -> dict[str, str]:
     """
     Get Spark defaults configuration.
     """
-
     return {
         # Decommissioning
         "spark.decommission.enabled": "true",
@@ -150,9 +158,27 @@ def _get_spark_defaults_conf() -> dict[str, str]:
         # Shuffle and compression configurations
         "spark.reducer.maxSizeInFlight": "96m",  # 96MB (default is 48MB)
         "spark.shuffle.file.buffer": "1m",  # 1MB (default is 32KB)
+    }
+
+
+def _get_delta_conf() -> dict[str, str]:
+    return {
+        "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+        "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        "spark.databricks.delta.retentionDurationCheck.enabled": "false",
         # Delta Lake optimizations
         "spark.databricks.delta.optimizeWrite.enabled": "true",
         "spark.databricks.delta.autoCompact.enabled": "true",
+    }
+
+
+def _get_hive_conf(settings: BERDLSettings) -> dict[str, str]:
+    return {
+        "hive.metastore.uris": str(settings.BERDL_HIVE_METASTORE_URI),
+        "spark.sql.catalogImplementation": "hive",
+        "spark.sql.hive.metastore.version": "4.0.0",
+        "spark.sql.hive.metastore.jars": "path",
+        "spark.sql.hive.metastore.jars.path": "/usr/local/spark/jars/*",
     }
 
 
@@ -168,35 +194,51 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
 
     Returns:
         Dictionary of S3/MinIO Spark configuration properties
-    """
 
-    if tenant_name:
-        # Use tenant's SQL warehouse
-        tenant_warehouse_response = get_group_sql_warehouse(tenant_name)
-        warehouse_dir = tenant_warehouse_response.sql_warehouse_prefix
-    else:
-        # Use user's personal SQL warehouse
-        user_warehouse_response = get_my_sql_warehouse()
-        warehouse_dir = user_warehouse_response.sql_warehouse_prefix
+    """
+    # Use tenant SQL warehouse if a tenant name is supplied; otherwise, use the user's warehouse.
+    warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
 
     event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
-    config = {
+    return {
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
         "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
         "spark.hadoop.fs.s3a.connection.ssl.enabled": settings.MINIO_SECURE,
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
-        "spark.sql.warehouse.dir": warehouse_dir,
+        "spark.sql.warehouse.dir": warehouse_response.sql_warehouse_prefix,
         "spark.eventLog.enabled": "true",
         "spark.eventLog.dir": event_log_dir,
-        "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
-        "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        "spark.databricks.delta.retentionDurationCheck.enabled": "false",
     }
 
-    return config
+
+IMMUTABLE_CONFIGS = {
+    # Cluster-level settings (must be set at master startup)
+    "spark.decommission.enabled",
+    "spark.storage.decommission.rddBlocks.enabled",
+    "spark.reducer.maxSizeInFlight",
+    "spark.shuffle.file.buffer",
+    # Driver and executor resource configs (locked at server startup)
+    "spark.driver.memory",
+    "spark.driver.cores",
+    "spark.executor.instances",
+    "spark.executor.cores",
+    "spark.executor.memory",
+    "spark.dynamicAllocation.enabled",
+    "spark.dynamicAllocation.shuffleTracking.enabled",
+    # Event logging (locked at server startup)
+    "spark.eventLog.enabled",
+    "spark.eventLog.dir",
+    # SQL extensions (must be loaded at startup)
+    "spark.sql.extensions",
+    "spark.sql.catalog.spark_catalog",
+    # Hive catalog (locked at startup)
+    "spark.sql.catalogImplementation",
+    # Warehouse directory (locked at server startup)
+    "spark.sql.warehouse.dir",
+}
 
 
 def _filter_immutable_spark_connect_configs(config: dict[str, str]) -> dict[str, str]:
@@ -211,34 +253,9 @@ def _filter_immutable_spark_connect_configs(config: dict[str, str]) -> dict[str,
 
     Returns:
         Filtered configuration dictionary with only mutable configs
-    """
-    immutable_configs = {
-        # Cluster-level settings (must be set at master startup)
-        "spark.decommission.enabled",
-        "spark.storage.decommission.rddBlocks.enabled",
-        "spark.reducer.maxSizeInFlight",
-        "spark.shuffle.file.buffer",
-        # Driver and executor resource configs (locked at server startup)
-        "spark.driver.memory",
-        "spark.driver.cores",
-        "spark.executor.instances",
-        "spark.executor.cores",
-        "spark.executor.memory",
-        "spark.dynamicAllocation.enabled",
-        "spark.dynamicAllocation.shuffleTracking.enabled",
-        # Event logging (locked at server startup)
-        "spark.eventLog.enabled",
-        "spark.eventLog.dir",
-        # SQL extensions (must be loaded at startup)
-        "spark.sql.extensions",
-        "spark.sql.catalog.spark_catalog",
-        # Hive catalog (locked at startup)
-        "spark.sql.catalogImplementation",
-        # Warehouse directory (locked at server startup)
-        "spark.sql.warehouse.dir",
-    }
 
-    return {k: v for k, v in config.items() if k not in immutable_configs}
+    """
+    return {k: v for k, v in config.items() if k not in IMMUTABLE_CONFIGS}
 
 
 def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
@@ -263,6 +280,7 @@ def get_spark_session(
     local: bool = False,
     delta_lake: bool = True,
     scheduler_pool: str = SPARK_DEFAULT_POOL,
+    use_s3: bool = True,
     use_hive: bool = True,
     settings: BERDLSettings | None = None,
     tenant_name: str | None = None,
@@ -279,6 +297,7 @@ def get_spark_session(
         local: If True, creates a local Spark session (ignores other configs)
         delta_lake: If True, enables Delta Lake support with required JARs
         scheduler_pool: Fair scheduler pool name (default: "default")
+        use_s3: if True, enables reading from and writing to s3
         use_hive: If True, enables Hive metastore integration
         settings: BERDLSettings instance. If None, creates new instance from env vars
         tenant_name: Tenant/group name to use for SQL warehouse location. If specified,
@@ -306,7 +325,6 @@ def get_spark_session(
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
     """
-
     if settings is None:
         get_settings.cache_clear()
         settings = get_settings()
@@ -316,43 +334,33 @@ def get_spark_session(
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         app_name = f"kbase_spark_session_{timestamp}"
 
-    # For local development, return simple session
-    if local:
-        return SparkSession.builder.appName(app_name).getOrCreate()
-
     # Build common configuration dictionary
     config: dict[str, str] = {"spark.app.name": app_name}
+    # For local development, return simple session
+    if local:
+        # Create and configure Spark session (unified for both modes)
+        spark_conf = SparkConf().setAll(list(config.items()))
+        return SparkSession.builder.config(conf=spark_conf).getOrCreate()
 
     # Add default Spark configurations
     config.update(_get_spark_defaults_conf())
 
     # Add profile-specific executor and driver configuration
-    config.update(_get_executor_config(settings))
+    config.update(_get_executor_conf(settings, use_spark_connect))
 
     # Configure driver host
     if delta_lake:
-        config.update(_get_s3_conf(settings, tenant_name))
-    if use_hive:
-        config["hive.metastore.uris"] = str(settings.BERDL_HIVE_METASTORE_URI)
-        config["spark.sql.catalogImplementation"] = "hive"
-        config["spark.sql.hive.metastore.version"] = "4.0.0"
-        config["spark.sql.hive.metastore.jars"] = "path"
-        config["spark.sql.hive.metastore.jars.path"] = "/usr/local/spark/jars/*"
+        config.update(_get_delta_conf())
 
-    # Branch: add mode-specific configurations
+    if use_s3:
+        config.update(_get_s3_conf(settings, tenant_name))
+
+    if use_hive:
+        config.update(_get_hive_conf(settings))
+
     if use_spark_connect:
-        # Spark Connect: filter out immutable configs and use remote URL
-        # Filter out configs that cannot be modified from the client
+        # Spark Connect: filter out immutable configs that cannot be modified from the client
         config = _filter_immutable_spark_connect_configs(config)
-        config["spark.remote"] = str(settings.SPARK_CONNECT_URL)
-    else:
-        # Legacy mode: add driver/executor configs
-        config.update(
-            {
-                "spark.driver.host": settings.BERDL_POD_IP,
-                "spark.master": str(settings.SPARK_MASTER_URL),
-            }
-        )
 
     # Create and configure Spark session (unified for both modes)
     spark_conf = SparkConf().setAll(list(config.items()))
