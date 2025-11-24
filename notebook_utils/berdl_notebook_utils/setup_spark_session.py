@@ -294,7 +294,7 @@ def get_spark_session(
 
     Args:
         app_name: Application name. If None, generates a timestamp-based name
-        local: If True, creates a local Spark session (ignores other configs)
+        local: If True, creates a local Spark session; the only other allowable option is `delta_lake`
         delta_lake: If True, enables Delta Lake support with required JARs
         scheduler_pool: Fair scheduler pool name (default: "default")
         use_s3: if True, enables reading from and writing to s3
@@ -336,9 +336,13 @@ def get_spark_session(
 
     # Build common configuration dictionary
     config: dict[str, str] = {"spark.app.name": app_name}
-    # For local development, return simple session
+
+    if delta_lake:
+        config.update(_get_delta_conf())
+
     if local:
-        # Create and configure Spark session (unified for both modes)
+        # options are limited to delta lake R/W
+        # return a simple session
         spark_conf = SparkConf().setAll(list(config.items()))
         return SparkSession.builder.config(conf=spark_conf).getOrCreate()
 
@@ -347,10 +351,6 @@ def get_spark_session(
 
     # Add profile-specific executor and driver configuration
     config.update(_get_executor_conf(settings, use_spark_connect))
-
-    # Configure driver host
-    if delta_lake:
-        config.update(_get_delta_conf())
 
     if use_s3:
         config.update(_get_s3_conf(settings, tenant_name))

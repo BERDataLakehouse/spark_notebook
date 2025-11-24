@@ -189,9 +189,14 @@ def test_get_spark_session_spark_connect(
         assert conf_dict["spark.app.name"] == app_name
 
     if local:
-        # don't expect any other keys to be set
-        assert set(conf_dict) == {"spark.app.name"}
+        # delta_lake may be enabled for local sessions
+        if delta_lake:
+            assert set(conf_dict) == {"spark.app.name", *list(conf_settings["delta_lake"])}
+        else:
+            # don't expect any other keys to be set
+            assert set(conf_dict) == {"spark.app.name"}
         return
+
 
     # check the defaults
     for s in conf_settings["defaults"]:
