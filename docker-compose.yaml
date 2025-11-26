@@ -198,7 +198,7 @@ services:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_CORES=4
-      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_MEMORY=5g
       - SPARK_WORKER_PORT=8081
       - SPARK_WORKER_WEBUI_PORT=8081
       - BERDL_REDIS_HOST=redis
