@@ -15,6 +15,7 @@ from berdl_notebook_utils.mcp.operations import (
     mcp_list_tables,
     mcp_query_table,
     mcp_sample_table,
+    mcp_select_table,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "mcp_count_table",
     "mcp_sample_table",
     "mcp_query_table",
+    "mcp_select_table",
 ]

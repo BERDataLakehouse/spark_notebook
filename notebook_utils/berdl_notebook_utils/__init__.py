@@ -47,6 +47,7 @@ from berdl_notebook_utils.mcp import (
     mcp_count_table,
     mcp_sample_table,
     mcp_query_table,
+    mcp_select_table,
 )
 from berdl_notebook_utils.agent import (
     # Agent
@@ -99,6 +100,7 @@ __all__ = [
     "mcp_count_table",
     "mcp_sample_table",
     "mcp_query_table",
+    "mcp_select_table",
     # Agent
     "create_berdl_agent",
     "BERDLAgent",
@@ -157,6 +159,7 @@ def berdl_notebook_help():
     - mcp_count_table: Count rows in a table via MCP server
     - mcp_sample_table: Sample data from a table via MCP server
     - mcp_query_table: Execute SQL queries via MCP server
+    - mcp_select_table: Execute structured SELECT queries with filters, joins, aggregations
 
     BERDL Agent (AI Assistant):
     ---------------------------
