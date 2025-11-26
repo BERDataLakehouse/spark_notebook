@@ -385,7 +385,9 @@ def mcp_select_table(
         columns: Columns to select. Can be:
             - None: SELECT * (all columns)
             - List of strings: ["col1", "col2"]
-            - List of dicts for aliases: [{"column": "col1", "alias": "c1"}]
+            - List of dicts for advanced options:
+                - {"column": "col1", "alias": "c1"} (specify output alias)
+                - {"column": "col1", "table_alias": "t", "alias": "c1"} (specify table alias for disambiguation in joins)
         filters: WHERE clause conditions. List of dicts with:
             - column: Column name to filter on
             - operator: One of "=", "!=", "<", ">", "<=", ">=", "LIKE", "NOT LIKE",
