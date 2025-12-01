@@ -63,7 +63,7 @@ spark.eventLog.enabled=true
 # Since S3 doesn't support append operations, Spark uses a rolling strategy
 # to write event logs in chunks that are uploaded as complete files
 spark.eventLog.rolling.enabled=true
-spark.eventLog.rolling.maxFileSize=128m
+spark.eventLog.rolling.maxFileSize=10m
 
 # Buffer settings for S3 event logging
 spark.eventLog.buffer.kb=100k
