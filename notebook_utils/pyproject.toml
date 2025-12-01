@@ -50,6 +50,7 @@ docstring-code-line-length = "dynamic"
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v"
+markers = ["requires_spark: must be run in an environment where spark is available"]
 
 # environment settings for running tests
 [tool.pytest_env]

@@ -9,6 +9,7 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 
 import warnings
 from datetime import datetime
+from typing import Any
 
 from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
@@ -270,6 +271,52 @@ def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
     spark.sparkContext.setLocalProperty("spark.scheduler.pool", scheduler_pool)
 
 
+def generate_spark_conf(
+    app_name: str | None = None,
+    local: bool = False,
+    use_delta_lake: bool = True,
+    use_s3: bool = True,
+    use_hive: bool = True,
+    settings: BERDLSettings | None = None,
+    tenant_name: str | None = None,
+    use_spark_connect: bool = True,
+) -> dict[str, Any]:
+    """Generate a spark session configuration dictionary from a set of input variables."""
+    # Generate app name if not provided
+    if app_name is None:
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        app_name = f"kbase_spark_session_{timestamp}"
+
+    # Build common configuration dictionary
+    config: dict[str, str] = {"spark.app.name": app_name}
+
+    if use_delta_lake:
+        config.update(_get_delta_conf())
+
+    if not local:
+        # Add default Spark configurations
+        config.update(_get_spark_defaults_conf())
+
+        if settings is None:
+            get_settings.cache_clear()
+            settings = get_settings()
+
+        # Add profile-specific executor and driver configuration
+        config.update(_get_executor_conf(settings, use_spark_connect))
+
+        if use_s3:
+            config.update(_get_s3_conf(settings, tenant_name))
+
+        if use_hive:
+            config.update(_get_hive_conf(settings))
+
+        if use_spark_connect:
+            # Spark Connect: filter out immutable configs that cannot be modified from the client
+            config = _filter_immutable_spark_connect_configs(config)
+
+    return config
+
+
 # =============================================================================
 # PUBLIC FUNCTIONS
 # =============================================================================
@@ -278,6 +325,7 @@ def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
 def get_spark_session(
     app_name: str | None = None,
     local: bool = False,
+    # TODO: switch to `use_delta_lake` for consistency with s3 / hive
     delta_lake: bool = True,
     scheduler_pool: str = SPARK_DEFAULT_POOL,
     use_s3: bool = True,
@@ -285,6 +333,7 @@ def get_spark_session(
     settings: BERDLSettings | None = None,
     tenant_name: str | None = None,
     use_spark_connect: bool = True,
+    override: dict[str, Any] | None = None,
 ) -> SparkSession:
     """
     Create and configure a Spark session with BERDL-specific settings.
@@ -304,6 +353,7 @@ def get_spark_session(
                      tables will be written to the tenant's SQL warehouse instead
                      of the user's personal warehouse.
         use_spark_connect: If True, uses Spark Connect instead of legacy mode
+        override: dictionary of tag-value pairs to replace the values in the generated spark conf (e.g. for testing)
 
     Returns:
         Configured SparkSession instance
@@ -325,49 +375,17 @@ def get_spark_session(
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
     """
-    if settings is None:
-        get_settings.cache_clear()
-        settings = get_settings()
+    config = generate_spark_conf(
+        app_name, local, delta_lake, use_s3, use_hive, settings, tenant_name, use_spark_connect
+    )
+    if override:
+        config.update(override)
 
-    # Generate app name if not provided
-    if app_name is None:
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        app_name = f"kbase_spark_session_{timestamp}"
-
-    # Build common configuration dictionary
-    config: dict[str, str] = {"spark.app.name": app_name}
-
-    if delta_lake:
-        config.update(_get_delta_conf())
-
-    if local:
-        # options are limited to delta lake R/W
-        # return a simple session
-        spark_conf = SparkConf().setAll(list(config.items()))
-        return SparkSession.builder.config(conf=spark_conf).getOrCreate()
-
-    # Add default Spark configurations
-    config.update(_get_spark_defaults_conf())
-
-    # Add profile-specific executor and driver configuration
-    config.update(_get_executor_conf(settings, use_spark_connect))
-
-    if use_s3:
-        config.update(_get_s3_conf(settings, tenant_name))
-
-    if use_hive:
-        config.update(_get_hive_conf(settings))
-
-    if use_spark_connect:
-        # Spark Connect: filter out immutable configs that cannot be modified from the client
-        config = _filter_immutable_spark_connect_configs(config)
-
-    # Create and configure Spark session (unified for both modes)
     spark_conf = SparkConf().setAll(list(config.items()))
     spark = SparkSession.builder.config(conf=spark_conf).getOrCreate()
 
     # Post-creation configuration (only for legacy mode with SparkContext)
-    if not use_spark_connect:
+    if not local and not use_spark_connect:
         spark.sparkContext.setLogLevel("DEBUG")
         _set_scheduler_pool(spark, scheduler_pool)
 
