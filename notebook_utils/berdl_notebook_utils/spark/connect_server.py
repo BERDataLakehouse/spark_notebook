@@ -60,7 +60,6 @@ class SparkConnectServerConfig:
     def create_directories(self) -> None:
         """Create all required directories for Spark Connect server."""
         self.user_conf_dir.mkdir(parents=True, exist_ok=True)
-        # self.spark_event_log_dir.mkdir(parents=True, exist_ok=True)
         self.connect_server_log_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_spark_config(self) -> None:
