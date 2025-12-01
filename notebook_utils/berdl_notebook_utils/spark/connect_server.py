@@ -18,6 +18,8 @@ from ..setup_spark_session import DRIVER_MEMORY_OVERHEAD, EXECUTOR_MEMORY_OVERHE
 
 logger = logging.getLogger(__name__)
 
+EVENT_LOG_DIR = "s3a://cdm-spark-job-logs/spark-job-logs/"
+
 
 class SparkConnectServerConfig:
     """Configuration for Spark Connect server."""
@@ -38,7 +40,7 @@ class SparkConnectServerConfig:
         self.spark_home = settings.SPARK_HOME
         self.user_spark_dir = Path.home() / ".spark"
         self.user_conf_dir = self.user_spark_dir / "conf"
-        self.spark_event_log_dir = self.user_spark_dir / "spark-events"
+        self.spark_event_log_dir = EVENT_LOG_DIR + self.username
         self.connect_server_log_dir = self.user_spark_dir / "connect-server-logs"
 
         # Configuration files
@@ -58,7 +60,6 @@ class SparkConnectServerConfig:
     def create_directories(self) -> None:
         """Create all required directories for Spark Connect server."""
         self.user_conf_dir.mkdir(parents=True, exist_ok=True)
-        self.spark_event_log_dir.mkdir(parents=True, exist_ok=True)
         self.connect_server_log_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_spark_config(self) -> None:

@@ -59,6 +59,17 @@ spark.databricks.delta.retentionDurationCheck.enabled=false
 spark.eventLog.enabled=true
 # spark.eventLog.dir will be set dynamically
 
+# Event log rolling configuration for S3/MinIO
+# Since S3 doesn't support append operations, Spark uses a rolling strategy
+# to write event logs in chunks that are uploaded as complete files
+spark.eventLog.rolling.enabled=true
+spark.eventLog.rolling.maxFileSize=128m
+
+# Buffer settings for S3 event logging
+spark.eventLog.buffer.kb=100k
+spark.eventLog.compress=true
+spark.eventLog.compression.codec=zstd
+
 # Warehouse directory - DO NOT SET globally!
 # Each database should specify its own LOCATION when created via create_namespace_if_not_exists()
 # This allows user warehouses and tenant warehouses to coexist in the same Spark session
