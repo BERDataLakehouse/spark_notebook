@@ -280,7 +280,7 @@ def generate_spark_conf(
     settings: BERDLSettings | None = None,
     tenant_name: str | None = None,
     use_spark_connect: bool = True,
-) -> dict[str, Any]:
+) -> dict[str, str]:
     """Generate a spark session configuration dictionary from a set of input variables."""
     # Generate app name if not provided
     if app_name is None:
