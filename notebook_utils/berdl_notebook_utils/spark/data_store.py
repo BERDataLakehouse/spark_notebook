@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Union
 from .. import hive_metastore
 from pyspark.sql import SparkSession
 from ..setup_spark_session import get_spark_session
-from ..minio_governance import get_my_groups, get_namespace_prefix
+from ..minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
 
 
 def _execute_with_spark(func: Any, spark: Optional[SparkSession] = None, *args, **kwargs) -> Any:
@@ -30,6 +30,42 @@ def _format_output(data: Any, return_json: bool = True) -> Union[str, Any]:
     return json.dumps(data) if return_json else data
 
 
+def _extract_databases_from_paths(paths: List[str]) -> List[str]:
+    """
+    Extract unique database names from S3 SQL warehouse paths.
+
+    Only considers paths in SQL warehouses (not general warehouses or logs):
+    - s3a://cdm-lake/users-sql-warehouse/...
+    - s3a://cdm-lake/tenant-sql-warehouse/...
+
+    S3 paths are in format: s3a://bucket/warehouse/user_or_tenant/database.db/...
+    Example: s3a://cdm-lake/users-sql-warehouse/tgu1/u_tgu1__sharing_test.db/employee_records_1/
+
+    Args:
+        paths: List of S3 paths from accessible paths API
+
+    Returns:
+        List of unique database names (without .db suffix)
+    """
+    databases = set()
+    for path in paths:
+        # Only process paths from SQL warehouses
+        if not any(warehouse in path for warehouse in ["/users-sql-warehouse/", "/tenant-sql-warehouse/"]):
+            continue
+
+        # Remove s3a:// prefix and split by /
+        parts = path.replace("s3a://", "").split("/")
+
+        # Look for .db directory (database directory in Hive convention)
+        for part in parts:
+            if part.endswith(".db"):
+                db_name = part[:-3]  # Remove .db suffix
+                databases.add(db_name)
+                break
+
+    return sorted(list(databases))
+
+
 def get_databases(
     spark: Optional[SparkSession] = None,
     use_hms: bool = True,
@@ -43,7 +79,12 @@ def get_databases(
         spark: Optional SparkSession to use (if use_hms is False)
         use_hms: Whether to use HMS direct client (faster) or Spark
         return_json: Whether to return JSON string or raw data
-        filter_by_namespace: Whether to filter databases by user/tenant namespace prefixes
+        filter_by_namespace: Whether to filter databases by user/group ownership AND shared access.
+                           When True, returns:
+                           - User's owned databases (u_username_*)
+                           - Group/tenant databases (groupname_*)
+                           - Databases shared with the user (from accessible paths API)
+                           When False, returns all databases in the metastore.
 
     Returns:
         List of database names, either as JSON string or raw list
@@ -57,10 +98,10 @@ def get_databases(
     else:
         databases = _execute_with_spark(_get_dbs, spark)
 
-    # Apply namespace filtering if requested
+    # Apply filtering: owned databases (fast) + shared databases (API call)
     if filter_by_namespace:
         try:
-            # Get user's namespace prefix
+            # Step 1: Get owned/group databases using namespace prefixes (fast, no API call)
             user_prefix_response = get_namespace_prefix()
             prefixes = [user_prefix_response.user_namespace_prefix]
 
@@ -70,8 +111,20 @@ def get_databases(
                 tenant_prefix_response = get_namespace_prefix(tenant=group_name)
                 prefixes.append(tenant_prefix_response.tenant_namespace_prefix)
 
-            # Filter databases by any of the user's prefixes
-            databases = [db for db in databases if db.startswith(tuple(prefixes))]
+            # Filter databases by namespace prefixes (owned + group databases)
+            owned_databases = [db for db in databases if db.startswith(tuple(prefixes))]
+
+            # Step 2: Get shared databases from accessible paths API
+            # These are databases shared with the user that don't match their namespace
+            accessible_paths_response = get_my_accessible_paths()
+            shared_databases = _extract_databases_from_paths(accessible_paths_response.accessible_paths)
+
+            # Combine owned and shared, remove duplicates
+            all_accessible = set(owned_databases) | set(shared_databases)
+
+            # Filter to only databases that exist in metastore, and sort for consistent output
+            databases = sorted([db for db in databases if db in all_accessible])
+
         except Exception as e:
             raise Exception(f"Could not filter databases by namespace: {e}") from e
 

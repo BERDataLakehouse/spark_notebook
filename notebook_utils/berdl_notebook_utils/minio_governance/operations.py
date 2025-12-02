@@ -25,6 +25,7 @@ from governance_client.api.sharing import (
 )
 from governance_client.api.workspaces import (
     get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get,
+    get_my_accessible_paths_workspaces_me_accessible_paths_get,
     get_my_groups_workspaces_me_groups_get,
     get_my_policies_workspaces_me_policies_get,
     get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get,
@@ -44,6 +45,7 @@ from governance_client.models import (
     ShareResponse,
     UnshareRequest,
     UnshareResponse,
+    UserAccessiblePathsResponse,
     UserGroupsResponse,
     UserPoliciesResponse,
     UserSqlWarehousePrefixResponse,
@@ -277,6 +279,22 @@ def get_my_groups() -> UserGroupsResponse:
     """
     client = get_governance_client()
     return get_my_groups_workspaces_me_groups_get.sync(client=client)
+
+
+def get_my_accessible_paths() -> UserAccessiblePathsResponse:
+    """
+    Get all S3 paths accessible to the current user through their policies and group memberships.
+
+    This includes paths from:
+    - User's personal policies
+    - Group policies
+    - Shared paths
+
+    Returns:
+        UserAccessiblePathsResponse with username, accessible_paths list, and total_paths count
+    """
+    client = get_governance_client()
+    return get_my_accessible_paths_workspaces_me_accessible_paths_get.sync(client=client)
 
 
 def create_tenant_and_assign_users(
