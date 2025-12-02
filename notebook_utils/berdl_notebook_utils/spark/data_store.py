@@ -50,7 +50,7 @@ def _extract_databases_from_paths(paths: List[str]) -> List[str]:
     databases = set()
     for path in paths:
         # Only process paths from SQL warehouses
-        if "sql-warehouse" not in path:
+        if not any(warehouse in path for warehouse in ["/users-sql-warehouse/", "/tenant-sql-warehouse/"]):
             continue
 
         # Remove s3a:// prefix and split by /
