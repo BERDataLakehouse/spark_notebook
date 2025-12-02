@@ -122,8 +122,8 @@ def get_databases(
             # Combine owned and shared, remove duplicates
             all_accessible = set(owned_databases) | set(shared_databases)
 
-            # Filter to only databases that exist in metastore
-            databases = [db for db in databases if db in all_accessible]
+            # Filter to only databases that exist in metastore, and sort for consistent output
+            databases = sorted([db for db in databases if db in all_accessible])
 
         except Exception as e:
             raise Exception(f"Could not filter databases by namespace: {e}") from e
