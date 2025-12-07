@@ -17,9 +17,7 @@ def patch_jupyter_ai():
             package_path = os.path.join(sp, pkg_name)
             if os.path.exists(package_path):
                 print(f"Found package {pkg_name} at: {package_path}")
-                target_files.extend(
-                    glob.glob(os.path.join(package_path, "**", "*.py"), recursive=True)
-                )
+                target_files.extend(glob.glob(os.path.join(package_path, "**", "*.py"), recursive=True))
 
     # Python replacements - Name Only
     replacements = [
