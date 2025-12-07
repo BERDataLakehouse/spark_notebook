@@ -4,6 +4,27 @@ import glob
 
 
 def patch_jupyter_ai():
+    """
+    Patch installed Jupyter AI backend and frontend files to replace branding and names.
+
+    This function performs in-place modifications to both Python backend packages and
+    JavaScript frontend extensions to replace occurrences of specific names (e.g., "Jupyternaut")
+    with custom alternatives (e.g., "KBaseLakehouseAgent" or "KBase Agent").
+
+    Packages and files patched:
+        - Python packages: 'jupyter_ai', 'jupyter_ai_magics' (all .py files in site-packages)
+        - JupyterLab frontend: all .js files under /opt/conda/share/jupyter/labextensions
+
+    Expected outcome:
+        - All occurrences of "Jupyternaut" in backend Python code are replaced with "KBaseLakehouseAgent".
+        - All occurrences of "Jupyternaut" and "Jupyter AI Chat" in frontend JS code are replaced with "KBase Agent".
+
+    Risks and limitations:
+        - This function overwrites files in installed packages and extensions, which may cause breakage
+          or be reverted by package updates or reinstalls.
+        - Should be used with caution and only in controlled environments.
+        - May not catch all occurrences if new files or strings are introduced in future versions.
+    """
     # --- Backend Patching (Python) ---
     site_packages = [p for p in sys.path if "site-packages" in p]
     print(f"Searching in site-packages locations: {site_packages}")
