@@ -6,8 +6,8 @@ import fcntl
 import json
 import logging
 import os
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import TypedDict
 
 from governance_client.api.credentials import get_credentials_credentials_get
@@ -15,6 +15,9 @@ from governance_client.api.health import health_check_health_get
 from governance_client.api.management import (
     add_group_member_management_groups_group_name_members_username_post,
     create_group_management_groups_group_name_post,
+    list_groups_management_groups_get,
+    list_users_management_users_get,
+    remove_group_member_management_groups_group_name_members_username_delete,
 )
 from governance_client.api.sharing import (
     get_path_access_info_sharing_get_path_access_info_post,
@@ -297,76 +300,6 @@ def get_my_accessible_paths() -> UserAccessiblePathsResponse:
     return get_my_accessible_paths_workspaces_me_accessible_paths_get.sync(client=client)
 
 
-def create_tenant_and_assign_users(
-    tenant_name: str,
-    usernames: list[str] | None = None,
-) -> TenantCreationResult:
-    """
-    Create a new tenant (group) and assign users to it.
-
-    This is a convenience function that combines tenant creation and user assignment
-    into a single operation. It creates a new group with shared workspace and policy
-    configuration, then adds the specified users as members.
-
-    Args:
-        tenant_name: Name of the tenant/group to create
-        usernames: List of usernames to add as members (optional)
-
-    Returns:
-        Dictionary with the following keys:
-        - 'create_tenant': GroupManagementResponse or ErrorResponse from tenant creation
-        - 'add_members': List of tuples (username, GroupManagementResponse or ErrorResponse)
-                        for each user addition attempt
-    """
-    client = get_governance_client()
-    logger = logging.getLogger(__name__)
-
-    # Step 1: Create the tenant/group
-    logger.info(f"Creating tenant: {tenant_name}")
-    create_response = create_group_management_groups_group_name_post.sync(
-        client=client,
-        group_name=tenant_name,
-    )
-
-    result: TenantCreationResult = {
-        "create_tenant": create_response,
-        "add_members": [],
-    }
-
-    # Check if tenant creation was successful
-    if isinstance(create_response, ErrorResponse):
-        logger.error(f"Failed to create tenant {tenant_name}: {create_response.message}")
-        return result
-
-    # Step 2: Add users to the tenant if provided
-    if usernames:
-        logger.info(f"Adding {len(usernames)} users to tenant {tenant_name}")
-        for username in usernames:
-            time.sleep(1)
-            try:
-                add_response = add_group_member_management_groups_group_name_members_username_post.sync(
-                    client=client,
-                    group_name=tenant_name,
-                    username=username,
-                )
-                result["add_members"].append((username, add_response))
-
-                if isinstance(add_response, ErrorResponse):
-                    logger.warning(f"Failed to add user {username} to tenant {tenant_name}: {add_response.message}")
-                else:
-                    logger.info(f"Successfully added user {username} to tenant {tenant_name}")
-
-            except Exception as e:
-                logger.error(f"Error adding user {username} to tenant {tenant_name}: {e}")
-                error_response = ErrorResponse(
-                    message=f"Exception occurred while adding {username}: {str(e)}", error_type="Exception"
-                )
-                result["add_members"].append((username, error_response))
-                # Continue with other users even if one fails
-
-    return result
-
-
 def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse:
     """
     Get access information for a SQL warehouse table.
@@ -514,3 +447,175 @@ def make_table_private(
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
     return make_path_private_sharing_make_private_post.sync(client=client, body=request)
+
+
+# =============================================================================
+# MANAGEMENT OPERATIONS - Group and tenant management
+# =============================================================================
+
+
+def list_groups() -> dict | ErrorResponse | None:
+    """
+    List all groups in the system with membership information.
+
+    Returns:
+        Dictionary with group information including members, or ErrorResponse on failure.
+        The dictionary contains group names as keys with their member lists.
+
+    Example:
+        groups = list_groups()
+        # Returns: {'research_team': ['alice', 'bob'], 'data_engineers': ['charlie']}
+    """
+    client = get_governance_client()
+    return list_groups_management_groups_get.sync(client=client)
+
+
+def list_users():
+    """
+    List all users in the system.
+
+    Returns:
+        UserListResponse with user information, or ErrorResponse on failure.
+
+    Example:
+        users = list_users()
+        # Returns list of user information
+    """
+    client = get_governance_client()
+    return list_users_management_users_get.sync(client=client)
+
+
+def add_group_member(
+    group_name: str,
+    usernames: list[str],
+) -> list[tuple[str, GroupManagementResponse | ErrorResponse | None]]:
+    """
+    Add users to an existing group.
+
+    Args:
+        group_name: Name of the group to add users to
+        usernames: List of usernames to add as members
+
+    Returns:
+        List of tuples (username, response) for each user addition attempt
+
+    Example:
+        results = add_group_member("kbase", ["alice", "bob"])
+        for username, response in results:
+            if isinstance(response, GroupManagementResponse):
+                print(f"Successfully added {username} to group")
+    """
+    client = get_governance_client()
+    results = []
+    for username in usernames:
+        time.sleep(1)
+        response = add_group_member_management_groups_group_name_members_username_post.sync(
+            client=client,
+            group_name=group_name,
+            username=username,
+        )
+        results.append((username, response))
+    return results
+
+
+def remove_group_member(
+    group_name: str,
+    usernames: list[str],
+) -> list[tuple[str, GroupManagementResponse | ErrorResponse | None]]:
+    """
+    Remove users from an existing group.
+
+    Args:
+        group_name: Name of the group to remove users from
+        usernames: List of usernames to remove from the group
+
+    Returns:
+        List of tuples (username, response) for each user removal attempt
+
+    Example:
+        results = remove_group_member("kbase", ["alice", "bob"])
+        for username, response in results:
+            if isinstance(response, GroupManagementResponse):
+                print(f"Successfully removed {username} from group")
+    """
+    client = get_governance_client()
+    results = []
+    for username in usernames:
+        time.sleep(1)
+        response = remove_group_member_management_groups_group_name_members_username_delete.sync(
+            client=client,
+            group_name=group_name,
+            username=username,
+        )
+        results.append((username, response))
+    return results
+
+
+def create_tenant_and_assign_users(
+    tenant_name: str,
+    usernames: list[str] | None = None,
+) -> TenantCreationResult:
+    """
+    Create a new tenant (group) and assign users to it.
+
+    This is a convenience function that combines tenant creation and user assignment
+    into a single operation. It creates a new group with shared workspace and policy
+    configuration, then adds the specified users as members.
+
+    Args:
+        tenant_name: Name of the tenant/group to create
+        usernames: List of usernames to add as members (optional)
+
+    Returns:
+        Dictionary with the following keys:
+        - 'create_tenant': GroupManagementResponse or ErrorResponse from tenant creation
+        - 'add_members': List of tuples (username, GroupManagementResponse or ErrorResponse)
+                        for each user addition attempt
+    """
+    client = get_governance_client()
+    logger = logging.getLogger(__name__)
+
+    # Step 1: Create the tenant/group
+    logger.info(f"Creating tenant: {tenant_name}")
+    create_response = create_group_management_groups_group_name_post.sync(
+        client=client,
+        group_name=tenant_name,
+    )
+
+    result: TenantCreationResult = {
+        "create_tenant": create_response,
+        "add_members": [],
+    }
+
+    # Check if tenant creation was successful
+    if isinstance(create_response, ErrorResponse):
+        logger.error(f"Failed to create tenant {tenant_name}: {create_response.message}")
+        return result
+
+    # Step 2: Add users to the tenant if provided
+    if usernames:
+        logger.info(f"Adding {len(usernames)} users to tenant {tenant_name}")
+        for username in usernames:
+            time.sleep(1)
+            try:
+                add_response = add_group_member_management_groups_group_name_members_username_post.sync(
+                    client=client,
+                    group_name=tenant_name,
+                    username=username,
+                )
+                result["add_members"].append((username, add_response))
+
+                if isinstance(add_response, ErrorResponse):
+                    logger.warning(f"Failed to add user {username} to tenant {tenant_name}: {add_response.message}")
+                else:
+                    logger.info(f"Successfully added user {username} to tenant {tenant_name}")
+
+            except Exception as e:
+                logger.error(f"Error adding user {username} to tenant {tenant_name}: {e}")
+                error_response = ErrorResponse(
+                    message=f"Exception occurred while adding {username}: {str(e)}", error_type="Exception"
+                )
+                result["add_members"].append((username, error_response))
+                # Continue with other users even if one fails
+
+    return result
