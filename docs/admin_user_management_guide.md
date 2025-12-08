@@ -40,13 +40,20 @@ from berdl_notebook_utils.minio_governance import (
 
 ### List All Users
 
-Retrieve all users registered in the system:
+Retrieve all users and their group memberships:
 
 ```python
 from berdl_notebook_utils.minio_governance import list_users
 
 users = list_users()
-print(users)
+
+# Print users nicely (username + groups)
+print(f"{'Username':<20} {'Groups'}")
+print("-" * 60)
+for user in users.users:
+    groups_str = ", ".join(user.groups) if user.groups else "None"
+    print(f"{user.username:<20} {groups_str}")
+print(f"\nTotal Jupyterhub users: {users.retrieved_count}")
 ```
 
 ---
@@ -61,8 +68,14 @@ View all existing groups and their members:
 from berdl_notebook_utils.minio_governance import list_groups
 
 groups = list_groups()
-print(groups)
-# Example output: {'research_team': ['alice', 'bob'], 'data_engineers': ['charlie']}
+
+# Print groups nicely (group_name + members)
+print(f"{'Group Name':<20} {'Members'}")
+print("-" * 60)
+for group in groups['groups']:
+    members_str = ", ".join(group['members']) if group['members'] else "None"
+    print(f"{group['group_name']:<20} {members_str}")
+print(f"\nTotal groups: {groups['total_count']}")
 ```
 
 ### Create a New Tenant
