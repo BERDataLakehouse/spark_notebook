@@ -11,7 +11,7 @@ This guide covers administrative operations for managing users, groups (tenants)
 To perform user and tenant management operations, you must have the `CDM_JUPYTERHUB_ADMIN` role assigned via the **KBase Auth Server**.
 
 > [!IMPORTANT]
-> The `CDM_JUPYTERHUB_ADMIN` role must be granted by a **KBase System Administrator**. Contact your system administrator to request this role.
+> The `CDM_JUPYTERHUB_ADMIN` role must be granted by a KBase System Administrator. Contact them in the [#sysadmin Slack channel](https://kbase.slack.com/archives/C02MHNMCQ) to request this role.
 
 Once you have the admin role, you can access management operations from within a BERDL JupyterHub notebook.
 
