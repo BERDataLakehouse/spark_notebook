@@ -46,13 +46,39 @@ These are the same credentials you use to:
 
 ## Prerequisites (For Local MinIO Client Access)
 
-If you need to access MinIO from your local machine using the MinIO Client (`mc`), you'll need to set up SSH tunneling and browser proxy configuration.
+If you need to access MinIO from your local machine using the MinIO Client (`mc`) or MinIO UI, you'll need to set up SSH tunneling first.
 
-Please refer to the [BERDL JupyterHub User Guide](user_guide.md) for detailed instructions on:
-- Setting up SSH tunnels
-- Configuring browser proxy settings
+### Setting Up SSH Tunnel
 
-Once your tunnel and proxy are configured, you can proceed with the MinIO Client setup below.
+You need to create a secure tunnel from your local machine to the KBase server to access MinIO services.
+
+**Step 1:** Ensure you have SSH access to the remote server (`login1.berkeley.kbase.us`)
+   * If you do not have access, please contact the KBase System Admin team.
+
+**Step 2:** Open a terminal on your machine and run the following command:
+
+```bash
+ssh -f -D 1338 <ac.anl_username>@login1.berkeley.kbase.us "/bin/sleep infinity"
+```
+
+**What this command does:**
+* `-f`: Runs SSH in the background
+* `-D 1338`: Creates a SOCKS5 proxy on port 1338
+* `<ac.anl_username>`: Replace with your actual username
+* `"/bin/sleep infinity"`: Keeps the connection open indefinitely
+
+> **⚠️ Note:** If port `1338` is already in use on your system, you can replace it with another free port (e.g., 1080).
+
+**Step 3:** If you haven't set up SSH keys, you'll be prompted to enter your password.
+
+**Step 4:** Verify the tunnel is running by checking for the background process:
+```bash
+ps aux | grep "ssh -f -D 1338"
+```
+
+> **💡 Tip:** To close the tunnel later, find the process ID (PID) and terminate it with `kill <PID>`.
+
+Once your tunnel is configured, you can proceed with the MinIO Client setup below.
 
 ## Using MinIO Client (`mc`)
 
@@ -69,30 +95,27 @@ Download and install the MinIO Client (`mc`) from the [MinIO official website](h
 1. **Set up proxy environment variables** (required for accessing MinIO through the SOCKS proxy):
 
     ```bash
-    unset HTTP_PROXY
-    unset HTTPS_PROXY
     unset ALL_PROXY
     
     export HTTP_PROXY="socks5://127.0.0.1:1338"
     export HTTPS_PROXY="socks5://127.0.0.1:1338"
-    export NO_PROXY="localhost,127.0.0.1"
     ```
 
 2. Add MinIO server to the `mc` configuration based on your environment:
 
     **Development Environment:**
     ```bash
-    mc alias set berdl-minio https://minio-ui.dev.berdl.kbase.us
+    mc alias set berdl-minio https://minio.dev.berdl.kbase.us
     ```
 
     **Staging Environment:**
     ```bash
-    mc alias set berdl-minio https://minio-ui.stage.berdl.kbase.us
+    mc alias set berdl-minio https://minio.stage.berdl.kbase.us
     ```
 
     **Production Environment:**
     ```bash
-    mc alias set berdl-minio https://minio-ui.berdl.kbase.us
+    mc alias set berdl-minio https://minio.berdl.kbase.us
     ```
 
     It will prompt you to enter the access key and secret key. See the "Getting Your MinIO Credentials" section above for how to retrieve these values.
