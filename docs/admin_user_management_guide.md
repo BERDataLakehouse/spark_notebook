@@ -101,32 +101,47 @@ print(result["add_members"])    # List of (username, status) tuples
 
 ### Add Users to a Group
 
-Add users to an existing group:
+Add users to an existing group. By default, users are added to the read/write group. Use `read_only=True` to add users to the read-only variant instead.
 
 ```python
 from berdl_notebook_utils.minio_governance import add_group_member
 from governance_client.models import GroupManagementResponse
 
+# Add users to read/write group (default)
 results = add_group_member(
     group_name="kbase",
-    usernames=["alice", "bob", "charlie"]
+    usernames=["alice", "bob"]
 )
 
 for username, response in results:
     if isinstance(response, GroupManagementResponse):
-        print(f"Successfully added {username}")
+        print(f"Successfully added {username} to read/write group")
+    else:
+        print(f"Error adding {username}: {response}")
+
+# Add users to read-only group
+results = add_group_member(
+    group_name="kbase",
+    usernames=["charlie", "david"],
+    read_only=True
+)
+
+for username, response in results:
+    if isinstance(response, GroupManagementResponse):
+        print(f"Successfully added {username} to read-only group")
     else:
         print(f"Error adding {username}: {response}")
 ```
 
 ### Remove Users from a Group
 
-Remove users from a group:
+Remove users from a group. By default, users are removed from the read/write group. Use `read_only=True` to remove users from the read-only variant instead.
 
 ```python
 from berdl_notebook_utils.minio_governance import remove_group_member
 from governance_client.models import GroupManagementResponse
 
+# Remove users from read/write group (default)
 results = remove_group_member(
     group_name="kbase",
     usernames=["alice", "bob"]
@@ -134,7 +149,20 @@ results = remove_group_member(
 
 for username, response in results:
     if isinstance(response, GroupManagementResponse):
-        print(f"Successfully removed {username}")
+        print(f"Successfully removed {username} from read/write group")
+    else:
+        print(f"Error removing {username}: {response}")
+
+# Remove users from read-only group
+results = remove_group_member(
+    group_name="kbase",
+    usernames=["charlie"],
+    read_only=True
+)
+
+for username, response in results:
+    if isinstance(response, GroupManagementResponse):
+        print(f"Successfully removed {username} from read-only group")
     else:
         print(f"Error removing {username}: {response}")
 ```
@@ -148,8 +176,10 @@ for username, response in results:
 | List users | `list_users()` | Get all system users |
 | List groups | `list_groups()` | Get all groups with members |
 | Create tenant | `create_tenant_and_assign_users(name, users)` | Create new group with optional members |
-| Add members | `add_group_member(group, usernames)` | Add users to existing group |
-| Remove members | `remove_group_member(group, usernames)` | Remove users from group |
+| Add members (R/W) | `add_group_member(group, usernames)` | Add users to read/write group |
+| Add members (RO) | `add_group_member(group, usernames, read_only=True)` | Add users to read-only group |
+| Remove members (R/W) | `remove_group_member(group, usernames)` | Remove users from read/write group |
+| Remove members (RO) | `remove_group_member(group, usernames, read_only=True)` | Remove users from read-only group |
 
 ---
 

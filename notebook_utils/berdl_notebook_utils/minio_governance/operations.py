@@ -488,30 +488,42 @@ def list_users():
 def add_group_member(
     group_name: str,
     usernames: list[str],
+    read_only: bool = False,
 ) -> list[tuple[str, GroupManagementResponse | ErrorResponse | None]]:
     """
     Add users to an existing group.
 
     Args:
-        group_name: Name of the group to add users to
+        group_name: Name of the group to add users to (without "ro" suffix)
         usernames: List of usernames to add as members
+        read_only: If True, adds users to the read-only variant ({group_name}ro).
+                   If False (default), adds to the read/write group.
 
     Returns:
         List of tuples (username, response) for each user addition attempt
 
-    Example:
+    Examples:
+        # Add to read/write group (default)
         results = add_group_member("kbase", ["alice", "bob"])
+
+        # Add to read-only group
+        results = add_group_member("kbase", ["charlie"], read_only=True)
+
         for username, response in results:
             if isinstance(response, GroupManagementResponse):
                 print(f"Successfully added {username} to group")
     """
     client = get_governance_client()
+
+    # Determine target group based on read_only flag
+    target_group_name = f"{group_name}ro" if read_only else group_name
+
     results = []
     for username in usernames:
         time.sleep(1)
         response = add_group_member_management_groups_group_name_members_username_post.sync(
             client=client,
-            group_name=group_name,
+            group_name=target_group_name,
             username=username,
         )
         results.append((username, response))
@@ -521,30 +533,42 @@ def add_group_member(
 def remove_group_member(
     group_name: str,
     usernames: list[str],
+    read_only: bool = False,
 ) -> list[tuple[str, GroupManagementResponse | ErrorResponse | None]]:
     """
     Remove users from an existing group.
 
     Args:
-        group_name: Name of the group to remove users from
+        group_name: Name of the group to remove users from (without "ro" suffix)
         usernames: List of usernames to remove from the group
+        read_only: If True, removes users from the read-only variant ({group_name}ro).
+                   If False (default), removes from the read/write group.
 
     Returns:
         List of tuples (username, response) for each user removal attempt
 
-    Example:
+    Examples:
+        # Remove from read/write group (default)
         results = remove_group_member("kbase", ["alice", "bob"])
+
+        # Remove from read-only group
+        results = remove_group_member("kbase", ["charlie"], read_only=True)
+
         for username, response in results:
             if isinstance(response, GroupManagementResponse):
                 print(f"Successfully removed {username} from group")
     """
     client = get_governance_client()
+
+    # Determine target group based on read_only flag
+    target_group_name = f"{group_name}ro" if read_only else group_name
+
     results = []
     for username in usernames:
         time.sleep(1)
         response = remove_group_member_management_groups_group_name_members_username_delete.sync(
             client=client,
-            group_name=group_name,
+            group_name=target_group_name,
             username=username,
         )
         results.append((username, response))
