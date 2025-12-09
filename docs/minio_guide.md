@@ -69,9 +69,13 @@ Download and install the MinIO Client (`mc`) from the [MinIO official website](h
 1. **Set up proxy environment variables** (required for accessing MinIO through the SOCKS proxy):
 
     ```bash
+    unset HTTP_PROXY
+    unset HTTPS_PROXY
     unset ALL_PROXY
+    
     export HTTP_PROXY="socks5://127.0.0.1:1338"
     export HTTPS_PROXY="socks5://127.0.0.1:1338"
+    export NO_PROXY="localhost,127.0.0.1"
     ```
 
 2. Add MinIO server to the `mc` configuration based on your environment:
