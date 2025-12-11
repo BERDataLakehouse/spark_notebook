@@ -109,6 +109,8 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
     get_table_access_info,
     make_table_private,
     make_table_public,
+    list_available_groups,
+    request_tenant_access,
     share_table,
     unshare_table,
 )
