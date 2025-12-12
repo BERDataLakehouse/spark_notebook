@@ -705,9 +705,10 @@ def request_tenant_access(
     """
     Request access to a tenant group via Slack approval workflow.
 
-    This submits an access request that will be sent to the #berdl-governance
-    Slack channel. Admins with CDM_JUPYTERHUB_ADMIN role can approve or deny
-    the request with interactive buttons.
+    This submits an access request that will be sent to the a Slack channel
+    configured by the SLACK_CHANNEL_ID environment variable. Admins with
+    CDM_JUPYTERHUB_ADMIN role can approve or deny the request with interactive
+    buttons.
 
     Args:
         tenant_name: Name of the tenant to request access to (e.g., "kbase")

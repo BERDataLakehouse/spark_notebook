@@ -128,7 +128,14 @@ The package uses Pydantic Settings for configuration management. Required enviro
 ### Running Tests
 
 ```bash
-uv run pytest
+# Run all tests
+uv run pytest tests/ -v
+
+# Run specific test files
+uv run pytest tests/minio_governance/ tests/spark/ -v
+
+# Run tests with short traceback
+uv run pytest tests/ -v --tb=short
 ```
 
 ### Code Quality
@@ -153,6 +160,21 @@ uv sync --locked
 # Build wheel
 uv build
 ```
+
+### Updating Dependencies
+
+```bash
+# Refresh all dependencies from git sources
+uv cache clean
+rm -rf .venv
+uv sync --refresh
+
+# Or to update just the minio_manager_service_client after changes:
+uv pip install --python .venv/bin/python -e /path/to/minio_manager_service_client
+```
+
+> **Note**: If `spark_notebook_base` is updated, you may need to update the commit
+> hash in `pyproject.toml` under `[tool.uv.sources]` to pick up new dependencies.
 
 ## API Reference
 
@@ -196,6 +218,8 @@ from berdl_notebook_utils.minio_governance import (
 
     # Tenant management
     create_tenant_and_assign_users,
+    list_available_groups,  # List groups you can request access to
+    request_tenant_access,  # Request access via Slack approval
 
     # Table sharing
     share_table, unshare_table, make_table_public, make_table_private,
