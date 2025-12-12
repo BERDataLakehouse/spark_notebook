@@ -22,16 +22,20 @@ The easiest way to request access is using the **Request Tenant Access** button 
 
 Open any notebook in JupyterLab. You'll see a **"Request Tenant Access"** button in the toolbar.
 
+![Request Tenant Access toolbar button](screen_shots/tenant_request_extension.png)
+
 ### Step 2: Click the Button
 
 Click **Request Tenant Access** to open the access request dialog.
 
 ### Step 3: Fill Out the Form
 
-1. **Select a Group** - Choose from the available tenant groups
-2. **View Your Groups** - See which groups you already belong to
+1. **Select a Tenant** - Choose from the available tenants
+2. **View Your Tenants** - See which tenants you already belong to
 3. **Select Permission Level** - Choose Read-Only or Read-Write
 4. **Add Justification** (optional) - Explain why you need access
+
+![Tenant Access Request dialog](screen_shots/tenant_reqeust.png)
 
 ### Step 4: Submit
 
