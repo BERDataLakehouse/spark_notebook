@@ -57,7 +57,7 @@ If the toolbar button isn't available, you can use Python commands directly in a
 # List all available groups
 groups = list_available_groups()
 print(f"Available groups: {groups}")
-# Output: Available groups: ['kbase', 'research', 'shared-data']
+# Output: Available groups: ['kbase', 'research']
 ```
 
 ### Step 1: Submit Your Request
@@ -105,9 +105,9 @@ print(f"Your groups: {groups.groups}")
 
 ```python
 request_tenant_access(
-    tenant_name="research-data",
+    tenant_name="kbase",
     permission="read_only",
-    justification="Need to review team datasets for quarterly report"
+    justification="Need read access to KBase shared datasets"
 )
 ```
 
@@ -115,9 +115,9 @@ request_tenant_access(
 
 ```python
 request_tenant_access(
-    tenant_name="shared-project",
+    tenant_name="kbase",
     permission="read_write",
-    justification="Collaborating on ML pipeline, need to upload processed data"
+    justification="Need write access to upload processed data to KBase"
 )
 ```
 
