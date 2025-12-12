@@ -16,5 +16,6 @@ RUN python3 /tmp/patch_jupyter_ai.py && rm /tmp/patch_jupyter_ai.py
 
 COPY notebook_utils /tmp/notebook_utils
 RUN eval "$(conda shell.bash hook)" && uv pip install --no-deps --system /tmp/notebook_utils && rm -rf /tmp/notebook_utils
+
 WORKDIR /home
 ENTRYPOINT ["/entrypoint.sh"]

@@ -26,6 +26,7 @@
 #    git clone https://github.com/BERDataLakehouse/hive_metastore.git
 #    git clone https://github.com/BERDataLakehouse/datalake-mcp-server.git
 #    git clone https://github.com/BERDataLakehouse/minio_manager_service.git
+#    git clone https://github.com/BERDataLakehouse/tenant_access_request_service.git
 #
 #    Your directory structure should look like:
 #    parent/
@@ -34,7 +35,8 @@
 #      ├── kube_spark_manager_image/
 #      ├── hive_metastore/
 #      ├── datalake-mcp-server/
-#      └── minio_manager_service/
+#      ├── minio_manager_service/
+#      └── tenant_access_request_service/
 #
 # 2. BUILD REQUIRED BASE IMAGES FIRST:
 #    cd ../spark_notebook_base && \
@@ -91,6 +93,7 @@ services:
 
       # DATA GOVERNANCE CONFIGURATION
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
+      - TENANT_ACCESS_SERVICE_URL=http://tenant-access-request-service:8000
 
       # DATALAKE MCP SERVER CONFIGURATION
       - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
@@ -164,6 +167,35 @@ services:
       - minio
       - minio-manager-service
       - postgres
+
+  tenant-access-request-service:
+    # image: ghcr.io/berdatalakehouse/tenant_access_request_service:main
+    # platform: linux/amd64
+    build:
+      context: ../tenant_access_request_service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8000"
+    environment:
+      # Slack configuration (set in .env or leave empty for testing without Slack)
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
+      - SLACK_CHANNEL_ID=${SLACK_CHANNEL_ID:-}
+
+      # Governance API configuration
+      - GOVERNANCE_API_URL=http://minio-manager-service:8000
+
+      # KBase Auth configuration
+      - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
+      - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
+      - KBASE_REQUIRED_ROLES=BERDL_USER
+
+      - ROOT_PATH=/apis/tenant-request
+
+      # Logging
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - minio-manager-service
 
   spark-master:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
