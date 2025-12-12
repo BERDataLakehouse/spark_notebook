@@ -67,6 +67,11 @@ class BERDLSettings(BaseSettings):
     # Datalake MCP Server configuration
     DATALAKE_MCP_SERVER_URL: AnyHttpUrl
 
+    # Tenant Access Request Service configuration (optional)
+    TENANT_ACCESS_SERVICE_URL: AnyHttpUrl | None = Field(
+        default=None, description="Tenant Access Request Service URL for Slack-based approval workflow"
+    )
+
 
 def validate_environment():
     """

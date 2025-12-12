@@ -28,6 +28,9 @@ from .operations import (
     make_table_public,
     share_table,
     unshare_table,
+    # Tenant access requests
+    list_available_groups,
+    request_tenant_access,
 )
 
 __all__ = [
@@ -53,4 +56,7 @@ __all__ = [
     "make_table_public",
     "share_table",
     "unshare_table",
+    # Tenant access requests
+    "list_available_groups",
+    "request_tenant_access",
 ]

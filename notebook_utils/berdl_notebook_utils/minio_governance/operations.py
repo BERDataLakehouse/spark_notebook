@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import TypedDict
 
+import httpx
 from governance_client.api.credentials import get_credentials_credentials_get
 from governance_client.api.health import health_check_health_get
 from governance_client.api.management import (
@@ -18,6 +19,9 @@ from governance_client.api.management import (
     list_groups_management_groups_get,
     list_users_management_users_get,
     remove_group_member_management_groups_group_name_members_username_delete,
+)
+from governance_client.api.management.list_group_names_management_groups_names_get import (
+    sync as list_group_names_sync,
 )
 from governance_client.api.sharing import (
     get_path_access_info_sharing_get_path_access_info_post,
@@ -454,6 +458,39 @@ def make_table_private(
 # =============================================================================
 
 
+def list_available_groups() -> list[str]:
+    """
+    List all available tenant group names that users can request access to.
+
+    This endpoint is available to any authenticated user (not admin-only).
+    Returns only the base tenant names, filtering out read-only variants
+    (groups ending with "ro").
+
+    Returns:
+        List of tenant group names (e.g., ["kbase", "research", "shared-data"])
+
+    Example:
+        # List all available groups to request access to
+        groups = list_available_groups()
+        print(f"Available groups: {groups}")
+        # Output: Available groups: ['kbase', 'research', 'shared-data']
+
+        # Then request access to one of them
+        request_tenant_access("kbase", permission="read_only")
+    """
+    client = get_governance_client()
+    response = list_group_names_sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to list groups: {response.message}")
+
+    if response is None:
+        raise RuntimeError("Failed to list groups: no response from API")
+
+    # Filter out read-only groups (ending with "ro") and return only base tenant names
+    return [name for name in response.group_names if not name.endswith("ro")]
+
+
 def list_groups() -> dict | ErrorResponse | None:
     """
     List all groups in the system with membership information.
@@ -643,3 +680,99 @@ def create_tenant_and_assign_users(
                 # Continue with other users even if one fails
 
     return result
+
+
+# =============================================================================
+# TENANT ACCESS REQUEST - Self-service access requests via Slack approval
+# =============================================================================
+
+
+class TenantAccessRequestResponse(TypedDict):
+    """Response from submitting a tenant access request."""
+
+    status: str
+    message: str
+    requester: str
+    tenant_name: str
+    permission: str
+
+
+def request_tenant_access(
+    tenant_name: str,
+    permission: str = "read_only",
+    justification: str | None = None,
+) -> TenantAccessRequestResponse:
+    """
+    Request access to a tenant group via Slack approval workflow.
+
+    This submits an access request that will be sent to the #berdl-governance
+    Slack channel. Admins with CDM_JUPYTERHUB_ADMIN role can approve or deny
+    the request with interactive buttons.
+
+    Args:
+        tenant_name: Name of the tenant to request access to (e.g., "kbase")
+        permission: Level of access - "read_only" (default) or "read_write"
+        justification: Optional reason for requesting access (recommended)
+
+    Returns:
+        TenantAccessRequestResponse with status and confirmation message
+
+    Raises:
+        ValueError: If TENANT_ACCESS_SERVICE_URL is not configured
+        RuntimeError: If the request fails
+
+    Example:
+        # Request read-only access
+        result = request_tenant_access("kbase")
+        print(f"Request submitted: {result['status']}")
+
+        # Request read-write access with justification
+        result = request_tenant_access(
+            "research-data",
+            permission="read_write",
+            justification="Need write access for data pipeline project"
+        )
+    """
+
+    settings = get_settings()
+
+    if not settings.TENANT_ACCESS_SERVICE_URL:
+        raise ValueError(
+            "TENANT_ACCESS_SERVICE_URL is not configured. "
+            "Contact your administrator to enable self-service tenant access requests."
+        )
+
+    url = f"{str(settings.TENANT_ACCESS_SERVICE_URL).rstrip('/')}/requests/"
+
+    payload = {
+        "tenant_name": tenant_name,
+        "permission": permission,
+    }
+    if justification:
+        payload["justification"] = justification
+
+    try:
+        response = httpx.post(
+            url,
+            json=payload,
+            headers={"Authorization": f"Bearer {settings.KBASE_AUTH_TOKEN}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Submitted tenant access request: {tenant_name} ({permission}) - {data['status']}")
+
+        return TenantAccessRequestResponse(
+            status=data["status"],
+            message=data["message"],
+            requester=data["requester"],
+            tenant_name=data["tenant_name"],
+            permission=data["permission"],
+        )
+
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"Failed to submit access request: {e.response.status_code} - {e.response.text}")
+    except httpx.RequestError as e:
+        raise RuntimeError(f"Failed to connect to tenant access service: {e}")
