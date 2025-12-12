@@ -35,7 +35,7 @@ Click **Request Tenant Access** to open the access request dialog.
 3. **Select Permission Level** - Choose Read-Only or Read-Write
 4. **Add Justification** (optional) - Explain why you need access
 
-![Tenant Access Request dialog](screen_shots/tenant_reqeust.png)
+![Tenant Access Request dialog](screen_shots/tenant_request.png)
 
 ### Step 4: Submit
 
