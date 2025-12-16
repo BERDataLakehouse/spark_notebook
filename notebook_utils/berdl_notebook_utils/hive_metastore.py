@@ -1,11 +1,9 @@
 """Module for querying Hive metastore information using direct HMS client."""
 
-from typing import List
-
-from .clients import get_hive_metastore_client
+from berdl_notebook_utils.clients import get_hive_metastore_client
 
 
-def get_databases() -> List[str]:
+def get_databases() -> list[str]:
     """Get list of databases from Hive metastore.
 
     Returns:
@@ -22,7 +20,7 @@ def get_databases() -> List[str]:
         client.close()
 
 
-def get_tables(database: str) -> List[str]:
+def get_tables(database: str) -> list[str]:
     """Get list of tables in a database from Hive metastore.
 
     Args:

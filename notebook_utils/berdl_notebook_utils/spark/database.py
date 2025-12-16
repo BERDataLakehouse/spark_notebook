@@ -6,7 +6,11 @@ including tenant-aware namespace management for BERDL SQL warehouses.
 """
 
 from pyspark.sql import SparkSession
-from ..minio_governance.operations import get_namespace_prefix, get_my_sql_warehouse, get_group_sql_warehouse
+from berdl_notebook_utils.minio_governance.operations import (
+    get_namespace_prefix,
+    get_my_sql_warehouse,
+    get_group_sql_warehouse,
+)
 
 
 def create_namespace_if_not_exists(
