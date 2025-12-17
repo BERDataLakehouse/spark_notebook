@@ -17,13 +17,7 @@ from berdl_notebook_utils.setup_spark_session import (
     get_spark_session,
 )
 from pyspark.sql import SparkSession, Row
-
-
-class WarehouseResponse:
-    """Fake response to getting the user or group warehouse prefix."""
-
-    def __init__(self, value: str) -> None:
-        self.sql_warehouse_prefix = value
+from tests.conftest import WarehouseResponse
 
 
 class FakeSparkContext:

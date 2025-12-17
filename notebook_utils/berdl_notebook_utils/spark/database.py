@@ -13,6 +13,52 @@ from berdl_notebook_utils.minio_governance.operations import (
 )
 
 
+def generate_namespace_location(namespace: str = "default", tenant_name: str | None = None) -> tuple[str, str | None]:
+    """Generate the appropriate user or tenant warehouse namespace and its proposed location.
+
+    Note that this function does not check for existing namespaces.
+
+    :param namespace: input namespace, defaults to "default"
+    :type namespace: str, optional
+    :param tenant_name: name of the tenant; if absent, the namespace will be in the user warehouse. Defaults to None.
+    :type tenant_name: str | None, optional
+    :return: tuple of the namespace name and its location in the data warehouse
+    :rtype: tuple[str, str|None]
+    """
+    db_location = None
+    # Always fetch warehouse directory from governance API for proper S3 location
+    # Don't rely on spark.sql.warehouse.dir as it may be set to local path by Spark Connect server
+    warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
+    warehouse_dir = warehouse_response.sql_warehouse_prefix
+
+    if warehouse_dir and ("users-sql-warehouse" in warehouse_dir or "tenant-sql-warehouse" in warehouse_dir):
+        # Extract target name (username or tenant name) from path
+        # e.g. s3a://cdm-lake/users-sql-warehouse/tgu2
+        # e.g. s3a://cdm-lake/tenant-sql-warehouse/global-user-group
+        target_name = warehouse_dir.rstrip("/").split("/")[-1]
+
+        # Get namespace prefix from governance client based on warehouse type
+        if "users-sql-warehouse" in warehouse_dir:
+            # User warehouse - get user namespace prefix
+            prefix_response = get_namespace_prefix()
+            namespace = prefix_response.user_namespace_prefix + namespace
+        else:
+            # Tenant warehouse - get tenant namespace prefix
+            prefix_response = get_namespace_prefix(tenant=target_name)
+            namespace = prefix_response.tenant_namespace_prefix + namespace
+
+        # Set database location to warehouse_dir/namespace.db
+        db_location = f"{warehouse_dir.rstrip('/')}/{namespace}.db"
+    else:
+        # Keep original namespace if warehouse path doesn't match expected patterns
+        print(
+            f"Warning: Could not determine target name from warehouse directory '{warehouse_dir}'. "
+            f"Using namespace as-is."
+        )
+
+    return (namespace, db_location)
+
+
 def create_namespace_if_not_exists(
     spark: SparkSession,
     namespace: str = "default",
@@ -36,42 +82,13 @@ def create_namespace_if_not_exists(
     :return: The name of the namespace.
     """
     db_location = None
-    warehouse_dir = None
 
-    try:
-        if append_target:
-            # Always fetch warehouse directory from governance API for proper S3 location
-            # Don't rely on spark.sql.warehouse.dir as it may be set to local path by Spark Connect server
-            warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
-            warehouse_dir = warehouse_response.sql_warehouse_prefix
-
-            if warehouse_dir and ("users-sql-warehouse" in warehouse_dir or "tenant-sql-warehouse" in warehouse_dir):
-                # Extract target name (username or tenant name) from path
-                # e.g. s3a://cdm-lake/users-sql-warehouse/tgu2
-                # e.g. s3a://cdm-lake/tenant-sql-warehouse/global-user-group
-                target_name = warehouse_dir.rstrip("/").split("/")[-1]
-
-                # Get namespace prefix from governance client based on warehouse type
-                if "users-sql-warehouse" in warehouse_dir:
-                    # User warehouse - get user namespace prefix
-                    prefix_response = get_namespace_prefix()
-                    namespace = prefix_response.user_namespace_prefix + namespace
-                else:
-                    # Tenant warehouse - get tenant namespace prefix
-                    prefix_response = get_namespace_prefix(tenant=target_name)
-                    namespace = prefix_response.tenant_namespace_prefix + namespace
-
-                # Set database location to warehouse_dir/namespace.db
-                db_location = f"{warehouse_dir.rstrip('/')}/{namespace}.db"
-            else:
-                # Keep original namespace if warehouse path doesn't match expected patterns
-                print(
-                    f"Warning: Could not determine target name from warehouse directory '{warehouse_dir}'. "
-                    f"Using namespace as-is."
-                )
-    except Exception as e:
-        print(f"Error creating namespace: {e}")
-        raise e
+    if append_target:
+        try:
+            namespace, db_location = generate_namespace_location(namespace, tenant_name)
+        except Exception as e:
+            print(f"Error creating namespace: {e}")
+            raise e
 
     # Create database with explicit LOCATION for Spark Connect compatibility
     if db_location:
@@ -104,15 +121,11 @@ def table_exists(
         >>> if table_exists(spark, "user_data", "alice_experiments"):
         ...     print("Table exists")
     """
-    spark_catalog = f"{namespace}.{table_name}"
+    db_table = f"{namespace}.{table_name}"
 
-    try:
-        spark.table(spark_catalog)
-        print(f"Table {spark_catalog} exists.")
-        return True
-    except Exception as e:
-        print(f"Table {spark_catalog} does not exist: {e}")
-        return False
+    table_exists = spark.catalog.tableExists(db_table)
+    print(f"Table {db_table} {'exists' if table_exists else 'does not exist'}.")
+    return table_exists
 
 
 def remove_table(
