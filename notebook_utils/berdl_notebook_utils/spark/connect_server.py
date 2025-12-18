@@ -13,8 +13,12 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ..berdl_settings import BERDLSettings, get_settings
-from ..setup_spark_session import DRIVER_MEMORY_OVERHEAD, EXECUTOR_MEMORY_OVERHEAD, convert_memory_format
+from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
+from berdl_notebook_utils.setup_spark_session import (
+    DRIVER_MEMORY_OVERHEAD,
+    EXECUTOR_MEMORY_OVERHEAD,
+    convert_memory_format,
+)
 
 logger = logging.getLogger(__name__)
 

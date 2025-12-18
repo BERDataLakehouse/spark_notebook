@@ -7,10 +7,10 @@ and their schemas from a Spark cluster or directly from Hive metastore in Postgr
 import json
 from typing import Any, Dict, List, Optional, Union
 
-from .. import hive_metastore
+from berdl_notebook_utils import hive_metastore
 from pyspark.sql import SparkSession
-from ..setup_spark_session import get_spark_session
-from ..minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
+from berdl_notebook_utils.setup_spark_session import get_spark_session
+from berdl_notebook_utils.minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
 
 
 def _execute_with_spark(func: Any, spark: Optional[SparkSession] = None, *args, **kwargs) -> Any:

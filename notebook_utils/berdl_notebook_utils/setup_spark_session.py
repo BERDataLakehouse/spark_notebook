@@ -15,7 +15,7 @@ from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from berdl_notebook_utils.minio_governance import (
+from berdl_notebook_utils.minio_governance.operations import (
     get_group_sql_warehouse,
     get_my_sql_warehouse,
 )

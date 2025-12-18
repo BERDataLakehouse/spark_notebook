@@ -5,7 +5,7 @@ This package provides integration with the BERDL Data Governance API for managin
 MinIO storage permissions, user workspaces, and data sharing in notebook environments.
 """
 
-from .operations import (
+from berdl_notebook_utils.minio_governance.operations import (
     # Workspace/user info
     check_governance_health,
     get_group_sql_warehouse,
