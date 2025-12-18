@@ -16,7 +16,7 @@ DEFAULT_NAMESPACE = "default"
 
 
 def _namespace_norm(namespace: str | None = DEFAULT_NAMESPACE) -> str:
-    """Strips whitespace from the supplied namespace; returns the default namespace is nothing is supplied."""
+    """Strips whitespace from the supplied namespace; returns the default namespace if nothing is supplied."""
     if not namespace:
         return DEFAULT_NAMESPACE
     ns = namespace.strip()
