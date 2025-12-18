@@ -12,8 +12,20 @@ from berdl_notebook_utils.minio_governance.operations import (
     get_group_sql_warehouse,
 )
 
+DEFAULT_NAMESPACE = "default"
 
-def generate_namespace_location(namespace: str = "default", tenant_name: str | None = None) -> tuple[str, str | None]:
+
+def _namespace_norm(namespace: str | None = DEFAULT_NAMESPACE) -> str:
+    """Strips whitespace from the supplied namespace; returns the default namespace is nothing is supplied."""
+    if not namespace:
+        return DEFAULT_NAMESPACE
+    ns = namespace.strip()
+    return ns or DEFAULT_NAMESPACE
+
+
+def generate_namespace_location(
+    namespace: str | None = DEFAULT_NAMESPACE, tenant_name: str | None = None
+) -> tuple[str, str | None]:
     """Generate the appropriate user or tenant warehouse namespace and its proposed location.
 
     Note that this function does not check for existing namespaces.
@@ -25,6 +37,7 @@ def generate_namespace_location(namespace: str = "default", tenant_name: str | N
     :return: tuple of the namespace name and its location in the data warehouse
     :rtype: tuple[str, str|None]
     """
+    namespace = _namespace_norm(namespace)
     db_location = None
     # Always fetch warehouse directory from governance API for proper S3 location
     # Don't rely on spark.sql.warehouse.dir as it may be set to local path by Spark Connect server
@@ -61,7 +74,7 @@ def generate_namespace_location(namespace: str = "default", tenant_name: str | N
 
 def create_namespace_if_not_exists(
     spark: SparkSession,
-    namespace: str = "default",
+    namespace: str | None = DEFAULT_NAMESPACE,
     append_target: bool = True,
     tenant_name: str | None = None,
 ) -> str:
@@ -89,6 +102,12 @@ def create_namespace_if_not_exists(
         except Exception as e:
             print(f"Error creating namespace: {e}")
             raise e
+    else:
+        namespace = _namespace_norm(namespace)
+
+    if spark.catalog.databaseExists(namespace):
+        print(f"Namespace {namespace} is already registered and ready to use")
+        return namespace
 
     # Create database with explicit LOCATION for Spark Connect compatibility
     if db_location:
@@ -104,7 +123,7 @@ def create_namespace_if_not_exists(
 def table_exists(
     spark: SparkSession,
     table_name: str,
-    namespace: str = "default",
+    namespace: str = DEFAULT_NAMESPACE,
 ) -> bool:
     """
     Check if a table exists in the Spark catalog.
@@ -123,15 +142,15 @@ def table_exists(
     """
     db_table = f"{namespace}.{table_name}"
 
-    table_exists = spark.catalog.tableExists(db_table)
-    print(f"Table {db_table} {'exists' if table_exists else 'does not exist'}.")
-    return table_exists
+    exists = spark.catalog.tableExists(db_table)
+    print(f"Table {db_table} {'exists' if exists else 'does not exist'}.")
+    return exists
 
 
 def remove_table(
     spark: SparkSession,
     table_name: str,
-    namespace: str = "default",
+    namespace: str = DEFAULT_NAMESPACE,
 ) -> None:
     """
     Remove a table from the Spark catalog.
@@ -202,7 +221,7 @@ def list_namespaces(spark: SparkSession) -> list:
         return []
 
 
-def get_table_info(spark: SparkSession, table_name: str, namespace: str = "default") -> dict:
+def get_table_info(spark: SparkSession, table_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict:
     """
     Get detailed information about a table.
 
