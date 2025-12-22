@@ -15,7 +15,7 @@ from berdl_notebook_utils.minio_governance.operations import (
 DEFAULT_NAMESPACE = "default"
 
 
-def _namespace_norm(namespace: str | None = DEFAULT_NAMESPACE) -> str:
+def _namespace_norm(namespace: str | None = None) -> str:
     """Strips whitespace from the supplied namespace; returns the default namespace if nothing is supplied."""
     if not namespace:
         return DEFAULT_NAMESPACE
@@ -23,14 +23,12 @@ def _namespace_norm(namespace: str | None = DEFAULT_NAMESPACE) -> str:
     return ns or DEFAULT_NAMESPACE
 
 
-def generate_namespace_location(
-    namespace: str | None = DEFAULT_NAMESPACE, tenant_name: str | None = None
-) -> tuple[str, str | None]:
+def generate_namespace_location(namespace: str | None = None, tenant_name: str | None = None) -> tuple[str, str | None]:
     """Generate the appropriate user or tenant warehouse namespace and its proposed location.
 
     Note that this function does not check for existing namespaces.
 
-    :param namespace: input namespace, defaults to "default"
+    :param namespace: input namespace, defaults to None
     :type namespace: str, optional
     :param tenant_name: name of the tenant; if absent, the namespace will be in the user warehouse. Defaults to None.
     :type tenant_name: str | None, optional
