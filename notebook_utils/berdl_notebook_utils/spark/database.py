@@ -151,7 +151,7 @@ def table_exists(
 
     db_table = f"{namespace}.{table_name}"
     exists = spark.catalog.tableExists(db_table)
-    logger.info(f"Table {db_table} {'exists' if exists else 'does not exist'}.")
+    logger.info("Table %s %s.", db_table, "exists" if exists else "does not exist")
     return exists
 
 
