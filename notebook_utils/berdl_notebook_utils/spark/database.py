@@ -5,14 +5,21 @@ This module contains utility functions to interact with the Spark catalog,
 including tenant-aware namespace management for BERDL SQL warehouses.
 """
 
+import logging
+
 from pyspark.sql import SparkSession
+
 from berdl_notebook_utils.minio_governance.operations import (
-    get_namespace_prefix,
-    get_my_sql_warehouse,
     get_group_sql_warehouse,
+    get_my_sql_warehouse,
+    get_namespace_prefix,
 )
 
 DEFAULT_NAMESPACE = "default"
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def _namespace_norm(namespace: str | None = None) -> str:
@@ -62,9 +69,9 @@ def generate_namespace_location(namespace: str | None = None, tenant_name: str |
         db_location = f"{warehouse_dir.rstrip('/')}/{namespace}.db"
     else:
         # Keep original namespace if warehouse path doesn't match expected patterns
-        print(
-            f"Warning: Could not determine target name from warehouse directory '{warehouse_dir}'. "
-            f"Using namespace as-is."
+        logger.warning(
+            "Warning: Could not determine target name from warehouse directory '%s'. Using namespace as-is.",
+            warehouse_dir,
         )
 
     return (namespace, db_location)
@@ -96,32 +103,33 @@ def create_namespace_if_not_exists(
 
     if append_target:
         try:
-            namespace, db_location = generate_namespace_location(namespace, tenant_name)
-        except Exception as e:
-            print(f"Error creating namespace: {e}")
-            raise e
+            delta_namespace, db_location = generate_namespace_location(namespace, tenant_name)
+        except Exception:
+            # includes stack trace
+            logger.exception("Error creating namespace")
+            raise
     else:
-        namespace = _namespace_norm(namespace)
+        delta_namespace = _namespace_norm(namespace)
 
-    if spark.catalog.databaseExists(namespace):
-        print(f"Namespace {namespace} is already registered and ready to use")
-        return namespace
+    if spark.catalog.databaseExists(delta_namespace):
+        logger.info("Namespace %s is already registered and ready to use.", delta_namespace)
+        return delta_namespace
 
     # Create database with explicit LOCATION for Spark Connect compatibility
     if db_location:
-        spark.sql(f"CREATE DATABASE IF NOT EXISTS {namespace} LOCATION '{db_location}'")
-        print(f"Namespace {namespace} is ready to use at location {db_location}.")
+        spark.sql(f"CREATE DATABASE IF NOT EXISTS {delta_namespace} LOCATION '{db_location}'")
+        logger.info("Namespace %s is ready to use at location %s.", delta_namespace, db_location)
     else:
-        spark.sql(f"CREATE DATABASE IF NOT EXISTS {namespace}")
-        print(f"Namespace {namespace} is ready to use.")
+        spark.sql(f"CREATE DATABASE IF NOT EXISTS {delta_namespace}")
+        logger.info("Namespace %s is ready to use.", delta_namespace)
 
-    return namespace
+    return delta_namespace
 
 
 def table_exists(
     spark: SparkSession,
     table_name: str,
-    namespace: str = DEFAULT_NAMESPACE,
+    namespace: str | None = None,
 ) -> bool:
     """
     Check if a table exists in the Spark catalog.
@@ -138,10 +146,12 @@ def table_exists(
         >>> if table_exists(spark, "user_data", "alice_experiments"):
         ...     print("Table exists")
     """
-    db_table = f"{namespace}.{table_name}"
+    if not namespace:
+        namespace = DEFAULT_NAMESPACE
 
+    db_table = f"{namespace}.{table_name}"
     exists = spark.catalog.tableExists(db_table)
-    print(f"Table {db_table} {'exists' if exists else 'does not exist'}.")
+    logger.info(f"Table {db_table} {'exists' if exists else 'does not exist'}.")
     return exists
 
 
@@ -161,10 +171,9 @@ def remove_table(
     Example:
         >>> remove_table(spark, "temp_data", "alice_experiments")
     """
-    spark_catalog = f"{namespace}.{table_name}"
-
-    spark.sql(f"DROP TABLE IF EXISTS {spark_catalog}")
-    print(f"Table {spark_catalog} removed.")
+    db_table = f"{namespace}.{table_name}"
+    spark.sql(f"DROP TABLE IF EXISTS {db_table}")
+    logger.info("Table %s removed.", db_table)
 
 
 def list_tables(spark: SparkSession, namespace: str | None = None) -> list:
@@ -189,10 +198,9 @@ def list_tables(spark: SparkSession, namespace: str | None = None) -> list:
             tables_df = spark.sql("SHOW TABLES")
 
         # Extract table names from the DataFrame
-        tables = [row["tableName"] for row in tables_df.collect()]
-        return tables
-    except Exception as e:
-        print(f"Error listing tables: {e}")
+        return [row["tableName"] for row in tables_df.collect()]
+    except Exception:
+        logger.exception("Error listing tables")
         return []
 
 
@@ -212,14 +220,43 @@ def list_namespaces(spark: SparkSession) -> list:
     """
     try:
         namespaces_df = spark.sql("SHOW DATABASES")
-        namespaces = [row["namespace"] for row in namespaces_df.collect()]
-        return namespaces
-    except Exception as e:
-        print(f"Error listing namespaces: {e}")
+        return [row["namespace"] for row in namespaces_df.collect()]
+    except Exception:
+        logger.exception("Error listing namespaces")
         return []
 
 
-def get_table_info(spark: SparkSession, table_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict:
+def get_namespace_info(spark: SparkSession, namespace: str | None = None) -> dict:
+    """
+    Get detailed information about a namespace.
+
+    Args:
+        spark: The Spark session
+        namespace: The namespace to retrieve information about
+
+    Returns:
+        Dictionary containing namespace information
+
+    Example:
+        >>> info = get_namespace_info(spark, "alice_experiments")
+        >>> print(f"Namespace location: {info.get('Location', 'N/A')}")
+    """
+    if not namespace:
+        namespace = DEFAULT_NAMESPACE
+
+    info = {}
+    try:
+        # Get namespace description
+        desc_df = spark.sql(f"DESCRIBE NAMESPACE EXTENDED {namespace}").collect()
+        # Convert to dictionary
+        info = {row["info_name"]: row["info_value"] for row in desc_df}
+    except Exception:
+        logger.exception("Error getting namespace info for %s", namespace)
+
+    return info
+
+
+def get_table_info(spark: SparkSession, table_name: str, namespace: str | None = None) -> dict:
     """
     Get detailed information about a table.
 
@@ -233,21 +270,19 @@ def get_table_info(spark: SparkSession, table_name: str, namespace: str = DEFAUL
 
     Example:
         >>> info = get_table_info(spark, "user_data", "alice_experiments")
-        >>> print(f"Table location: {info.get('location', 'N/A')}")
+        >>> print(f"Table location: {info.get('Location', 'N/A')}")
     """
-    spark_catalog = f"{namespace}.{table_name}"
-
+    if not namespace:
+        namespace = DEFAULT_NAMESPACE
+    db_table = f"{namespace}.{table_name}"
+    info = {}
     try:
         # Get table description
-        desc_df = spark.sql(f"DESCRIBE EXTENDED {spark_catalog}")
+        desc_df = spark.sql(f"DESCRIBE EXTENDED {db_table}").collect()
+        # N.b. if the table contains columns with the same names as table metadata fields ("Name", "Type", "Location", "Provider", etc.)
+        # they will be overwritten.
+        info = {row["col_name"]: row["data_type"] for row in desc_df if row["col_name"] and row["data_type"]}
+    except Exception:
+        logger.exception("Error getting table info for %s", db_table)
 
-        # Convert to dictionary
-        info = {}
-        for row in desc_df.collect():
-            if row["col_name"] and row["data_type"]:
-                info[row["col_name"]] = row["data_type"]
-
-        return info
-    except Exception as e:
-        print(f"Error getting table info for {spark_catalog}: {e}")
-        return {}
+    return info
