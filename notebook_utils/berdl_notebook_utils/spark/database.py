@@ -279,8 +279,8 @@ def get_table_info(spark: SparkSession, table_name: str, namespace: str | None =
     try:
         # Get table description
         desc_df = spark.sql(f"DESCRIBE EXTENDED {db_table}").collect()
-        # N.b. if the table contains columns with the same names as table metadata fields ("Name", "Type", "Location", "Provider", etc.)
-        # they will be overwritten.
+        # N.b. if the table contains columns with the same names as table metadata fields
+        # ("Name", "Type", "Location", "Provider", etc.), they will be overwritten.
         info = {row["col_name"]: row["data_type"] for row in desc_df if row["col_name"] and row["data_type"]}
     except Exception:
         logger.exception("Error getting table info for %s", db_table)
