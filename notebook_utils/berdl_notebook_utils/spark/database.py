@@ -19,7 +19,6 @@ DEFAULT_NAMESPACE = "default"
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def _namespace_norm(namespace: str | None = None) -> str:

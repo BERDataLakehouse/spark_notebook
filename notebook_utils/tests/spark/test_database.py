@@ -53,7 +53,7 @@ def patch_governance(monkeypatch: pytest.MonkeyPatch) -> Generator[None, Any]:
         lambda tenant: WarehouseResponse(f"{TENANT_BASE_URL}{tenant}"),
     )
     # Patch get_namespace_prefix (will be overridden in individual tests)
-    monkeypatch.setattr("berdl_notebook_utils.spark.database.get_namespace_prefix", lambda **kw: NamespacePrefix(**kw))
+    monkeypatch.setattr("berdl_notebook_utils.spark.database.get_namespace_prefix", NamespacePrefix)
     yield
 
 
@@ -110,6 +110,7 @@ def test_generate_namespace_location_no_match_warns(
     namespace_arg: str | None, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test that a warning is emitted if the warehouse dir returned does not match expected patterns."""
+    caplog.set_level(logging.INFO)
     with patch(
         "berdl_notebook_utils.spark.database.get_my_sql_warehouse",
         return_value=WarehouseResponse("s3a://cdm-lake/unknown-warehouse"),
@@ -129,6 +130,7 @@ def test_create_namespace_if_not_exists_user_tenant_warehouse(
     namespace_arg: str | None, tenant: str | None, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test user and tenant namespace creation."""
+    caplog.set_level(logging.INFO)
     mock_spark = make_mock_spark()
     # Run with append_target=True (default)
     ns = create_namespace_if_not_exists(mock_spark, namespace=namespace_arg, tenant_name=tenant)  # type: ignore
@@ -152,6 +154,7 @@ def test_create_namespace_if_not_exists_without_prefix(
     namespace_arg: str | None, tenant: str | None, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test namespace creation when append_target is set to false."""
+    caplog.set_level(logging.INFO)
     mock_spark = make_mock_spark()
     ns = create_namespace_if_not_exists(mock_spark, namespace=namespace_arg, append_target=False, tenant_name=tenant)  # type: ignore
     namespace = EXPECTED_NS[namespace_arg]
@@ -170,6 +173,7 @@ def test_create_namespace_if_not_exists_already_exists(
     namespace_arg: str | None, tenant: str | None, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test namespace creation when the namespace has already been registered."""
+    caplog.set_level(logging.INFO)
     mock_spark = make_mock_spark(database_exists=True)
     ns = create_namespace_if_not_exists(mock_spark, namespace=namespace_arg, append_target=False, tenant_name=tenant)  # type: ignore
     namespace = EXPECTED_NS[namespace_arg]
@@ -186,6 +190,7 @@ def test_create_namespace_if_not_exists_no_location_match_warns(
     namespace_arg: str | None, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test that a warning is emitted if the warehouse dir returned does not match expected patterns."""
+    caplog.set_level(logging.INFO)
     mock_spark = make_mock_spark()
     with patch(
         "berdl_notebook_utils.spark.database.get_my_sql_warehouse",
@@ -206,6 +211,7 @@ def test_create_namespace_if_not_exists_no_location_match_warns(
 
 def test_create_namespace_if_not_exists_error(caplog: pytest.LogCaptureFixture) -> None:
     """Test the behaviour of create_namespace_if_not_exists if an error is thrown."""
+    caplog.set_level(logging.INFO)
     with (
         patch(
             "berdl_notebook_utils.spark.database.generate_namespace_location",
@@ -255,6 +261,7 @@ def test_get_table_info() -> None:
 
 def test_get_table_info_error(caplog: pytest.LogCaptureFixture) -> None:
     """Ensure that an error message is logged if something happens when retrieving table info."""
+    caplog.set_level(logging.INFO)
     mock_spark = make_mock_spark_sql_error()
     output = get_table_info(
         mock_spark,
@@ -268,7 +275,7 @@ def test_get_table_info_error(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_get_namespace_info() -> None:
-    """Test the retrieval and reformatting of table information."""
+    """Test the retrieval and reformatting of namespace information."""
     ns_data = [
         Row(info_name="Catalog Name", info_value="spark_catalog"),
         Row(info_name="Namespace Name", info_value="SuperCoolDataOnly"),
@@ -295,7 +302,8 @@ def test_get_namespace_info() -> None:
 
 
 def test_get_namespace_info_error(caplog: pytest.LogCaptureFixture) -> None:
-    """Ensure that an error message is logged if something happens when retrieving table info."""
+    """Ensure that an error message is logged if something happens when retrieving namespace info."""
+    caplog.set_level(logging.INFO)
     mock_spark = make_mock_spark_sql_error()
     output = get_namespace_info(mock_spark, "some_namespace")
     assert output == {}
