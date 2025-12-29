@@ -5,12 +5,93 @@ and their schemas from a Spark cluster or directly from Hive metastore in Postgr
 """
 
 import json
-from typing import Any, Dict, List, Optional, Union
+import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from berdl_notebook_utils import hive_metastore
 from pyspark.sql import SparkSession
 from berdl_notebook_utils.setup_spark_session import get_spark_session
 from berdl_notebook_utils.minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
+
+# =============================================================================
+# TTL CACHE FOR GOVERNANCE API CALLS
+# =============================================================================
+# These caches prevent repeated slow API calls within a session.
+# Default TTL is 5 minutes (300 seconds).
+
+_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+T = TypeVar("T")
+
+
+def _ttl_cache(ttl_seconds: int = _CACHE_TTL_SECONDS) -> Callable:
+    """
+    Simple TTL cache decorator using a dict-based cache.
+
+    Unlike functools.lru_cache, this cache expires entries after ttl_seconds.
+    Thread-safe for concurrent reads (Python's GIL protects dict operations).
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        cache: Dict[str, tuple[float, T]] = {}
+
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            # Create cache key from function arguments
+            key = str((args, tuple(sorted(kwargs.items()))))
+            now = time.time()
+
+            # Check if cached and not expired
+            if key in cache:
+                cached_time, cached_value = cache[key]
+                if now - cached_time < ttl_seconds:
+                    return cached_value
+
+            # Call function and cache result
+            result = func(*args, **kwargs)
+            cache[key] = (now, result)
+            return result
+
+        def clear_cache() -> None:
+            """Clear all cached entries."""
+            cache.clear()
+
+        wrapper.clear_cache = clear_cache  # type: ignore
+        return wrapper
+
+    return decorator
+
+
+@_ttl_cache()
+def _cached_get_my_groups():
+    """Cached wrapper for get_my_groups()."""
+    return get_my_groups()
+
+
+@_ttl_cache()
+def _cached_get_namespace_prefix(tenant: Optional[str] = None):
+    """Cached wrapper for get_namespace_prefix()."""
+    return get_namespace_prefix(tenant=tenant)
+
+
+@_ttl_cache()
+def _cached_get_my_accessible_paths():
+    """Cached wrapper for get_my_accessible_paths()."""
+    return get_my_accessible_paths()
+
+
+def clear_governance_cache() -> None:
+    """Clear all governance API caches. Call this when user permissions change."""
+    getattr(_cached_get_my_groups, "clear_cache", lambda: None)()
+    getattr(_cached_get_namespace_prefix, "clear_cache", lambda: None)()
+    getattr(_cached_get_my_accessible_paths, "clear_cache", lambda: None)()
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 
 
 def _execute_with_spark(func: Any, spark: Optional[SparkSession] = None, *args, **kwargs) -> Any:
@@ -101,23 +182,36 @@ def get_databases(
     # Apply filtering: owned databases (fast) + shared databases (API call)
     if filter_by_namespace:
         try:
-            # Step 1: Get owned/group databases using namespace prefixes (fast, no API call)
-            user_prefix_response = get_namespace_prefix()
-            prefixes = [user_prefix_response.user_namespace_prefix]
+            # Parallelize all governance API calls to reduce latency
+            # These calls use cached wrappers, so subsequent calls are instant
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                # Submit initial calls: groups, user prefix, and accessible paths
+                groups_future = executor.submit(_cached_get_my_groups)
+                user_prefix_future = executor.submit(_cached_get_namespace_prefix)
+                accessible_paths_future = executor.submit(_cached_get_my_accessible_paths)
 
-            # Get all group namespace prefixes
-            groups_response = get_my_groups()
-            for group_name in groups_response.groups:
-                tenant_prefix_response = get_namespace_prefix(tenant=group_name)
-                prefixes.append(tenant_prefix_response.tenant_namespace_prefix)
+                # Wait for groups to get tenant list, then submit tenant prefix calls
+                groups_response = groups_future.result()
+                tenant_prefix_futures = {
+                    group: executor.submit(_cached_get_namespace_prefix, tenant=group)
+                    for group in groups_response.groups
+                }
 
-            # Filter databases by namespace prefixes (owned + group databases)
-            owned_databases = [db for db in databases if db.startswith(tuple(prefixes))]
+                # Collect results
+                user_prefix_response = user_prefix_future.result()
+                prefixes = [user_prefix_response.user_namespace_prefix]
 
-            # Step 2: Get shared databases from accessible paths API
-            # These are databases shared with the user that don't match their namespace
-            accessible_paths_response = get_my_accessible_paths()
-            shared_databases = _extract_databases_from_paths(accessible_paths_response.accessible_paths)
+                # Collect tenant prefixes as they complete
+                for group, future in tenant_prefix_futures.items():
+                    tenant_prefix_response = future.result()
+                    prefixes.append(tenant_prefix_response.tenant_namespace_prefix)
+
+                # Filter databases by namespace prefixes (owned + group databases)
+                owned_databases = [db for db in databases if db.startswith(tuple(prefixes))]
+
+                # Get shared databases from accessible paths API
+                accessible_paths_response = accessible_paths_future.result()
+                shared_databases = _extract_databases_from_paths(accessible_paths_response.accessible_paths)
 
             # Combine owned and shared, remove duplicates
             all_accessible = set(owned_databases) | set(shared_databases)
