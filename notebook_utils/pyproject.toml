@@ -53,6 +53,10 @@ pythonpath = ["."]
 addopts = "-v"
 markers = ["requires_spark: must be run in an environment where spark is available"]
 
+[tool.coverage.run]
+relative_files = true
+source = ["berdl_notebook_utils"]
+
 # environment settings for running tests
 [tool.pytest_env]
 USER = "fake_user"
