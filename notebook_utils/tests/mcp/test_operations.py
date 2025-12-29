@@ -5,6 +5,10 @@ Tests for mcp/operations.py - MCP wrapper functions.
 from unittest.mock import Mock, patch
 import pytest
 
+from datalake_mcp_server_client.models import ErrorResponse
+
+from berdl_notebook_utils.mcp.client import get_datalake_mcp_client
+
 from berdl_notebook_utils.mcp.operations import (
     _handle_error_response,
     mcp_list_databases,
@@ -21,8 +25,6 @@ from berdl_notebook_utils.mcp.operations import (
 @pytest.fixture(autouse=True)
 def clear_client_cache():
     """Clear client cache before each test."""
-    from berdl_notebook_utils.mcp.client import get_datalake_mcp_client
-
     get_datalake_mcp_client.cache_clear()
     yield
 
@@ -49,8 +51,6 @@ class TestHandleErrorResponse:
 
     def test_raises_for_error_response(self):
         """Test that ErrorResponse raises an exception."""
-        from datalake_mcp_server_client.models import ErrorResponse
-
         error_response = ErrorResponse(error="Something went wrong")
 
         with pytest.raises(Exception) as exc_info:
