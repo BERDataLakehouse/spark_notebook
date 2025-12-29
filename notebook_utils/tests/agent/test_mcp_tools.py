@@ -2,9 +2,21 @@
 Tests for agent/mcp_tools.py - Native MCP tool integration.
 """
 
-import asyncio
-from unittest.mock import Mock, patch, MagicMock
+from typing import Optional
+from unittest.mock import Mock, patch
 import pytest
+from pydantic import BaseModel
+
+import berdl_notebook_utils.agent.mcp_tools as mcp_module
+from berdl_notebook_utils.agent.mcp_tools import (
+    _simplify_schema_for_openai,
+    _wrap_async_tool,
+    get_mcp_tools,
+    clear_mcp_tools_cache,
+    cleanup_mcp_tools,
+    _run_event_loop,
+    _cleanup_on_exit,
+)
 
 
 class TestSimplifySchemaForOpenai:
@@ -12,7 +24,6 @@ class TestSimplifySchemaForOpenai:
 
     def test_returns_original_if_no_fields(self):
         """Test returns original class if no __fields__ attribute."""
-        from berdl_notebook_utils.agent.mcp_tools import _simplify_schema_for_openai
 
         class SimpleClass:
             pass
@@ -23,9 +34,6 @@ class TestSimplifySchemaForOpenai:
 
     def test_simplifies_optional_fields(self):
         """Test simplifies Optional fields."""
-        from berdl_notebook_utils.agent.mcp_tools import _simplify_schema_for_openai
-        from pydantic import BaseModel
-        from typing import Optional
 
         class TestSchema(BaseModel):
             required_field: str
@@ -45,8 +53,6 @@ class TestWrapAsyncTool:
     @patch("berdl_notebook_utils.agent.mcp_tools._mcp_event_loop", new=None)
     def test_sync_wrapper_raises_if_no_loop(self):
         """Test sync wrapper raises if event loop not initialized."""
-        from berdl_notebook_utils.agent.mcp_tools import _wrap_async_tool
-
         mock_async_tool = Mock()
         mock_async_tool.name = "test_tool"
         mock_async_tool.description = "Test tool"
@@ -65,10 +71,7 @@ class TestGetMcpTools:
     @patch("berdl_notebook_utils.agent.mcp_tools._mcp_tools_cache", new=["cached_tool"])
     def test_returns_cached_tools(self):
         """Test returns cached tools if available."""
-        from berdl_notebook_utils.agent.mcp_tools import get_mcp_tools
-
         # Reset the cache to our test value
-        import berdl_notebook_utils.agent.mcp_tools as mcp_module
         mcp_module._mcp_tools_cache = ["cached_tool"]
 
         result = get_mcp_tools()
@@ -81,9 +84,6 @@ class TestGetMcpTools:
     @patch("berdl_notebook_utils.agent.mcp_tools.get_settings")
     def test_raises_import_error_if_langchain_mcp_tools_not_installed(self, mock_settings):
         """Test raises ImportError if langchain-mcp-tools not installed."""
-        from berdl_notebook_utils.agent.mcp_tools import get_mcp_tools
-        import berdl_notebook_utils.agent.mcp_tools as mcp_module
-
         # Clear cache
         mcp_module._mcp_tools_cache = None
 
@@ -101,9 +101,6 @@ class TestClearMcpToolsCache:
 
     def test_clears_cache(self):
         """Test clears the tools cache."""
-        from berdl_notebook_utils.agent.mcp_tools import clear_mcp_tools_cache
-        import berdl_notebook_utils.agent.mcp_tools as mcp_module
-
         # Set cache to some value
         mcp_module._mcp_tools_cache = ["some_tool"]
 
@@ -118,8 +115,6 @@ class TestCleanupMcpTools:
     @patch("berdl_notebook_utils.agent.mcp_tools._cleanup_on_exit")
     def test_calls_cleanup_on_exit(self, mock_cleanup):
         """Test calls _cleanup_on_exit."""
-        from berdl_notebook_utils.agent.mcp_tools import cleanup_mcp_tools
-
         cleanup_mcp_tools()
 
         mock_cleanup.assert_called_once()
@@ -130,8 +125,6 @@ class TestRunEventLoop:
 
     def test_sets_event_loop_and_runs(self):
         """Test sets event loop and runs forever."""
-        from berdl_notebook_utils.agent.mcp_tools import _run_event_loop
-
         mock_loop = Mock()
 
         # Simulate loop running then stopping
@@ -149,9 +142,6 @@ class TestCleanupOnExit:
 
     def test_cleanup_when_no_loop(self):
         """Test cleanup does nothing when no event loop."""
-        from berdl_notebook_utils.agent.mcp_tools import _cleanup_on_exit
-        import berdl_notebook_utils.agent.mcp_tools as mcp_module
-
         # Ensure no event loop
         original_loop = mcp_module._mcp_event_loop
         mcp_module._mcp_event_loop = None
@@ -165,9 +155,6 @@ class TestCleanupOnExit:
     @patch("asyncio.run_coroutine_threadsafe")
     def test_cleanup_calls_mcp_cleanup(self, mock_run_coro):
         """Test cleanup calls MCP cleanup function."""
-        from berdl_notebook_utils.agent.mcp_tools import _cleanup_on_exit
-        import berdl_notebook_utils.agent.mcp_tools as mcp_module
-
         # Set up mocks
         mock_loop = Mock()
 

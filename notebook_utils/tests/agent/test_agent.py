@@ -2,8 +2,10 @@
 Tests for agent/agent.py - BERDLAgent class and factory functions.
 """
 
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 import pytest
+
+from berdl_notebook_utils.agent.agent import BERDLAgent, create_berdl_agent
 
 
 class TestBERDLAgentInit:
@@ -27,8 +29,6 @@ class TestBERDLAgentInit:
         mock_agent_executor,
     ):
         """Test BERDLAgent initialization with Anthropic provider."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         # Setup mocks
         mock_settings = Mock()
         mock_settings.USER = "test_user"
@@ -77,8 +77,6 @@ class TestBERDLAgentInit:
         mock_agent_executor,
     ):
         """Test BERDLAgent initialization with OpenAI provider."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         # Setup mocks
         mock_settings = Mock()
         mock_settings.USER = "test_user"
@@ -127,8 +125,6 @@ class TestBERDLAgentInit:
         mock_agent_executor,
     ):
         """Test BERDLAgent initialization with Ollama provider."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         # Setup mocks
         mock_settings = Mock()
         mock_settings.USER = "test_user"
@@ -165,12 +161,8 @@ class TestBERDLAgentCreateLLM:
 
     @patch("berdl_notebook_utils.agent.agent.get_agent_settings")
     @patch("berdl_notebook_utils.agent.agent.get_settings")
-    def test_create_llm_anthropic_missing_api_key(
-        self, mock_get_settings, mock_get_agent_settings
-    ):
+    def test_create_llm_anthropic_missing_api_key(self, mock_get_settings, mock_get_agent_settings):
         """Test _create_llm raises error when Anthropic API key is missing."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_get_settings.return_value = mock_settings
@@ -187,12 +179,8 @@ class TestBERDLAgentCreateLLM:
 
     @patch("berdl_notebook_utils.agent.agent.get_agent_settings")
     @patch("berdl_notebook_utils.agent.agent.get_settings")
-    def test_create_llm_openai_missing_api_key(
-        self, mock_get_settings, mock_get_agent_settings
-    ):
+    def test_create_llm_openai_missing_api_key(self, mock_get_settings, mock_get_agent_settings):
         """Test _create_llm raises error when OpenAI API key is missing."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_get_settings.return_value = mock_settings
@@ -209,12 +197,8 @@ class TestBERDLAgentCreateLLM:
 
     @patch("berdl_notebook_utils.agent.agent.get_agent_settings")
     @patch("berdl_notebook_utils.agent.agent.get_settings")
-    def test_create_llm_unknown_provider(
-        self, mock_get_settings, mock_get_agent_settings
-    ):
+    def test_create_llm_unknown_provider(self, mock_get_settings, mock_get_agent_settings):
         """Test _create_llm raises error for unknown provider."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_get_settings.return_value = mock_settings
@@ -234,14 +218,15 @@ class TestBERDLAgentMethods:
 
     def _create_mock_agent(self):
         """Helper to create a fully mocked BERDLAgent."""
-        with patch("berdl_notebook_utils.agent.agent.AgentExecutor"), \
-             patch("berdl_notebook_utils.agent.agent.get_all_tools") as mock_tools, \
-             patch("berdl_notebook_utils.agent.agent.get_system_prompt"), \
-             patch("berdl_notebook_utils.agent.agent.create_react_agent"), \
-             patch("berdl_notebook_utils.agent.agent.ChatOllama"), \
-             patch("berdl_notebook_utils.agent.agent.get_agent_settings") as mock_settings, \
-             patch("berdl_notebook_utils.agent.agent.get_settings") as mock_berdl_settings:
-
+        with (
+            patch("berdl_notebook_utils.agent.agent.AgentExecutor"),
+            patch("berdl_notebook_utils.agent.agent.get_all_tools") as mock_tools,
+            patch("berdl_notebook_utils.agent.agent.get_system_prompt"),
+            patch("berdl_notebook_utils.agent.agent.create_react_agent"),
+            patch("berdl_notebook_utils.agent.agent.ChatOllama"),
+            patch("berdl_notebook_utils.agent.agent.get_agent_settings") as mock_settings,
+            patch("berdl_notebook_utils.agent.agent.get_settings") as mock_berdl_settings,
+        ):
             mock_berdl_settings.return_value = Mock(USER="test_user")
             mock_agent_settings = Mock()
             mock_agent_settings.AGENT_MODEL_PROVIDER = "ollama"
@@ -256,7 +241,6 @@ class TestBERDLAgentMethods:
             mock_settings.return_value = mock_agent_settings
             mock_tools.return_value = []
 
-            from berdl_notebook_utils.agent.agent import BERDLAgent
             return BERDLAgent(model_provider="ollama", enable_memory=False)
 
     def test_run_returns_output(self):
@@ -352,9 +336,7 @@ class TestBERDLAgentMethods:
         """Test get_conversation_history returns history when memory is enabled."""
         agent = self._create_mock_agent()
         mock_memory = Mock()
-        mock_memory.load_memory_variables.return_value = {
-            "chat_history": [{"role": "user", "content": "Hello"}]
-        }
+        mock_memory.load_memory_variables.return_value = {"chat_history": [{"role": "user", "content": "Hello"}]}
         agent.memory = mock_memory
 
         result = agent.get_conversation_history()
@@ -394,8 +376,6 @@ class TestBERDLAgentMemory:
         mock_agent_executor,
     ):
         """Test memory is configured to return messages for OpenAI provider."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_get_settings.return_value = mock_settings
@@ -445,8 +425,6 @@ class TestBERDLAgentMCPTools:
         mock_agent_executor,
     ):
         """Test BERDLAgent discovers tools from MCP server when enabled."""
-        from berdl_notebook_utils.agent.agent import BERDLAgent
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_get_settings.return_value = mock_settings
@@ -487,8 +465,6 @@ class TestCreateBerdlAgent:
     @patch("berdl_notebook_utils.agent.agent.BERDLAgent")
     def test_create_berdl_agent_with_defaults(self, mock_agent_class):
         """Test create_berdl_agent creates agent with default params."""
-        from berdl_notebook_utils.agent.agent import create_berdl_agent
-
         mock_agent = Mock()
         mock_agent_class.return_value = mock_agent
 
@@ -509,8 +485,6 @@ class TestCreateBerdlAgent:
     @patch("berdl_notebook_utils.agent.agent.BERDLAgent")
     def test_create_berdl_agent_with_custom_params(self, mock_agent_class):
         """Test create_berdl_agent passes custom params."""
-        from berdl_notebook_utils.agent.agent import create_berdl_agent
-
         mock_agent = Mock()
         mock_agent_class.return_value = mock_agent
 

@@ -2,11 +2,11 @@
 Extended tests for client creation functions to increase coverage.
 """
 
-from unittest.mock import Mock, patch, MagicMock
-from urllib.parse import urlparse
+from unittest.mock import Mock, patch
 
 import pytest
 
+from berdl_notebook_utils.berdl_settings import BERDLSettings
 from berdl_notebook_utils.clients import (
     get_task_service_client,
     get_minio_client,
@@ -34,7 +34,7 @@ class TestGetMinioClient:
         """Test that get_minio_client creates a Minio client with correct settings."""
         with patch("berdl_notebook_utils.clients.Minio") as mock_minio:
             mock_minio.return_value = Mock()
-            client = get_minio_client()
+            get_minio_client()
 
             mock_minio.assert_called_once()
             call_kwargs = mock_minio.call_args[1]
@@ -73,11 +73,9 @@ class TestGetGovernanceClient:
 
     def test_get_governance_client_creates_client(self):
         """Test that get_governance_client creates an authenticated client."""
-        with patch(
-            "berdl_notebook_utils.clients.GovernanceAuthenticatedClient"
-        ) as mock_client_class:
+        with patch("berdl_notebook_utils.clients.GovernanceAuthenticatedClient") as mock_client_class:
             mock_client_class.return_value = Mock()
-            client = get_governance_client()
+            get_governance_client()
 
             mock_client_class.assert_called_once()
             call_kwargs = mock_client_class.call_args[1]
@@ -86,9 +84,7 @@ class TestGetGovernanceClient:
 
     def test_get_governance_client_uses_settings(self):
         """Test that client uses GOVERNANCE_API_URL from settings."""
-        with patch(
-            "berdl_notebook_utils.clients.GovernanceAuthenticatedClient"
-        ) as mock_client_class:
+        with patch("berdl_notebook_utils.clients.GovernanceAuthenticatedClient") as mock_client_class:
             mock_client_class.return_value = Mock()
             get_governance_client()
 
@@ -103,11 +99,9 @@ class TestGetSparkClusterClient:
 
     def test_get_spark_cluster_client_creates_client(self):
         """Test that get_spark_cluster_client creates an authenticated client."""
-        with patch(
-            "berdl_notebook_utils.clients.SparkAuthenticatedClient"
-        ) as mock_client_class:
+        with patch("berdl_notebook_utils.clients.SparkAuthenticatedClient") as mock_client_class:
             mock_client_class.return_value = Mock()
-            client = get_spark_cluster_client()
+            get_spark_cluster_client()
 
             mock_client_class.assert_called_once()
             call_kwargs = mock_client_class.call_args[1]
@@ -116,9 +110,7 @@ class TestGetSparkClusterClient:
 
     def test_get_spark_cluster_client_uses_settings(self):
         """Test that client uses SPARK_CLUSTER_MANAGER_API_URL from settings."""
-        with patch(
-            "berdl_notebook_utils.clients.SparkAuthenticatedClient"
-        ) as mock_client_class:
+        with patch("berdl_notebook_utils.clients.SparkAuthenticatedClient") as mock_client_class:
             mock_client_class.return_value = Mock()
             get_spark_cluster_client()
 
@@ -134,7 +126,7 @@ class TestGetHiveMetastoreClient:
         """Test that get_hive_metastore_client creates an HMS client."""
         with patch("berdl_notebook_utils.clients.HMSClient") as mock_hms:
             mock_hms.return_value = Mock()
-            client = get_hive_metastore_client()
+            get_hive_metastore_client()
 
             mock_hms.assert_called_once()
             call_kwargs = mock_hms.call_args[1]
@@ -157,8 +149,6 @@ class TestClientWithCustomSettings:
 
     def test_get_task_service_client_with_custom_settings(self):
         """Test that custom settings can be passed."""
-        from berdl_notebook_utils.berdl_settings import BERDLSettings
-
         with patch("berdl_notebook_utils.clients.CTSClient") as mock_cts:
             mock_cts.return_value = Mock()
             mock_cts.return_value._test_cts_connection = Mock()
@@ -168,6 +158,6 @@ class TestClientWithCustomSettings:
             mock_settings.KBASE_AUTH_TOKEN = "custom-token"
             mock_settings.CDM_TASK_SERVICE_URL = "http://custom-url:8080"
 
-            client = get_task_service_client(settings=mock_settings)
+            get_task_service_client(settings=mock_settings)
 
             mock_cts.assert_called_once_with("custom-token", url="http://custom-url:8080")

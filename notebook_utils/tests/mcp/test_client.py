@@ -2,7 +2,7 @@
 Tests for mcp/client.py - datalake MCP client factory.
 """
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pytest
 
 from berdl_notebook_utils.mcp.client import get_datalake_mcp_client, DEFAULT_TIMEOUT

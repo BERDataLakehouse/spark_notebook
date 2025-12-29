@@ -3,9 +3,18 @@ Tests for agent/memory.py - Conversation memory management.
 """
 
 import json
+import logging
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 import pytest
+
+from berdl_notebook_utils.agent.memory import (
+    create_conversation_memory,
+    save_conversation_history,
+    load_conversation_history,
+    get_default_history_path,
+    ConversationHistoryManager,
+)
 
 
 class TestCreateConversationMemory:
@@ -14,8 +23,6 @@ class TestCreateConversationMemory:
     @patch("berdl_notebook_utils.agent.memory.get_agent_settings")
     def test_create_buffer_memory(self, mock_get_agent_settings):
         """Test creating buffer memory type."""
-        from berdl_notebook_utils.agent.memory import create_conversation_memory
-
         mock_settings = Mock()
         mock_settings.AGENT_MEMORY_MAX_MESSAGES = 20
         mock_get_agent_settings.return_value = mock_settings
@@ -30,8 +37,6 @@ class TestCreateConversationMemory:
     @patch("berdl_notebook_utils.agent.memory.get_agent_settings")
     def test_create_buffer_memory_with_custom_max_messages(self, mock_get_agent_settings):
         """Test creating buffer memory with custom max_messages."""
-        from berdl_notebook_utils.agent.memory import create_conversation_memory
-
         mock_settings = Mock()
         mock_settings.AGENT_MEMORY_MAX_MESSAGES = 20
         mock_get_agent_settings.return_value = mock_settings
@@ -42,12 +47,8 @@ class TestCreateConversationMemory:
 
     @patch("berdl_notebook_utils.agent.memory.ConversationSummaryMemory")
     @patch("berdl_notebook_utils.agent.memory.get_agent_settings")
-    def test_create_summary_memory_with_llm(
-        self, mock_get_agent_settings, mock_summary_memory
-    ):
+    def test_create_summary_memory_with_llm(self, mock_get_agent_settings, mock_summary_memory):
         """Test creating summary memory with LLM."""
-        from berdl_notebook_utils.agent.memory import create_conversation_memory
-
         mock_settings = Mock()
         mock_settings.AGENT_MEMORY_MAX_MESSAGES = 20
         mock_get_agent_settings.return_value = mock_settings
@@ -55,7 +56,7 @@ class TestCreateConversationMemory:
         mock_llm = Mock()
         mock_summary_memory.return_value = Mock()
 
-        memory = create_conversation_memory(memory_type="summary", llm=mock_llm)
+        create_conversation_memory(memory_type="summary", llm=mock_llm)
 
         mock_summary_memory.assert_called_once()
         call_kwargs = mock_summary_memory.call_args[1]
@@ -65,8 +66,6 @@ class TestCreateConversationMemory:
     @patch("berdl_notebook_utils.agent.memory.get_agent_settings")
     def test_create_summary_memory_without_llm_raises(self, mock_get_agent_settings):
         """Test creating summary memory without LLM raises error."""
-        from berdl_notebook_utils.agent.memory import create_conversation_memory
-
         mock_settings = Mock()
         mock_settings.AGENT_MEMORY_MAX_MESSAGES = 20
         mock_get_agent_settings.return_value = mock_settings
@@ -77,8 +76,6 @@ class TestCreateConversationMemory:
     @patch("berdl_notebook_utils.agent.memory.get_agent_settings")
     def test_unknown_memory_type_raises(self, mock_get_agent_settings):
         """Test unknown memory type raises error."""
-        from berdl_notebook_utils.agent.memory import create_conversation_memory
-
         mock_settings = Mock()
         mock_settings.AGENT_MEMORY_MAX_MESSAGES = 20
         mock_get_agent_settings.return_value = mock_settings
@@ -92,12 +89,8 @@ class TestSaveConversationHistory:
 
     def test_save_conversation_history_to_file(self, tmp_path):
         """Test saving conversation history to a JSON file."""
-        from berdl_notebook_utils.agent.memory import save_conversation_history
-
         mock_memory = Mock()
-        mock_memory.load_memory_variables.return_value = {
-            "chat_history": "User: Hello\nAssistant: Hi there!"
-        }
+        mock_memory.load_memory_variables.return_value = {"chat_history": "User: Hello\nAssistant: Hi there!"}
 
         filepath = tmp_path / "test_history.json"
         save_conversation_history(mock_memory, filepath)
@@ -110,8 +103,6 @@ class TestSaveConversationHistory:
 
     def test_save_conversation_history_creates_parent_dirs(self, tmp_path):
         """Test saving creates parent directories if needed."""
-        from berdl_notebook_utils.agent.memory import save_conversation_history
-
         mock_memory = Mock()
         mock_memory.load_memory_variables.return_value = {"chat_history": "test"}
 
@@ -123,8 +114,6 @@ class TestSaveConversationHistory:
 
     def test_save_conversation_history_handles_error(self, tmp_path):
         """Test saving raises error on failure."""
-        from berdl_notebook_utils.agent.memory import save_conversation_history
-
         mock_memory = Mock()
         mock_memory.load_memory_variables.side_effect = Exception("Memory error")
 
@@ -139,8 +128,6 @@ class TestLoadConversationHistory:
 
     def test_load_conversation_history_from_file(self, tmp_path):
         """Test loading conversation history from a JSON file."""
-        from berdl_notebook_utils.agent.memory import load_conversation_history
-
         # Create a history file
         filepath = tmp_path / "test_history.json"
         with open(filepath, "w") as f:
@@ -156,8 +143,6 @@ class TestLoadConversationHistory:
 
     def test_load_conversation_history_file_not_found(self, tmp_path):
         """Test loading raises error when file not found."""
-        from berdl_notebook_utils.agent.memory import load_conversation_history
-
         filepath = tmp_path / "nonexistent.json"
         mock_memory = Mock()
 
@@ -166,8 +151,6 @@ class TestLoadConversationHistory:
 
     def test_load_conversation_history_invalid_json(self, tmp_path):
         """Test loading raises error with invalid JSON."""
-        from berdl_notebook_utils.agent.memory import load_conversation_history
-
         filepath = tmp_path / "invalid.json"
         with open(filepath, "w") as f:
             f.write("not valid json")
@@ -184,8 +167,6 @@ class TestGetDefaultHistoryPath:
     @patch("berdl_notebook_utils.get_settings")
     def test_get_default_history_path_with_settings(self, mock_get_settings):
         """Test getting default history path from settings."""
-        from berdl_notebook_utils.agent.memory import get_default_history_path
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_get_settings.return_value = mock_settings
@@ -197,8 +178,6 @@ class TestGetDefaultHistoryPath:
 
     def test_get_default_history_path_with_username(self):
         """Test getting default history path with explicit username."""
-        from berdl_notebook_utils.agent.memory import get_default_history_path
-
         path = get_default_history_path(username="custom_user")
 
         assert path.name == "conversation_history_custom_user.json"
@@ -207,8 +186,6 @@ class TestGetDefaultHistoryPath:
     @patch("berdl_notebook_utils.get_settings")
     def test_get_default_history_path_settings_error(self, mock_get_settings):
         """Test getting default history path when settings fail."""
-        from berdl_notebook_utils.agent.memory import get_default_history_path
-
         mock_get_settings.side_effect = Exception("Settings error")
 
         path = get_default_history_path()
@@ -222,8 +199,6 @@ class TestConversationHistoryManager:
     @patch("berdl_notebook_utils.agent.memory.get_default_history_path")
     def test_init_with_default_path(self, mock_get_default_path):
         """Test initialization with default path."""
-        from berdl_notebook_utils.agent.memory import ConversationHistoryManager
-
         mock_get_default_path.return_value = Path("/tmp/default_history.json")
         mock_memory = Mock()
 
@@ -234,8 +209,6 @@ class TestConversationHistoryManager:
 
     def test_init_with_custom_path(self, tmp_path):
         """Test initialization with custom path."""
-        from berdl_notebook_utils.agent.memory import ConversationHistoryManager
-
         mock_memory = Mock()
         custom_path = tmp_path / "custom_history.json"
 
@@ -247,8 +220,6 @@ class TestConversationHistoryManager:
     @patch("berdl_notebook_utils.agent.memory.get_default_history_path")
     def test_save(self, mock_get_default_path, mock_save):
         """Test save method calls save_conversation_history."""
-        from berdl_notebook_utils.agent.memory import ConversationHistoryManager
-
         mock_get_default_path.return_value = Path("/tmp/history.json")
         mock_memory = Mock()
 
@@ -261,8 +232,6 @@ class TestConversationHistoryManager:
     @patch("berdl_notebook_utils.agent.memory.get_default_history_path")
     def test_load_when_file_exists(self, mock_get_default_path, mock_load, tmp_path):
         """Test load method calls load_conversation_history when file exists."""
-        from berdl_notebook_utils.agent.memory import ConversationHistoryManager
-
         history_file = tmp_path / "history.json"
         history_file.touch()
 
@@ -274,13 +243,8 @@ class TestConversationHistoryManager:
 
     @patch("berdl_notebook_utils.agent.memory.load_conversation_history")
     @patch("berdl_notebook_utils.agent.memory.get_default_history_path")
-    def test_load_when_file_not_exists(
-        self, mock_get_default_path, mock_load, tmp_path, caplog
-    ):
+    def test_load_when_file_not_exists(self, mock_get_default_path, mock_load, tmp_path, caplog):
         """Test load method logs warning when file doesn't exist."""
-        from berdl_notebook_utils.agent.memory import ConversationHistoryManager
-        import logging
-
         history_file = tmp_path / "nonexistent.json"
 
         mock_memory = Mock()
@@ -295,9 +259,6 @@ class TestConversationHistoryManager:
     @patch("berdl_notebook_utils.agent.memory.get_default_history_path")
     def test_clear(self, mock_get_default_path, caplog):
         """Test clear method clears memory."""
-        from berdl_notebook_utils.agent.memory import ConversationHistoryManager
-        import logging
-
         mock_get_default_path.return_value = Path("/tmp/history.json")
         mock_memory = Mock()
 
@@ -312,10 +273,6 @@ class TestConversationHistoryManager:
     @patch("berdl_notebook_utils.agent.memory.get_default_history_path")
     def test_auto_save_on_exit(self, mock_get_default_path, caplog):
         """Test auto_save_on_exit registers atexit handler."""
-        from berdl_notebook_utils.agent.memory import ConversationHistoryManager
-        import logging
-        import atexit
-
         mock_get_default_path.return_value = Path("/tmp/history.json")
         mock_memory = Mock()
 

@@ -2,7 +2,7 @@
 Tests for mcp/operations.py - MCP wrapper functions.
 """
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pytest
 
 from berdl_notebook_utils.mcp.operations import (
@@ -22,6 +22,7 @@ from berdl_notebook_utils.mcp.operations import (
 def clear_client_cache():
     """Clear client cache before each test."""
     from berdl_notebook_utils.mcp.client import get_datalake_mcp_client
+
     get_datalake_mcp_client.cache_clear()
     yield
 

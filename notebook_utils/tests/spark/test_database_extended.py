@@ -4,7 +4,7 @@ Extended tests for spark/database.py to increase coverage.
 Tests for: table_exists, remove_table, list_tables, list_namespaces, get_table_info
 """
 
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 import pytest
 
 from berdl_notebook_utils.spark.database import (

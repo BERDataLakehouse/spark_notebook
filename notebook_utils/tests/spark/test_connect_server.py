@@ -2,9 +2,15 @@
 Tests for spark/connect_server.py - Spark Connect server management.
 """
 
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, mock_open
+from unittest.mock import Mock, patch
 import pytest
+
+from berdl_notebook_utils.spark.connect_server import (
+    SparkConnectServerConfig,
+    SparkConnectServerManager,
+    start_spark_connect_server,
+    get_spark_connect_status,
+)
 
 
 class TestSparkConnectServerConfig:
@@ -13,8 +19,6 @@ class TestSparkConnectServerConfig:
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
     def test_init_with_default_settings(self, mock_get_settings):
         """Test config initialization with default settings."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerConfig
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_settings.SPARK_HOME = "/opt/spark"
@@ -37,8 +41,6 @@ class TestSparkConnectServerConfig:
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
     def test_init_with_custom_settings(self, mock_get_settings):
         """Test config initialization with custom settings."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerConfig
-
         mock_settings = Mock()
         mock_settings.USER = "custom_user"
         mock_settings.SPARK_HOME = "/custom/spark"
@@ -56,8 +58,6 @@ class TestSparkConnectServerConfig:
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
     def test_create_directories(self, mock_get_settings, tmp_path):
         """Test create_directories creates required dirs."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerConfig
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_settings.SPARK_HOME = "/opt/spark"
@@ -82,8 +82,6 @@ class TestSparkConnectServerConfig:
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
     def test_generate_spark_config(self, mock_get_settings, mock_convert, mock_copy, tmp_path):
         """Test generate_spark_config creates config file."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerConfig
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_settings.SPARK_HOME = "/opt/spark"
@@ -123,8 +121,6 @@ class TestSparkConnectServerConfig:
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
     def test_generate_spark_config_template_not_found(self, mock_get_settings):
         """Test generate_spark_config raises if template not found."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerConfig
-
         mock_settings = Mock()
         mock_settings.USER = "test_user"
         mock_settings.SPARK_HOME = "/opt/spark"
@@ -147,8 +143,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_init_with_default_config(self, mock_config_class):
         """Test manager initialization with default config."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_config = Mock()
         mock_config_class.return_value = mock_config
 
@@ -158,8 +152,6 @@ class TestSparkConnectServerManager:
 
     def test_init_with_custom_config(self):
         """Test manager initialization with custom config."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_config = Mock()
 
         manager = SparkConnectServerManager(config=mock_config)
@@ -170,8 +162,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_get_server_info_running(self, mock_config_class, mock_kill, tmp_path):
         """Test get_server_info returns info for running server."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_config = Mock()
         mock_config.pid_file_path = tmp_path / "pid"
         mock_config.spark_connect_port = 15002
@@ -192,8 +182,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_get_server_info_not_running(self, mock_config_class, tmp_path):
         """Test get_server_info returns None when not running."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_config = Mock()
         mock_config.pid_file_path = tmp_path / "nonexistent_pid"
         mock_config_class.return_value = mock_config
@@ -207,8 +195,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_is_running_true(self, mock_config_class, mock_get_info):
         """Test is_running returns True when server is running."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_get_info.return_value = {"pid": 12345}
 
         manager = SparkConnectServerManager()
@@ -220,8 +206,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_is_running_false(self, mock_config_class, mock_get_info):
         """Test is_running returns False when server is not running."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_get_info.return_value = None
 
         manager = SparkConnectServerManager()
@@ -233,8 +217,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_start_returns_existing_if_running(self, mock_config_class, mock_get_info):
         """Test start returns existing server info if already running."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_config = Mock()
         mock_config_class.return_value = mock_config
 
@@ -249,8 +231,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_status_running(self, mock_config_class, mock_get_info):
         """Test status returns running status."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_config = Mock()
         mock_config.spark_connect_port = 15002
         mock_config_class.return_value = mock_config
@@ -267,8 +247,6 @@ class TestSparkConnectServerManager:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
     def test_status_stopped(self, mock_config_class, mock_get_info):
         """Test status returns stopped status."""
-        from berdl_notebook_utils.spark.connect_server import SparkConnectServerManager
-
         mock_config = Mock()
         mock_config.spark_connect_port = 15002
         mock_config_class.return_value = mock_config
@@ -287,8 +265,6 @@ class TestPublicApi:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager")
     def test_start_spark_connect_server(self, mock_manager_class):
         """Test start_spark_connect_server function."""
-        from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
-
         mock_manager = Mock()
         mock_manager.start.return_value = {"pid": 12345}
         mock_manager_class.return_value = mock_manager
@@ -301,21 +277,17 @@ class TestPublicApi:
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager")
     def test_start_spark_connect_server_force_restart(self, mock_manager_class):
         """Test start_spark_connect_server with force_restart."""
-        from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
-
         mock_manager = Mock()
         mock_manager.start.return_value = {"pid": 12346}
         mock_manager_class.return_value = mock_manager
 
-        result = start_spark_connect_server(force_restart=True)
+        start_spark_connect_server(force_restart=True)
 
         mock_manager.start.assert_called_once_with(force_restart=True)
 
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager")
     def test_get_spark_connect_status(self, mock_manager_class):
         """Test get_spark_connect_status function."""
-        from berdl_notebook_utils.spark.connect_server import get_spark_connect_status
-
         mock_manager = Mock()
         mock_manager.status.return_value = {"status": "running", "pid": 12345}
         mock_manager_class.return_value = mock_manager

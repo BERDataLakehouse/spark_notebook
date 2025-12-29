@@ -5,14 +5,20 @@ Tests for spark/cluster.py - Spark cluster management.
 from unittest.mock import Mock, patch, MagicMock
 import pytest
 
+from berdl_notebook_utils.spark.cluster import (
+    _raise_api_error,
+    check_api_health,
+    get_cluster_status,
+    create_cluster,
+    delete_cluster,
+)
+
 
 class TestRaiseApiError:
     """Tests for _raise_api_error helper function."""
 
     def test_raises_with_status_code(self):
         """Test raises error with status code."""
-        from berdl_notebook_utils.spark.cluster import _raise_api_error
-
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.content = None
@@ -22,8 +28,6 @@ class TestRaiseApiError:
 
     def test_raises_with_content(self):
         """Test raises error with content message."""
-        from berdl_notebook_utils.spark.cluster import _raise_api_error
-
         mock_response = Mock()
         mock_response.status_code = 400
         mock_response.content = b"Bad request"
@@ -39,8 +43,6 @@ class TestCheckApiHealth:
     @patch("berdl_notebook_utils.spark.cluster.health_check_health_get")
     def test_check_api_health_success(self, mock_health_check, mock_get_client):
         """Test health check returns response on success."""
-        from berdl_notebook_utils.spark.cluster import check_api_health
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
@@ -57,8 +59,6 @@ class TestCheckApiHealth:
     @patch("berdl_notebook_utils.spark.cluster.health_check_health_get")
     def test_check_api_health_failure(self, mock_health_check, mock_get_client):
         """Test health check raises error on failure."""
-        from berdl_notebook_utils.spark.cluster import check_api_health
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
@@ -78,8 +78,6 @@ class TestGetClusterStatus:
     @patch("berdl_notebook_utils.spark.cluster.get_cluster_status_clusters_get")
     def test_get_cluster_status_success(self, mock_get_status, mock_get_client):
         """Test get cluster status returns status on success."""
-        from berdl_notebook_utils.spark.cluster import get_cluster_status
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
@@ -97,8 +95,6 @@ class TestGetClusterStatus:
     @patch("berdl_notebook_utils.spark.cluster.get_cluster_status_clusters_get")
     def test_get_cluster_status_failure(self, mock_get_status, mock_get_client):
         """Test get cluster status raises error on failure."""
-        from berdl_notebook_utils.spark.cluster import get_cluster_status
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
@@ -119,8 +115,6 @@ class TestCreateCluster:
     @patch("berdl_notebook_utils.spark.cluster.create_cluster_clusters_post")
     def test_create_cluster_with_force(self, mock_create, mock_get_client, mock_os):
         """Test create cluster with force=True skips confirmation."""
-        from berdl_notebook_utils.spark.cluster import create_cluster
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
@@ -142,8 +136,6 @@ class TestCreateCluster:
     @patch("builtins.input", return_value="n")
     def test_create_cluster_aborted(self, mock_input):
         """Test create cluster aborted by user."""
-        from berdl_notebook_utils.spark.cluster import create_cluster
-
         result = create_cluster(force=False)
 
         assert result is None
@@ -153,8 +145,6 @@ class TestCreateCluster:
     @patch("berdl_notebook_utils.spark.cluster.create_cluster_clusters_post")
     def test_create_cluster_failure(self, mock_create, mock_get_client, mock_os):
         """Test create cluster raises error on API failure."""
-        from berdl_notebook_utils.spark.cluster import create_cluster
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
@@ -175,8 +165,6 @@ class TestDeleteCluster:
     @patch("berdl_notebook_utils.spark.cluster.delete_cluster_clusters_delete")
     def test_delete_cluster_success(self, mock_delete, mock_get_client, mock_os):
         """Test delete cluster success."""
-        from berdl_notebook_utils.spark.cluster import delete_cluster
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
@@ -194,8 +182,6 @@ class TestDeleteCluster:
     @patch("berdl_notebook_utils.spark.cluster.delete_cluster_clusters_delete")
     def test_delete_cluster_failure(self, mock_delete, mock_get_client):
         """Test delete cluster raises error on failure."""
-        from berdl_notebook_utils.spark.cluster import delete_cluster
-
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 

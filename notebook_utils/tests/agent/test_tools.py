@@ -2,8 +2,22 @@
 Tests for agent/tools.py - LangChain tools for BERDL MCP operations.
 """
 
-from unittest.mock import Mock, patch
-import pytest
+from unittest.mock import patch
+
+from berdl_notebook_utils.agent.tools import (
+    _format_result,
+    list_databases,
+    list_tables,
+    get_table_schema,
+    get_database_structure,
+    sample_table,
+    count_table_rows,
+    query_table,
+    get_discovery_tools,
+    get_data_inspection_tools,
+    get_query_tools,
+    get_all_tools,
+)
 
 
 class TestFormatResult:
@@ -11,8 +25,6 @@ class TestFormatResult:
 
     def test_format_list(self):
         """Test formatting list result."""
-        from berdl_notebook_utils.agent.tools import _format_result
-
         result = _format_result(["db1", "db2", "db3"])
 
         assert '"db1"' in result
@@ -21,8 +33,6 @@ class TestFormatResult:
 
     def test_format_dict(self):
         """Test formatting dict result."""
-        from berdl_notebook_utils.agent.tools import _format_result
-
         result = _format_result({"key": "value"})
 
         assert '"key"' in result
@@ -30,8 +40,6 @@ class TestFormatResult:
 
     def test_format_string(self):
         """Test formatting string result."""
-        from berdl_notebook_utils.agent.tools import _format_result
-
         result = _format_result("simple string")
 
         assert result == "simple string"
@@ -43,8 +51,6 @@ class TestListDatabases:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_list_databases_success(self, mock_mcp_ops):
         """Test list_databases returns formatted databases."""
-        from berdl_notebook_utils.agent.tools import list_databases
-
         mock_mcp_ops.mcp_list_databases.return_value = ["db1", "db2"]
 
         result = list_databases()
@@ -55,8 +61,6 @@ class TestListDatabases:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_list_databases_empty(self, mock_mcp_ops):
         """Test list_databases returns message when empty."""
-        from berdl_notebook_utils.agent.tools import list_databases
-
         mock_mcp_ops.mcp_list_databases.return_value = []
 
         result = list_databases()
@@ -66,8 +70,6 @@ class TestListDatabases:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_list_databases_error(self, mock_mcp_ops):
         """Test list_databases handles errors."""
-        from berdl_notebook_utils.agent.tools import list_databases
-
         mock_mcp_ops.mcp_list_databases.side_effect = Exception("Connection failed")
 
         result = list_databases()
@@ -81,8 +83,6 @@ class TestListTables:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_list_tables_success(self, mock_mcp_ops):
         """Test list_tables returns formatted tables."""
-        from berdl_notebook_utils.agent.tools import list_tables
-
         mock_mcp_ops.mcp_list_tables.return_value = ["table1", "table2"]
 
         result = list_tables("test_db")
@@ -93,8 +93,6 @@ class TestListTables:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_list_tables_empty(self, mock_mcp_ops):
         """Test list_tables returns message when empty."""
-        from berdl_notebook_utils.agent.tools import list_tables
-
         mock_mcp_ops.mcp_list_tables.return_value = []
 
         result = list_tables("empty_db")
@@ -105,8 +103,6 @@ class TestListTables:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_list_tables_error(self, mock_mcp_ops):
         """Test list_tables handles errors."""
-        from berdl_notebook_utils.agent.tools import list_tables
-
         mock_mcp_ops.mcp_list_tables.side_effect = Exception("Database not found")
 
         result = list_tables("nonexistent")
@@ -120,8 +116,6 @@ class TestGetTableSchema:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_get_table_schema_success(self, mock_mcp_ops):
         """Test get_table_schema returns formatted schema."""
-        from berdl_notebook_utils.agent.tools import get_table_schema
-
         mock_mcp_ops.mcp_get_table_schema.return_value = [
             {"name": "id", "type": "int"},
             {"name": "name", "type": "string"},
@@ -135,8 +129,6 @@ class TestGetTableSchema:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_get_table_schema_error(self, mock_mcp_ops):
         """Test get_table_schema handles errors."""
-        from berdl_notebook_utils.agent.tools import get_table_schema
-
         mock_mcp_ops.mcp_get_table_schema.side_effect = Exception("Table not found")
 
         result = get_table_schema("db", "table")
@@ -150,11 +142,7 @@ class TestGetDatabaseStructure:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_get_database_structure_without_schema(self, mock_mcp_ops):
         """Test get_database_structure without schema."""
-        from berdl_notebook_utils.agent.tools import get_database_structure
-
-        mock_mcp_ops.mcp_get_database_structure.return_value = {
-            "db1": ["table1", "table2"]
-        }
+        mock_mcp_ops.mcp_get_database_structure.return_value = {"db1": ["table1", "table2"]}
 
         result = get_database_structure("false")
 
@@ -164,11 +152,7 @@ class TestGetDatabaseStructure:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_get_database_structure_with_schema(self, mock_mcp_ops):
         """Test get_database_structure with schema."""
-        from berdl_notebook_utils.agent.tools import get_database_structure
-
-        mock_mcp_ops.mcp_get_database_structure.return_value = {
-            "db1": {"table1": ["col1", "col2"]}
-        }
+        mock_mcp_ops.mcp_get_database_structure.return_value = {"db1": {"table1": ["col1", "col2"]}}
 
         result = get_database_structure("true")
 
@@ -179,8 +163,6 @@ class TestGetDatabaseStructure:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_get_database_structure_error(self, mock_mcp_ops):
         """Test get_database_structure handles errors."""
-        from berdl_notebook_utils.agent.tools import get_database_structure
-
         mock_mcp_ops.mcp_get_database_structure.side_effect = Exception("Error")
 
         result = get_database_structure()
@@ -194,8 +176,6 @@ class TestSampleTable:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_sample_table_success(self, mock_mcp_ops):
         """Test sample_table returns formatted data."""
-        from berdl_notebook_utils.agent.tools import sample_table
-
         mock_mcp_ops.mcp_sample_table.return_value = [
             {"id": 1, "name": "Alice"},
             {"id": 2, "name": "Bob"},
@@ -209,11 +189,9 @@ class TestSampleTable:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_sample_table_with_params(self, mock_mcp_ops):
         """Test sample_table with limit, columns, and where clause."""
-        from berdl_notebook_utils.agent.tools import sample_table
-
         mock_mcp_ops.mcp_sample_table.return_value = [{"id": 1}]
 
-        result = sample_table(
+        sample_table(
             database="db",
             table="tbl",
             limit=5,
@@ -232,8 +210,6 @@ class TestSampleTable:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_sample_table_error(self, mock_mcp_ops):
         """Test sample_table handles errors."""
-        from berdl_notebook_utils.agent.tools import sample_table
-
         mock_mcp_ops.mcp_sample_table.side_effect = Exception("Error")
 
         result = sample_table("db", "table")
@@ -247,8 +223,6 @@ class TestCountTableRows:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_count_table_rows_success(self, mock_mcp_ops):
         """Test count_table_rows returns formatted count."""
-        from berdl_notebook_utils.agent.tools import count_table_rows
-
         mock_mcp_ops.mcp_count_table.return_value = 12345
 
         result = count_table_rows("test_db", "test_table")
@@ -259,8 +233,6 @@ class TestCountTableRows:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_count_table_rows_error(self, mock_mcp_ops):
         """Test count_table_rows handles errors."""
-        from berdl_notebook_utils.agent.tools import count_table_rows
-
         mock_mcp_ops.mcp_count_table.side_effect = Exception("Error")
 
         result = count_table_rows("db", "table")
@@ -275,8 +247,6 @@ class TestQueryTable:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_query_table_success(self, mock_mcp_ops, mock_settings):
         """Test query_table returns formatted results."""
-        from berdl_notebook_utils.agent.tools import query_table
-
         mock_settings.return_value.AGENT_SQL_ROW_LIMIT = 1000
         mock_mcp_ops.mcp_query_table.return_value = [{"col": "val"}]
 
@@ -289,8 +259,6 @@ class TestQueryTable:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_query_table_empty_query(self, mock_mcp_ops, mock_settings):
         """Test query_table rejects empty query."""
-        from berdl_notebook_utils.agent.tools import query_table
-
         mock_settings.return_value.AGENT_SQL_ROW_LIMIT = 1000
 
         result = query_table("   ")
@@ -300,8 +268,6 @@ class TestQueryTable:
     @patch("berdl_notebook_utils.agent.tools.get_agent_settings")
     def test_query_table_no_limit_warning(self, mock_settings):
         """Test query_table warns when no LIMIT clause."""
-        from berdl_notebook_utils.agent.tools import query_table
-
         mock_settings.return_value.AGENT_SQL_ROW_LIMIT = 100
 
         result = query_table("SELECT * FROM db.table")
@@ -313,8 +279,6 @@ class TestQueryTable:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_query_table_truncates_large_results(self, mock_mcp_ops, mock_settings):
         """Test query_table truncates results over 100 rows."""
-        from berdl_notebook_utils.agent.tools import query_table
-
         mock_settings.return_value.AGENT_SQL_ROW_LIMIT = 1000
         mock_mcp_ops.mcp_query_table.return_value = [{"id": i} for i in range(150)]
 
@@ -326,8 +290,6 @@ class TestQueryTable:
     @patch("berdl_notebook_utils.agent.tools.mcp_ops")
     def test_query_table_error(self, mock_mcp_ops, mock_settings):
         """Test query_table handles errors."""
-        from berdl_notebook_utils.agent.tools import query_table
-
         mock_settings.return_value.AGENT_SQL_ROW_LIMIT = 1000
         mock_mcp_ops.mcp_query_table.side_effect = Exception("SQL error")
 
@@ -341,8 +303,6 @@ class TestToolDefinitions:
 
     def test_get_discovery_tools(self):
         """Test get_discovery_tools returns correct tools."""
-        from berdl_notebook_utils.agent.tools import get_discovery_tools
-
         tools = get_discovery_tools()
 
         assert len(tools) == 4
@@ -354,8 +314,6 @@ class TestToolDefinitions:
 
     def test_get_data_inspection_tools(self):
         """Test get_data_inspection_tools returns correct tools."""
-        from berdl_notebook_utils.agent.tools import get_data_inspection_tools
-
         tools = get_data_inspection_tools()
 
         assert len(tools) == 2
@@ -365,8 +323,6 @@ class TestToolDefinitions:
 
     def test_get_query_tools(self):
         """Test get_query_tools returns correct tools."""
-        from berdl_notebook_utils.agent.tools import get_query_tools
-
         tools = get_query_tools()
 
         assert len(tools) == 1
@@ -374,8 +330,6 @@ class TestToolDefinitions:
 
     def test_get_all_tools_with_sql(self):
         """Test get_all_tools includes SQL tools when enabled."""
-        from berdl_notebook_utils.agent.tools import get_all_tools
-
         tools = get_all_tools(enable_sql_execution=True)
 
         tool_names = [t.name for t in tools]
@@ -384,8 +338,6 @@ class TestToolDefinitions:
 
     def test_get_all_tools_without_sql(self):
         """Test get_all_tools excludes SQL tools when disabled."""
-        from berdl_notebook_utils.agent.tools import get_all_tools
-
         tools = get_all_tools(enable_sql_execution=False)
 
         tool_names = [t.name for t in tools]
