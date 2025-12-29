@@ -8,4 +8,7 @@ cd "$SCRIPT_DIR"
 
 uv pip install --group dev --system
 
-pytest
+pytest tests/ -v \
+  --cov=berdl_notebook_utils \
+  --cov-report=term-missing \
+  --cov-report=xml

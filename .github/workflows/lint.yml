@@ -38,9 +38,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
       - name: Set up Docker Buildx
@@ -61,3 +61,21 @@ jobs:
           # slightly nasty hack
           chmod 777 ./notebook_utils
           docker run --rm -e NB_USER=runner -v ./notebook_utils:/tmp/notebook_utils spark-notebook-test:latest /bin/bash /tmp/notebook_utils/run_tests.sh
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: BERDataLakehouse/spark_notebook
+          files: ./notebook_utils/coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Create Coverage Comment
+        if: github.event_name == 'pull_request'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 70
+          COVERAGE_PATH: ./notebook_utils
