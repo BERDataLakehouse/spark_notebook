@@ -1,4 +1,7 @@
 # BERDL Notebook
+
+[![codecov](https://codecov.io/gh/BERDataLakehouse/spark_notebook/branch/main/graph/badge.svg)](https://codecov.io/gh/BERDataLakehouse/spark_notebook)
+
 * Set up the user's environment
 * Installs custom dependencies
 
