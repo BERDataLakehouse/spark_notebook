@@ -69,7 +69,7 @@ def generate_namespace_location(namespace: str | None = None, tenant_name: str |
     else:
         # Keep original namespace if warehouse path doesn't match expected patterns
         logger.warning(
-            "Warning: Could not determine target name from warehouse directory '%s'. Using namespace as-is.",
+            "Could not determine target name from warehouse directory '%s'. Using namespace as-is.",
             warehouse_dir,
         )
 
