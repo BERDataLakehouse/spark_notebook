@@ -60,7 +60,7 @@ jobs:
           echo "Running test inside container..."
           # slightly nasty hack
           chmod 777 ./notebook_utils
-          docker run --rm -e NB_USER=runner -v ./notebook_utils:/tmp/notebook_utils spark-notebook-test:latest /bin/bash /tmp/notebook_utils/run_tests.sh
+          docker run --rm --entrypoint /bin/bash -v ./notebook_utils:/tmp/notebook_utils -w /tmp/notebook_utils spark-notebook-test:latest /tmp/notebook_utils/run_tests.sh
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
