@@ -119,3 +119,8 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
 # Help Utilities
 # ============================================================================
 from berdl_notebook_utils import berdl_notebook_help  # noqa: F401
+
+# ============================================================================
+# Data Lakehouse Ingest (config-driven ingestion)
+# ============================================================================
+from data_lakehouse_ingest import ingest  # noqa: F401
