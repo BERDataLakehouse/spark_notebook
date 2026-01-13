@@ -49,7 +49,7 @@
 # They initialize Delta Lake support by registering custom SparkSessionExtensions
 # and catalog implementations that handle Delta table operations.
 
-spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
+spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,org.apache.sedona.sql.SedonaSqlExtensions
 spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 
 # Delta Lake settings
