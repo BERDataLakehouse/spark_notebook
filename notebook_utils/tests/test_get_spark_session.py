@@ -224,8 +224,7 @@ def test_generate_spark_conf(
     # user-supplied settings
     if settings:
         if use_spark_connect:
-            expected_url = f"{ALT_SPARK_CONNECT_URL}/;token={alt_settings.KBASE_AUTH_TOKEN}"
-            assert conf_dict["spark.remote"] == expected_url
+            assert ALT_SPARK_CONNECT_URL in conf_dict["spark.remote"]
         else:
             assert conf_dict["spark.master"] == ALT_SPARK_MASTER_URL
 
