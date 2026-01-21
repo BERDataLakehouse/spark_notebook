@@ -7,6 +7,7 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 # This file must be loaded AFTER the 02-get_minio_client.py file
 """
 
+import os
 import warnings
 from datetime import datetime
 from typing import Any
@@ -380,6 +381,13 @@ def get_spark_session(
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
     """
+    # When using Spark Connect with sc:// (plaintext), ensure gRPC doesn't
+    # pick up SSL certificates from the environment (e.g., from GEN_CERT=yes in Jupyter).
+    # This prevents the "Ssl handshake failed: WRONG_VERSION_NUMBER" error.
+    if use_spark_connect and not local:
+        if "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH" not in os.environ:
+            os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = ""
+
     config = generate_spark_conf(
         app_name, local, delta_lake, use_s3, use_hive, settings, tenant_name, use_spark_connect
     )
