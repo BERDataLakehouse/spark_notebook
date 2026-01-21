@@ -89,3 +89,15 @@ spark.sql.hive.metastore.jars.path=/usr/local/spark/jars/*
 spark.hadoop.fs.s3a.path.style.access=true
 spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
 spark.hadoop.fs.s3a.connection.ssl.enabled=false
+
+# ------------------------------------------------------------------------------
+# KBase Authentication Interceptor (STATIC - Server-Side Only)
+# ------------------------------------------------------------------------------
+# This interceptor validates KBase tokens for Spark Connect requests:
+# - Localhost connections (127.0.0.1, ::1): Allowed without authentication
+# - Remote connections: Require valid KBase token, verified against Auth2 service
+#
+# Environment variables used by the interceptor:
+# - KBASE_AUTH_URL: KBase Auth2 service URL (default: https://ci.kbase.us/services/auth/)
+# - USER: Pod owner username (for validating remote access permissions)
+spark.connect.grpc.interceptor.classes=us.kbase.spark.KBaseAuthServerInterceptor
