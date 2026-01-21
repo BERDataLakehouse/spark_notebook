@@ -7,7 +7,6 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 # This file must be loaded AFTER the 02-get_minio_client.py file
 """
 
-import os
 import warnings
 from datetime import datetime
 from typing import Any
@@ -125,10 +124,12 @@ def _get_executor_conf(settings: BERDLSettings, use_spark_connect: bool) -> dict
 
     if use_spark_connect:
         # Include KBase auth token for Spark Connect authentication
-        # Format: sc://host:port/;token=<token> sends Authorization: Bearer <token> header
+        # Format: sc://host:port/;token=<token>;use_ssl=false
+        # The use_ssl=false parameter explicitly forces plaintext gRPC connection,
+        # preventing SSL handshake failures when GEN_CERT=yes generates certificates.
         # Note: The "/" before ";" is required - parameters come after the path
         base_url = str(settings.SPARK_CONNECT_URL).rstrip("/")
-        spark_connect_url = f"{base_url}/;token={settings.KBASE_AUTH_TOKEN}"
+        spark_connect_url = f"{base_url}/;token={settings.KBASE_AUTH_TOKEN};use_ssl=false"
         conf_base = {"spark.remote": spark_connect_url}
     else:
         # Legacy mode: add driver/executor configs
@@ -381,13 +382,6 @@ def get_spark_session(
         >>> # Local development
         >>> spark = get_spark_session("TestApp", local=True)
     """
-    # When using Spark Connect with sc:// (plaintext), ensure gRPC doesn't
-    # pick up SSL certificates from the environment (e.g., from GEN_CERT=yes in Jupyter).
-    # This prevents the "Ssl handshake failed: WRONG_VERSION_NUMBER" error.
-    if use_spark_connect and not local:
-        if "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH" not in os.environ:
-            os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = ""
-
     config = generate_spark_conf(
         app_name, local, delta_lake, use_s3, use_hive, settings, tenant_name, use_spark_connect
     )
