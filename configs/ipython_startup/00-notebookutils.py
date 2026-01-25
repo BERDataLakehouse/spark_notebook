@@ -51,6 +51,7 @@ from berdl_notebook_utils.spark import (  # noqa: F401
     get_cluster_status,
     get_spark_connect_status,
     start_spark_connect_server,
+    stop_spark_connect_server,
     # Database operations
     create_namespace_if_not_exists,
     get_table_info,

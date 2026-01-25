@@ -9,6 +9,7 @@ from berdl_notebook_utils.spark.connect_server import (
     SparkConnectServerConfig,
     SparkConnectServerManager,
     start_spark_connect_server,
+    stop_spark_connect_server,
     get_spark_connect_status,
 )
 
@@ -295,3 +296,170 @@ class TestPublicApi:
         result = get_spark_connect_status()
 
         assert result["status"] == "running"
+
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager")
+    def test_stop_spark_connect_server(self, mock_manager_class):
+        """Test stop_spark_connect_server function."""
+        mock_manager = Mock()
+        mock_manager.stop.return_value = True
+        mock_manager_class.return_value = mock_manager
+
+        result = stop_spark_connect_server()
+
+        assert result is True
+        mock_manager.stop.assert_called_once_with(timeout=10)
+
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager")
+    def test_stop_spark_connect_server_custom_timeout(self, mock_manager_class):
+        """Test stop_spark_connect_server with custom timeout."""
+        mock_manager = Mock()
+        mock_manager.stop.return_value = True
+        mock_manager_class.return_value = mock_manager
+
+        stop_spark_connect_server(timeout=30)
+
+        mock_manager.stop.assert_called_once_with(timeout=30)
+
+
+class TestSparkConnectServerManagerStop:
+    """Tests for SparkConnectServerManager.stop() method."""
+
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager._kill_java_process")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.get_server_info")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_stop_no_server_running(self, mock_config_class, mock_get_info, mock_kill_java):
+        """Test stop returns False when no server is running."""
+        mock_config = Mock()
+        mock_config_class.return_value = mock_config
+        mock_get_info.return_value = None
+
+        manager = SparkConnectServerManager()
+        result = manager.stop()
+
+        assert result is False
+        mock_kill_java.assert_called_once()  # Still tries to kill orphaned Java process
+
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager._wait_for_port_release")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager._kill_java_process")
+    @patch("berdl_notebook_utils.spark.connect_server.os.kill")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.get_server_info")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_stop_kills_process(self, mock_config_class, mock_get_info, mock_kill, mock_kill_java, mock_wait, tmp_path):
+        """Test stop kills the process and cleans up."""
+        mock_config = Mock()
+        mock_config.pid_file_path = tmp_path / "pid"
+        mock_config_class.return_value = mock_config
+
+        # Create PID file
+        (tmp_path / "pid").write_text("12345")
+
+        mock_get_info.return_value = {"pid": 12345, "port": 15002}
+        mock_wait.return_value = True
+
+        manager = SparkConnectServerManager()
+        result = manager.stop()
+
+        assert result is True
+        mock_kill.assert_called_once()  # Called with SIGTERM
+        mock_kill_java.assert_called_once()
+        mock_wait.assert_called_once()
+        assert not (tmp_path / "pid").exists()  # PID file cleaned up
+
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager._wait_for_port_release")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager._kill_java_process")
+    @patch("berdl_notebook_utils.spark.connect_server.os.kill")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.get_server_info")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_stop_handles_already_terminated(
+        self, mock_config_class, mock_get_info, mock_kill, mock_kill_java, mock_wait, tmp_path
+    ):
+        """Test stop handles ProcessLookupError gracefully."""
+        mock_config = Mock()
+        mock_config.pid_file_path = tmp_path / "pid"
+        mock_config_class.return_value = mock_config
+
+        (tmp_path / "pid").write_text("12345")
+
+        mock_get_info.return_value = {"pid": 12345, "port": 15002}
+        mock_kill.side_effect = ProcessLookupError()
+        mock_wait.return_value = True
+
+        manager = SparkConnectServerManager()
+        result = manager.stop()
+
+        assert result is True  # Still succeeds
+
+    @patch("berdl_notebook_utils.spark.connect_server.subprocess.run")
+    @patch("berdl_notebook_utils.spark.connect_server.os.kill")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_kill_java_process_with_pgrep(self, mock_config_class, mock_kill, mock_run):
+        """Test _kill_java_process uses pgrep to find processes."""
+        mock_config = Mock()
+        mock_config_class.return_value = mock_config
+
+        mock_run.return_value = Mock(returncode=0, stdout="12345\n12346")
+
+        manager = SparkConnectServerManager()
+        manager._kill_java_process()
+
+        mock_run.assert_called_once()
+        assert mock_kill.call_count == 2
+
+    @patch("berdl_notebook_utils.spark.connect_server.subprocess.run")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_kill_java_process_pgrep_not_found(self, mock_config_class, mock_run):
+        """Test _kill_java_process falls back to pkill when pgrep not found."""
+        mock_config = Mock()
+        mock_config_class.return_value = mock_config
+
+        # First call (pgrep) raises FileNotFoundError, second call (pkill) succeeds
+        mock_run.side_effect = [FileNotFoundError(), Mock()]
+
+        manager = SparkConnectServerManager()
+        manager._kill_java_process()
+
+        assert mock_run.call_count == 2
+
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_wait_for_port_release_port_free(self, mock_config_class):
+        """Test _wait_for_port_release returns True when port is free."""
+        mock_config = Mock()
+        mock_config.spark_connect_port = 59999  # Use high port unlikely to be in use
+        mock_config_class.return_value = mock_config
+
+        manager = SparkConnectServerManager()
+        result = manager._wait_for_port_release(timeout=1)
+
+        assert result is True
+
+
+class TestSparkConnectServerManagerForceRestart:
+    """Tests for force_restart functionality."""
+
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.stop")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.is_running")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_start_force_restart_calls_stop(self, mock_config_class, mock_is_running, mock_stop, tmp_path):
+        """Test start with force_restart=True calls stop first."""
+        mock_config = Mock()
+        mock_config.username = "test_user"
+        mock_config.spark_home = "/opt/spark"
+        mock_config.spark_master_url = "spark://master:7077"
+        mock_config.spark_connect_port = 15002
+        mock_config.user_conf_dir = tmp_path / "conf"
+        mock_config.log_file_path = tmp_path / "log"
+        mock_config.pid_file_path = tmp_path / "pid"
+        mock_config_class.return_value = mock_config
+
+        # Server is running initially
+        mock_is_running.side_effect = [True, False]  # First check: running, after stop: not running
+
+        # Mock the start script check to fail (we don't want to actually start)
+        with patch("pathlib.Path.exists", return_value=False):
+            manager = SparkConnectServerManager()
+            try:
+                manager.start(force_restart=True)
+            except FileNotFoundError:
+                pass  # Expected - start script doesn't exist
+
+        mock_stop.assert_called_once()

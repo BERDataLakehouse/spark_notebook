@@ -328,3 +328,35 @@ def test_basic_local_rw(delta_spark: tuple[SparkSession, Path]) -> None:
 
     assert len(names_ids) == 2
     assert names_ids == [Row(id=1, name="Alice"), Row(id=2, name="Bob")]
+
+
+def test_executor_conf_includes_auth_token_for_spark_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that _get_executor_conf includes auth token header when using Spark Connect."""
+    from berdl_notebook_utils.berdl_settings import BERDLSettings
+
+    settings = BERDLSettings()
+
+    # Get config for Spark Connect mode
+    config = _get_executor_conf(settings, use_spark_connect=True)
+
+    # Verify auth token header is included
+    assert "spark.remote" in config
+    assert "spark.connect.grpc.interceptor.header.authorization" in config
+    assert config["spark.connect.grpc.interceptor.header.authorization"].startswith("Bearer ")
+
+
+def test_executor_conf_no_auth_token_for_legacy_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that _get_executor_conf does NOT include auth token in legacy mode."""
+    from berdl_notebook_utils.berdl_settings import BERDLSettings
+
+    settings = BERDLSettings()
+
+    # Get config for legacy mode
+    config = _get_executor_conf(settings, use_spark_connect=False)
+
+    # Verify auth token header is NOT included
+    assert "spark.remote" not in config
+    assert "spark.connect.grpc.interceptor.header.authorization" not in config
+    # Legacy mode should have master URL instead
+    assert "spark.master" in config
+    assert "spark.driver.host" in config

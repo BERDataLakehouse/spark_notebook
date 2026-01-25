@@ -57,7 +57,7 @@ def _handle_error_response(response: Any, operation: str) -> None:
         Exception: If the response is an ErrorResponse
     """
     if isinstance(response, ErrorResponse):
-        error_msg = f"MCP Server error during {operation}: {response.error}"
+        error_msg = f"MCP Server error during {operation}: {response.error}, {response.error_type}, {response.message}"
         logger.error(error_msg)
         raise Exception(error_msg)
 
