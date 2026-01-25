@@ -47,6 +47,7 @@ from berdl_notebook_utils.spark.data_store import (
 # Spark Connect server management
 from berdl_notebook_utils.spark.connect_server import (
     start_spark_connect_server,
+    stop_spark_connect_server,
     get_spark_connect_status,
 )
 
@@ -76,5 +77,6 @@ __all__ = [
     "get_db_structure",
     # Spark Connect server management
     "start_spark_connect_server",
+    "stop_spark_connect_server",
     "get_spark_connect_status",
 ]

@@ -8,6 +8,7 @@ that run alongside notebook kernels, enabling remote Spark session connectivity.
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -160,6 +161,110 @@ class SparkConnectServerManager:
         """
         return self.get_server_info() is not None
 
+    def stop(self, timeout: int = 10) -> bool:
+        """
+        Stop the running Spark Connect server.
+
+        This method kills both the shell script process (tracked by PID file)
+        and the actual Java SparkConnectServer process.
+
+        Args:
+            timeout: Maximum seconds to wait for the server to stop.
+
+        Returns:
+            True if server was stopped, False if no server was running.
+        """
+        server_info = self.get_server_info()
+        if server_info is None:
+            logger.info("No Spark Connect server running (based on PID file)")
+            # Still try to kill any orphaned Java process
+            self._kill_java_process()
+            return False
+
+        pid = server_info["pid"]
+        logger.info(f"Stopping Spark Connect server (PID: {pid})...")
+
+        # First, try to kill the tracked shell script process
+        try:
+            os.kill(pid, signal.SIGTERM)
+            logger.info(f"Sent SIGTERM to process {pid}")
+        except ProcessLookupError:
+            logger.info(f"Process {pid} already terminated")
+        except OSError as e:
+            logger.warning(f"Failed to kill process {pid}: {e}")
+
+        # Kill the actual Java SparkConnectServer process
+        self._kill_java_process()
+
+        # Clean up PID file
+        self.config.pid_file_path.unlink(missing_ok=True)
+
+        # Wait for port to be released
+        self._wait_for_port_release(timeout)
+
+        logger.info("Spark Connect server stopped")
+        return True
+
+    def _kill_java_process(self) -> None:
+        """Kill the Java SparkConnectServer process."""
+        try:
+            # Find and kill Java SparkConnectServer process
+            result = subprocess.run(
+                ["pgrep", "-f", "SparkConnectServer"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                pids = result.stdout.strip().split("\n")
+                for pid_str in pids:
+                    if pid_str:
+                        try:
+                            pid = int(pid_str)
+                            os.kill(pid, signal.SIGTERM)
+                            logger.info(f"Killed Java SparkConnectServer process {pid}")
+                        except (ValueError, ProcessLookupError, OSError) as e:
+                            logger.debug(f"Could not kill process {pid_str}: {e}")
+        except FileNotFoundError:
+            # pgrep not available, try pkill
+            try:
+                subprocess.run(
+                    ["pkill", "-f", "SparkConnectServer"],
+                    capture_output=True,
+                )
+                logger.info("Sent SIGTERM to SparkConnectServer processes via pkill")
+            except FileNotFoundError:
+                logger.warning("Neither pgrep nor pkill available, cannot kill Java process")
+
+    def _wait_for_port_release(self, timeout: int) -> bool:
+        """
+        Wait for the Spark Connect port to be released.
+
+        Args:
+            timeout: Maximum seconds to wait.
+
+        Returns:
+            True if port is free, False if timeout reached.
+        """
+        import socket
+
+        port = self.config.spark_connect_port
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                result = sock.connect_ex(("localhost", port))
+                if result != 0:
+                    # Port is free
+                    logger.info(f"Port {port} is now free")
+                    return True
+            finally:
+                sock.close()
+            time.sleep(0.5)
+
+        logger.warning(f"Timeout waiting for port {port} to be released")
+        return False
+
     def start(self, force_restart: bool = False) -> dict:
         """
         Start Spark Connect server.
@@ -171,11 +276,16 @@ class SparkConnectServerManager:
             Dictionary with server information.
         """
         # Check if server is already running
-        if self.is_running() and not force_restart:
-            server_info = self.get_server_info()
-            logger.info(f"✅ Spark Connect server already running (PID: {server_info['pid']})")
-            logger.info("   Reusing existing server - no need to start a new one")
-            return server_info
+        if self.is_running():
+            if not force_restart:
+                server_info = self.get_server_info()
+                logger.info(f"✅ Spark Connect server already running (PID: {server_info['pid']})")
+                logger.info("   Reusing existing server - no need to start a new one")
+                return server_info
+            else:
+                # Stop the existing server before starting a new one
+                logger.info("force_restart=True, stopping existing server...")
+                self.stop()
 
         logger.info(f"Starting new Spark Connect server for user: {self.config.username}")
 
@@ -279,6 +389,24 @@ def start_spark_connect_server(force_restart: bool = False) -> dict:
     """
     manager = SparkConnectServerManager()
     return manager.start(force_restart=force_restart)
+
+
+def stop_spark_connect_server(timeout: int = 10) -> bool:
+    """
+    Stop the running Spark Connect server.
+
+    This function stops the Spark Connect server by killing both the shell script
+    process and the Java SparkConnectServer process, then waits for the port to
+    be released.
+
+    Args:
+        timeout: Maximum seconds to wait for the server to stop and port to be released.
+
+    Returns:
+        True if server was stopped, False if no server was running.
+    """
+    manager = SparkConnectServerManager()
+    return manager.stop(timeout=timeout)
 
 
 def get_spark_connect_status() -> dict:

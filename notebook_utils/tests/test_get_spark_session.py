@@ -1,7 +1,9 @@
 from collections.abc import Generator
-from typing import Any
 from pathlib import Path
+from typing import Any
+
 import pytest
+from pyspark.sql import Row, SparkSession
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings
 from berdl_notebook_utils.setup_spark_session import (
@@ -16,7 +18,6 @@ from berdl_notebook_utils.setup_spark_session import (
     generate_spark_conf,
     get_spark_session,
 )
-from pyspark.sql import SparkSession, Row
 from tests.conftest import WarehouseResponse
 
 
@@ -328,3 +329,21 @@ def test_basic_local_rw(delta_spark: tuple[SparkSession, Path]) -> None:
 
     assert len(names_ids) == 2
     assert names_ids == [Row(id=1, name="Alice"), Row(id=2, name="Bob")]
+
+
+def test_executor_conf_no_auth_token_for_legacy_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that _get_executor_conf does NOT include auth token in legacy mode."""
+    from berdl_notebook_utils.berdl_settings import BERDLSettings
+
+    settings = BERDLSettings()
+
+    # Get config for legacy mode
+    config = _get_executor_conf(settings, use_spark_connect=False)
+
+    # Verify spark.remote URL is NOT included (legacy mode uses spark.master)
+    assert "spark.remote" not in config
+    # Legacy mode should have master URL instead
+    assert "spark.master" in config
+    assert "spark.driver.host" in config
+    # Verify master URL does NOT contain auth token (legacy mode doesn't use URL-based auth)
+    assert "authorization" not in config.get("spark.master", "")
