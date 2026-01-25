@@ -123,13 +123,13 @@ def _get_executor_conf(settings: BERDLSettings, use_spark_connect: bool) -> dict
     driver_memory = convert_memory_format(settings.SPARK_MASTER_MEMORY, DRIVER_MEMORY_OVERHEAD)
 
     if use_spark_connect:
-        # Spark Connect authentication via gRPC header
-        # The interceptor.header.authorization config sends the token as a gRPC metadata header
-        # which the server-side KBaseAuthServerInterceptor can validate
-        conf_base = {
-            "spark.remote": str(settings.SPARK_CONNECT_URL),
-            "spark.connect.grpc.interceptor.header.authorization": f"Bearer {settings.KBASE_AUTH_TOKEN}",
-        }
+        # Include KBase auth token for Spark Connect authentication
+        # Format: sc://host:port/;token=<token> sends Authorization: Bearer <token> header
+        # Note: The "/" before ";" is required - parameters come after the path
+        # base_url = str(settings.SPARK_CONNECT_URL).rstrip("/")
+        # spark_connect_url = f"{base_url}/;token={settings.KBASE_AUTH_TOKEN}"
+        # conf_base = {"spark.remote": spark_connect_url}
+        conf_base = {"spark.remote": str(settings.SPARK_CONNECT_URL)}
     else:
         # Legacy mode: add driver/executor configs
         conf_base = {
