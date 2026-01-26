@@ -124,10 +124,8 @@ def _get_executor_conf(settings: BERDLSettings, use_spark_connect: bool) -> dict
 
     if use_spark_connect:
         # Include KBase auth token for Spark Connect authentication
-        # Format: sc://host:port/;use_ssl=false;x-kbase-token=<token>
-        # We use x-kbase-token instead of 'token' to avoid PySpark auto-enabling SSL/TLS
         base_url = str(settings.SPARK_CONNECT_URL).rstrip("/")
-        spark_connect_url = f"{base_url}/;use_ssl=false;x-kbase-token={settings.KBASE_AUTH_TOKEN}"
+        spark_connect_url = f"{base_url}/;x-kbase-token={settings.KBASE_AUTH_TOKEN}"
         conf_base = {"spark.remote": spark_connect_url}
     else:
         # Legacy mode: add driver/executor configs
