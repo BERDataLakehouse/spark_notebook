@@ -40,6 +40,8 @@ def log_to_container_stderr(message):
             sys.__stderr__.write(message)
             sys.__stderr__.flush()
         except Exception:
+            # If even the fallback stderr logging fails, there is nowhere else reliable to report it.
+            # Intentionally suppress this exception to avoid recursive logging failures.
             pass
 
 
