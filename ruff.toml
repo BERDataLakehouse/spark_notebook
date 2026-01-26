@@ -1,0 +1,31 @@
+# Ruff configuration for the root directory
+# Matches settings in notebook_utils/pyproject.toml
+
+exclude = [
+    ".git",
+    ".ipynb_checkpoints",
+    ".ruff_cache",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "venv",
+]
+
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W"]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"

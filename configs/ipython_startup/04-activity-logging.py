@@ -101,9 +101,7 @@ def register_hook():
         ip = IPython.get_ipython()
         if ip:
             ip.events.register("pre_run_cell", log_cell_execution)
-            ip.events.register(
-                "post_run_cell", log_cell_error
-            )  # Register post-execution hook
+            ip.events.register("post_run_cell", log_cell_error)  # Register post-execution hook
 
             # Log startup event
             startup_entry = {
