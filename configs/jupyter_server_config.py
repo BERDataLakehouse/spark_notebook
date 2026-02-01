@@ -1,10 +1,16 @@
 import os
+import sys
 import logging
-from hybridcontents import HybridContentsManager
-from s3contents import S3ContentsManager
-from jupyter_server.services.contents.largefilemanager import LargeFileManager
 import json
 from pathlib import Path
+
+# Add config directory to path for local imports
+# Note: __file__ may not be defined when exec'd by traitlets config loader
+sys.path.insert(0, "/etc/jupyter")
+
+from hybridcontents import HybridContentsManager
+from jupyter_server.services.contents.largefilemanager import LargeFileManager
+from grouped_s3_contents import GroupedS3ContentsManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -124,34 +130,31 @@ def get_user_governance_paths():
 # 1. Local Manager (Root)
 # We map the root directory to the user's home
 username = os.environ.get("NB_USER", "jovyan")
-c.HybridContentsManager.manager_classes = {
-    "": LargeFileManager,
-}
-c.HybridContentsManager.manager_kwargs = {
-    "": {"root_dir": f"/home/{username}"},
-}
 
-# 2. MinIO Managers
+# 2. Get MinIO configuration
 endpoint_url, access_key, secret_key, use_ssl = get_minio_config()
 governance_paths = get_user_governance_paths()
 
-for name, info in governance_paths.items():
-    # Add to manager classes
-    c.HybridContentsManager.manager_classes[name] = S3ContentsManager
+# 3. Configure HybridContentsManager
+# - Root ("") -> Local filesystem
+# - "datalake_minio" -> GroupedS3ContentsManager with all S3 paths as subdirectories
+c.HybridContentsManager.manager_classes = {
+    "": LargeFileManager,
+    "datalake_minio": GroupedS3ContentsManager,
+}
 
-    # Add config
-    c.HybridContentsManager.manager_kwargs[name] = {
+c.HybridContentsManager.manager_kwargs = {
+    "": {"root_dir": f"/home/{username}"},
+    "datalake_minio": {
+        "endpoint_url": endpoint_url,
         "access_key_id": access_key,
         "secret_access_key": secret_key,
-        "endpoint_url": endpoint_url,
-        "bucket": info["bucket"],
-        "prefix": info["prefix"],
+        "region_name": "us-east-1",
         "signature_version": "s3v4",
-        "region_name": "us-east-1",  # Often required arg even for MinIO
-        # Pass additional arguments to s3fs via s3contents
-        "s3fs_additional_kwargs": {
-            "use_ssl": use_ssl,
-        },
-    }
+        "s3fs_additional_kwargs": {"use_ssl": use_ssl},
+        # Each entry becomes a subdirectory under "datalake_minio/"
+        "managers": governance_paths,
+    },
+}
 
-logger.info(f"✅ s3contents configured with {len(governance_paths)} paths: {list(governance_paths.keys())}")
+logger.info(f"✅ GroupedS3ContentsManager 'datalake_minio/' configured with: {list(governance_paths.keys())}")

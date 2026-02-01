@@ -12,6 +12,7 @@ ENV SPARK_CONNECT_DEFAULTS_TEMPLATE=/configs/spark-defaults.conf.template
 COPY configs/spark-defaults.conf.template ${SPARK_CONNECT_DEFAULTS_TEMPLATE}
 
 COPY configs/jupyter_server_config.py /etc/jupyter/jupyter_server_config.py
+COPY configs/grouped_s3_contents.py /etc/jupyter/grouped_s3_contents.py
 
 COPY scripts/patch_jupyter_ai.py /tmp/patch_jupyter_ai.py
 RUN python3 /tmp/patch_jupyter_ai.py && rm /tmp/patch_jupyter_ai.py
