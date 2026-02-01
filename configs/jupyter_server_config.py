@@ -136,38 +136,27 @@ c.HybridContentsManager.manager_kwargs = {
     "": {"root_dir": f"/home/{username}"},
 }
 
-# 2. MinIO Managers (Nested under /minio)
+# 2. MinIO Managers
 endpoint_url, access_key, secret_key, use_ssl = get_minio_config()
 governance_paths = get_user_governance_paths()
 
-minio_classes = {}
-minio_kwargs = {}
-
 for name, info in governance_paths.items():
-    # Add to sub-manager classes
-    minio_classes[name] = S3ContentsManager
+    # Add to manager classes
+    c.HybridContentsManager.manager_classes[name] = S3ContentsManager
 
     # Add config
-    minio_kwargs[name] = {
+    c.HybridContentsManager.manager_kwargs[name] = {
         "access_key_id": access_key,
         "secret_access_key": secret_key,
         "endpoint_url": endpoint_url,
         "bucket": info["bucket"],
         "prefix": info["prefix"],
         "signature_version": "s3v4",
-        "region_name": "us-east-1",
+        "region_name": "us-east-1",  # Often required arg even for MinIO
+        # Pass additional arguments to s3fs via s3contents
         "s3fs_additional_kwargs": {
             "use_ssl": use_ssl,
         },
     }
 
-# Register the nested HybridContentsManager
-c.HybridContentsManager.manager_classes["minio"] = HybridContentsManager
-c.HybridContentsManager.manager_kwargs["minio"] = {
-    "manager_classes": minio_classes,
-    "manager_kwargs": minio_kwargs,
-}
-
-logger.info(
-    f"✅ s3contents configured under 'minio/' with {len(governance_paths)} paths: {list(governance_paths.keys())}"
-)
+logger.info(f"✅ s3contents configured with {len(governance_paths)} paths: {list(governance_paths.keys())}")
