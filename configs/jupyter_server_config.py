@@ -45,9 +45,9 @@ def get_minio_config():
     """Extract MinIO configuration from credentials file or environment."""
 
     # Default values
-    endpoint = os.environ.get("MINIO_ENDPOINT_URL", "minio:9002")
-    access_key = os.environ.get("MINIO_ACCESS_KEY", "minio")
-    secret_key = os.environ.get("MINIO_SECRET_KEY", "minio123")
+    endpoint = os.environ.get("MINIO_ENDPOINT_URL")
+    access_key = os.environ.get("MINIO_ACCESS_KEY")
+    secret_key = os.environ.get("MINIO_SECRET_KEY")
     use_ssl = os.environ.get("MINIO_SECURE", "false").lower() == "true"
 
     # Try reading from credential file
