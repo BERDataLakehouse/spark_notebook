@@ -140,21 +140,21 @@ governance_paths = get_user_governance_paths()
 # - "datalake_minio" -> GroupedS3ContentsManager with all S3 paths as subdirectories
 c.HybridContentsManager.manager_classes = {
     "": LargeFileManager,
-    "datalake_minio": GroupedS3ContentsManager,
+    "lakehouse_minio": GroupedS3ContentsManager,
 }
 
 c.HybridContentsManager.manager_kwargs = {
     "": {"root_dir": f"/home/{username}"},
-    "datalake_minio": {
+    "lakehouse_minio": {
         "endpoint_url": endpoint_url,
         "access_key_id": access_key,
         "secret_access_key": secret_key,
         "region_name": "us-east-1",
         "signature_version": "s3v4",
         "s3fs_additional_kwargs": {"use_ssl": use_ssl},
-        # Each entry becomes a subdirectory under "datalake_minio/"
+        # Each entry becomes a subdirectory under "lakehouse_minio/"
         "managers": governance_paths,
     },
 }
 
-logger.info(f"✅ GroupedS3ContentsManager 'datalake_minio/' configured with: {list(governance_paths.keys())}")
+logger.info(f"✅ GroupedS3ContentsManager 'lakehouse_minio/' configured with: {list(governance_paths.keys())}")
