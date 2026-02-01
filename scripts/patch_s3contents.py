@@ -3,7 +3,8 @@ Patch s3contents library to fix two issues:
 1. Directory Visibility: Allow directories without .s3keep files to be listed by providing a fallback creation date.
    Target: genericmanager.py
 
-2. Access Denied Crash: Prevent crash during initialization when user has prefix-restricted access (cannot create root bucket).
+2. Access Denied Crash: Prevent crash during initialization when user has prefix-restricted access
+   (cannot create root bucket).
    Target: s3_fs.py
 """
 
