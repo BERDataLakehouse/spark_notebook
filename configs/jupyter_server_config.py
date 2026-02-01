@@ -56,20 +56,9 @@ def get_minio_config():
         cred_path = Path(f"/home/{username}/.berdl_minio_credentials")
         if cred_path.exists():
             data = json.loads(cred_path.read_text())
-            # File format usually has keys: MINIO_ENDPOINT_URL, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_SECURE
-            if "MINIO_ENDPOINT_URL" in data:
-                endpoint = data["MINIO_ENDPOINT_URL"]
-            if "MINIO_ACCESS_KEY" in data:
-                access_key = data["MINIO_ACCESS_KEY"]
-            if "MINIO_SECRET_KEY" in data:
-                secret_key = data["MINIO_SECRET_KEY"]
-            if "MINIO_SECURE" in data:
-                val = data["MINIO_SECURE"]
-                if isinstance(val, bool):
-                    use_ssl = val
-                else:
-                    use_ssl = str(val).lower() == "true"
-            logger.info(f"Loaded MinIO credentials from {cred_path}")
+            access_key = data.get("access_key", access_key)
+            secret_key = data.get("secret_key", secret_key)
+            logger.info(f"Loaded MinIO credentials from {cred_path} for user: {data.get('username', 'unknown')}")
     except Exception as e:
         logger.warning(f"Failed to read credential file: {e}")
 
