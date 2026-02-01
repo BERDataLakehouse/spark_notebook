@@ -88,8 +88,8 @@ def get_user_governance_paths():
     username = os.environ.get("NB_USER", "jovyan")
 
     # 1. User Personal Files
-    sources[f"my-files"] = {"bucket": "cdm-lake", "prefix": f"users-general-warehouse/{username}"}
-    sources[f"my-sql"] = {"bucket": "cdm-lake", "prefix": f"users-sql-warehouse/{username}"}
+    sources["my-files"] = {"bucket": "cdm-lake", "prefix": f"users-general-warehouse/{username}"}
+    sources["my-sql"] = {"bucket": "cdm-lake", "prefix": f"users-sql-warehouse/{username}"}
 
     try:
         from berdl_notebook_utils.minio_governance import get_my_groups, get_my_workspace
@@ -99,8 +99,8 @@ def get_user_governance_paths():
         if workspace.username:
             username = workspace.username
             # Update defaults with confirmed username
-            sources[f"my-files"] = {"bucket": "cdm-lake", "prefix": f"users-general-warehouse/{username}"}
-            sources[f"my-sql"] = {"bucket": "cdm-lake", "prefix": f"users-sql-warehouse/{username}"}
+            sources["my-files"] = {"bucket": "cdm-lake", "prefix": f"users-general-warehouse/{username}"}
+            sources["my-sql"] = {"bucket": "cdm-lake", "prefix": f"users-sql-warehouse/{username}"}
 
         # 2. Group/Tenant Files
         groups_response = get_my_groups()
