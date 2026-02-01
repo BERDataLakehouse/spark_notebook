@@ -13,6 +13,13 @@
             "contentType": "directory",
             "iconLabel": "ui-components:folder",
             "name": "${NB_USER}"
+        },
+        {
+            "root": "/",
+            "path": "lakehouse_minio",
+            "contentType": "directory",
+            "iconLabel": "ui-components:folder",
+            "name": "Lakehouse MinIO"
         }
     ],
     "showWidget": true
