@@ -19,6 +19,9 @@ RUN python3 /tmp/patch_jupyter_ai.py && rm /tmp/patch_jupyter_ai.py
 COPY scripts/patch_s3contents.py /tmp/patch_s3contents.py
 RUN python3 /tmp/patch_s3contents.py && rm /tmp/patch_s3contents.py
 
+COPY scripts/patch_s3contents_init.py /tmp/patch_s3contents_init.py
+RUN python3 /tmp/patch_s3contents_init.py && rm /tmp/patch_s3contents_init.py
+
 COPY notebook_utils /tmp/notebook_utils
 RUN eval "$(conda shell.bash hook)" && uv pip install --no-deps --system /tmp/notebook_utils && rm -rf /tmp/notebook_utils
 
