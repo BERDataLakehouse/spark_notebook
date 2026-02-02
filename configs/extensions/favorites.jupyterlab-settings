@@ -1,18 +1,25 @@
 {
     "favorites": [
         {
-            "root": "/home/${NB_USER}",
+            "root": "/",
             "path": "global_share",
             "contentType": "directory",
             "iconLabel": "ui-components:folder",
             "name": "Global Share"
         },
         {
-            "root": "/home/${NB_USER}",
+            "root": "/",
             "path": "",
             "contentType": "directory",
             "iconLabel": "ui-components:folder",
             "name": "${NB_USER}"
+        },
+        {
+            "root": "/",
+            "path": "lakehouse_minio",
+            "contentType": "directory",
+            "iconLabel": "ui-components:folder",
+            "name": "Lakehouse MinIO"
         }
     ],
     "showWidget": true
