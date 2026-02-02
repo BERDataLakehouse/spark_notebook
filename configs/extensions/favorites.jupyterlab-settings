@@ -19,7 +19,7 @@
             "path": "lakehouse_minio",
             "contentType": "directory",
             "iconLabel": "ui-components:folder",
-            "name": "Lakehouse MinIO"
+            "name": "Lakehouse Objectstore"
         }
     ],
     "showWidget": true
