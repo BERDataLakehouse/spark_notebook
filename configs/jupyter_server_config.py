@@ -105,18 +105,40 @@ def get_user_governance_paths():
 
         # 2. Group/Tenant Files
         groups_response = get_my_groups()
-        user_groups = groups_response.groups or []
+        user_groups = set(groups_response.groups or [])
 
-        unique_tenants = set()
+        # Identify all potential tenants from group names (stripping ro suffix)
+        potential_tenants = set()
         for group in user_groups:
+            # User example: "kbasero" -> tenant "kbase"
             if group.endswith("ro"):
-                unique_tenants.add(group[:-2])
+                potential_tenants.add(group[:-2])
             else:
-                unique_tenants.add(group)
+                potential_tenants.add(group)
 
-        for tenant in sorted(unique_tenants):
-            sources[f"{tenant}-files"] = {"bucket": "cdm-lake", "prefix": f"tenant-general-warehouse/{tenant}"}
-            sources[f"{tenant}-sql"] = {"bucket": "cdm-lake", "prefix": f"tenant-sql-warehouse/{tenant}"}
+        for tenant in sorted(potential_tenants):
+            # Check explicit membership
+            has_rw = tenant in user_groups
+            has_ro = f"{tenant}ro" in user_groups
+
+            # Decide what to mount
+            if has_rw:
+                # RW Access - Mount normally
+                sources[f"{tenant}-files"] = {"bucket": "cdm-lake", "prefix": f"tenant-general-warehouse/{tenant}"}
+                sources[f"{tenant}-sql"] = {"bucket": "cdm-lake", "prefix": f"tenant-sql-warehouse/{tenant}"}
+            elif has_ro:
+                # RO Access - Mount with suffix and read_only flag
+                sources[f"{tenant}-files-ro"] = {
+                    "bucket": "cdm-lake",
+                    "prefix": f"tenant-general-warehouse/{tenant}",
+                    "read_only": True,
+                }
+                sources[f"{tenant}-sql-ro"] = {
+                    "bucket": "cdm-lake",
+                    "prefix": f"tenant-sql-warehouse/{tenant}",
+                    "read_only": True,
+                }
+            # If neither (e.g. was a partial match or unrelated group), skip
 
     except Exception as e:
         logger.error(f"Failed to resolve governance paths: {e}")
