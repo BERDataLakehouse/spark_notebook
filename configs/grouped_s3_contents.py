@@ -15,11 +15,39 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from jupyter_server.services.contents.checkpoints import Checkpoints
 from jupyter_server.services.contents.manager import ContentsManager
 from s3contents import S3ContentsManager
 from traitlets import Dict, Unicode
 
 logger = logging.getLogger("berdl.grouped_s3_contents")
+
+
+class NoOpCheckpoints(Checkpoints):
+    """
+    A Checkpoints class that does absolutely nothing.
+    Useful for S3 backends where we don't want to manage sidecar files or versioning.
+    """
+
+    def create_checkpoint(self, contents_mgr, path):
+        """Return a dummy checkpoint model."""
+        return {
+            "id": "checkpoint",
+            "last_modified": datetime.now(timezone.utc),
+        }
+
+    def restore_checkpoint(self, contents_mgr, checkpoint_id, path):
+        pass
+
+    def rename_checkpoint(self, checkpoint_id, old_path, new_path):
+        pass
+
+    def delete_checkpoint(self, checkpoint_id, path):
+        pass
+
+    def list_checkpoints(self, path):
+        """Return empty list of checkpoints."""
+        return []
 
 
 class GroupedS3ContentsManager(ContentsManager):
@@ -35,6 +63,9 @@ class GroupedS3ContentsManager(ContentsManager):
         c.GroupedS3ContentsManager.access_key_id = "access_key"
         c.GroupedS3ContentsManager.secret_access_key = "secret_key"
     """
+
+    # We MUST define checkpoints_class because ContentsManager.delete() uses self.checkpoints
+    checkpoints_class = NoOpCheckpoints
 
     # Shared S3 configuration
     endpoint_url = Unicode("", config=True, help="S3/MinIO endpoint URL")
@@ -150,7 +181,7 @@ class GroupedS3ContentsManager(ContentsManager):
     # ContentsManager API Implementation
     # -------------------------------------------------------------------------
 
-    def get(self, path: str, content: bool = True, type: str = None, format: str = None) -> dict[str, Any]:
+    def get(self, path: str, content: bool = True, type: str = None, format: str = None, **kwargs) -> dict[str, Any]:
         """Get file or directory model."""
         manager_name, remaining_path = self._split_path(path)
 
@@ -164,6 +195,10 @@ class GroupedS3ContentsManager(ContentsManager):
             raise FileNotFoundError(f"No such directory: {manager_name}")
 
         # Delegate to the S3 manager
+        # Note: S3ContentsManager might not support **kwargs depending on version,
+        # but we should accept them to satisfy base class.
+        # Safest is to try passing known args, or just pass what we have.
+        # S3ContentsManager.get(path, content=True, type=None, format=None) typically.
         model = manager.get(remaining_path, content=content, type=type, format=format)
         return self._prefix_path_in_model(model, manager_name)
 
