@@ -99,6 +99,7 @@ services:
       - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
 
       # AUTHENTICATION CONFIGURATION
+      - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
       - KBASE_AUTH_TOKEN=${CI_KBASE_AUTH_TOKEN}
       - NB_USER=${CI_KBASE_USERNAME}
     volumes:
@@ -156,6 +157,7 @@ services:
       - POSTGRES_USER=readonly_user
       - POSTGRES_PASSWORD=readonly_password
       - KBASE_REQUIRED_ROLES=BERDL_USER
+      - MFA_EXEMPT_USERS=${CI_KBASE_USERNAME}
     volumes:
       # Mount the shared /home directory to access all users' credentials
       # This allows the MCP server to dynamically read any user's credentials
