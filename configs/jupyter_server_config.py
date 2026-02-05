@@ -179,4 +179,8 @@ c.HybridContentsManager.manager_kwargs = {
     },
 }
 
+# Configure FilesHandler to serve files from the correct root directory
+# This is required when using HybridContentsManager for file downloads via /files/ route
+c.ContentsManager.files_handler_params = {"path": f"/home/{username}"}
+
 logger.info(f"✅ GroupedS3ContentsManager 'lakehouse_minio/' configured with: {list(governance_paths.keys())}")
