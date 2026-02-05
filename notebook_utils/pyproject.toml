@@ -75,7 +75,7 @@ DATALAKE_MCP_SERVER_URL = "http://localhost:8080"
 
 
 [tool.uv.sources]
-berdl-notebook-python-base = { git = "https://github.com/BERDataLakehouse/spark_notebook_base.git", rev = "0.0.0-dec11" }
+berdl-notebook-python-base = { git = "https://github.com/BERDataLakehouse/spark_notebook_base.git" }
 
 [tool.ruff.lint.per-file-ignores]
 "**/cdm_spark_cluster_manager_api_client/**/*.py" = ["E501"]
