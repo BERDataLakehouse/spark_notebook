@@ -1,4 +1,4 @@
-ARG BASE_TAG=main
+ARG BASE_TAG=pr-77
 ARG BASE_REGISTRY=ghcr.io/berdatalakehouse/
 FROM ${BASE_REGISTRY}spark_notebook_base:${BASE_TAG}
 
