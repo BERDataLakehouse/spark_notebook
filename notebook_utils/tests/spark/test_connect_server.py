@@ -81,7 +81,8 @@ class TestSparkConnectServerConfig:
     @patch("berdl_notebook_utils.spark.connect_server.shutil.copy")
     @patch("berdl_notebook_utils.spark.connect_server.convert_memory_format")
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
-    def test_generate_spark_config(self, mock_get_settings, mock_convert, mock_copy, tmp_path):
+    @patch("berdl_notebook_utils.spark.connect_server.get_my_sql_warehouse")
+    def test_generate_spark_config(self, mock_get_warehouse, mock_get_settings, mock_convert, mock_copy, tmp_path):
         """Test generate_spark_config creates config file."""
         mock_settings = Mock()
         mock_settings.USER = "test_user"
@@ -104,6 +105,11 @@ class TestSparkConnectServerConfig:
         mock_get_settings.return_value = mock_settings
 
         mock_convert.return_value = "8g"
+
+        # Mock sql warehouse response
+        mock_warehouse = Mock()
+        mock_warehouse.sql_warehouse_prefix = "s3a://cdm-lake/users-sql-warehouse/test_user"
+        mock_get_warehouse.return_value = mock_warehouse
 
         # Create template file
         template_file = tmp_path / "template.conf"
