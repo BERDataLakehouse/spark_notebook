@@ -102,7 +102,18 @@ spark.hadoop.fs.s3a.connection.ssl.enabled=false
 # 3. Interceptor validates token with KBase Auth2 service
 # 4. Interceptor verifies token username matches pod owner (USER env var)
 #
-# Environment variables used by the interceptor:
+# Environment variables used by the auth interceptor:
 # - KBASE_AUTH_URL: KBase Auth2 service URL (Required, e.g. https://ci.kbase.us/services/auth/)
 # - USER: Pod owner username (Required for validating remote access permissions)
-spark.connect.grpc.interceptor.classes=us.kbase.spark.KBaseAuthServerInterceptor
+#
+# ------------------------------------------------------------------------------
+# Namespace Validation Interceptor (STATIC - Server-Side Only)
+# ------------------------------------------------------------------------------
+# This interceptor validates CREATE DATABASE/SCHEMA SQL commands against the
+# user's allowed namespace prefixes. Users can only create databases whose names
+# start with their governance-assigned prefixes (user prefix or writable tenant prefix).
+#
+# Environment variables used by the namespace interceptor:
+# - BERDL_ALLOWED_NAMESPACE_PREFIXES: Comma-separated allowed prefixes
+#   (e.g., "u_tgu2__,kbase_,research_"). Set dynamically by connect_server.py.
+spark.connect.grpc.interceptor.classes=us.kbase.spark.KBaseAuthServerInterceptor,us.kbase.spark.NamespaceValidationInterceptor

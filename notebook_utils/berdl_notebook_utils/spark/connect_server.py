@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Optional
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
-from berdl_notebook_utils.minio_governance.operations import get_my_sql_warehouse
+from berdl_notebook_utils.minio_governance.operations import (
+    get_my_groups,
+    get_my_sql_warehouse,
+    get_namespace_prefix,
+)
 from berdl_notebook_utils.setup_spark_session import (
     DRIVER_MEMORY_OVERHEAD,
     EXECUTOR_MEMORY_OVERHEAD,
@@ -116,6 +120,41 @@ class SparkConnectServerConfig:
             f.write(f"spark.sql.warehouse.dir={warehouse_response.sql_warehouse_prefix}\n")
 
         logger.info(f"Spark configuration written to {self.spark_defaults_path}")
+
+    def compute_allowed_namespace_prefixes(self) -> str:
+        """Compute comma-separated allowed namespace prefixes for this user.
+
+        Fetches the user's governance namespace prefix and writable tenant
+        prefixes from the governance API. Read-only group memberships
+        (groups ending in 'ro') are excluded since those users should not
+        create databases in those tenants.
+
+        Returns:
+            Comma-separated string of allowed prefixes
+            (e.g. "u_tgu2__,kbase_,research_")
+        """
+        prefixes = []
+
+        # User namespace prefix (e.g. "u_tgu2__")
+        try:
+            ns_response = get_namespace_prefix()
+            prefixes.append(ns_response.user_namespace_prefix)
+        except Exception as e:
+            logger.warning(f"Failed to fetch user namespace prefix: {e}")
+
+        # Writable tenant prefixes — exclude read-only groups (ending in "ro")
+        try:
+            groups_response = get_my_groups()
+            for group in groups_response.groups:
+                if not group.endswith("ro"):
+                    # Tenant prefix format: "{group}_" (matches generate_group_governance_prefix)
+                    prefixes.append(f"{group}_")
+        except Exception as e:
+            logger.warning(f"Failed to fetch user groups: {e}")
+
+        result = ",".join(prefixes)
+        logger.info(f"Allowed namespace prefixes for {self.username}: {result}")
+        return result
 
 
 class SparkConnectServerManager:
@@ -315,6 +354,7 @@ class SparkConnectServerManager:
         env = os.environ.copy()
         env["SPARK_NO_DAEMONIZE"] = "true"
         env["SPARK_CONF_DIR"] = str(self.config.user_conf_dir)
+        env["BERDL_ALLOWED_NAMESPACE_PREFIXES"] = self.config.compute_allowed_namespace_prefixes()
 
         # Log startup information
         logger.info(f"Starting Spark Connect server on port {self.config.spark_connect_port}...")
