@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
+from berdl_notebook_utils.minio_governance.operations import get_my_sql_warehouse
 from berdl_notebook_utils.setup_spark_session import (
     DRIVER_MEMORY_OVERHEAD,
     EXECUTOR_MEMORY_OVERHEAD,
@@ -110,6 +111,9 @@ class SparkConnectServerConfig:
 
             f.write(f"spark.driver.host={self.settings.BERDL_POD_IP}\n")
             f.write(f"spark.master={self.settings.SPARK_MASTER_URL}\n")
+
+            warehouse_response = get_my_sql_warehouse()
+            f.write(f"spark.sql.warehouse.dir={warehouse_response.sql_warehouse_prefix}\n")
 
         logger.info(f"Spark configuration written to {self.spark_defaults_path}")
 
