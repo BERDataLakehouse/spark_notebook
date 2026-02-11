@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from berdl_notebook_utils.berdl_settings import clear_token_caches
+from berdl_notebook_utils.cache import clear_token_caches
 
 logger = logging.getLogger(__name__)
 

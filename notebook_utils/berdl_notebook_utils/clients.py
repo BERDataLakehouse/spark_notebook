@@ -8,7 +8,7 @@ from minio import Minio
 from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from berdl_notebook_utils.berdl_settings import clears_on_token_change
+from berdl_notebook_utils.cache import clears_on_token_change
 
 
 @clears_on_token_change

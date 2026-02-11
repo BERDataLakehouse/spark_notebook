@@ -11,7 +11,8 @@ from functools import lru_cache
 import httpx
 from datalake_mcp_server_client.client import AuthenticatedClient
 
-from berdl_notebook_utils.berdl_settings import clears_on_token_change, get_settings
+from berdl_notebook_utils.berdl_settings import get_settings
+from berdl_notebook_utils.cache import clears_on_token_change
 
 logger = logging.getLogger(__name__)
 
