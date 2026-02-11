@@ -11,7 +11,7 @@ from functools import lru_cache
 import httpx
 from datalake_mcp_server_client.client import AuthenticatedClient
 
-from berdl_notebook_utils.berdl_settings import get_settings
+from berdl_notebook_utils.berdl_settings import clears_on_token_change, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 300.0
 
 
+@clears_on_token_change
 @lru_cache(maxsize=1)
 def get_datalake_mcp_client() -> AuthenticatedClient:
     """

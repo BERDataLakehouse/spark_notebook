@@ -11,6 +11,20 @@ from pydantic_settings import BaseSettings
 # Configure logging
 logger = logging.getLogger(__name__)
 
+_token_change_caches = []
+
+
+def clears_on_token_change(func):
+    """Register an lru_cache'd function for invalidation when the KBase token changes."""
+    _token_change_caches.append(func)
+    return func
+
+
+def clear_token_caches():
+    """Clear all registered token-dependent caches."""
+    for cached in _token_change_caches:
+        cached.cache_clear()
+
 
 class BERDLSettings(BaseSettings):
     """
@@ -87,6 +101,7 @@ def validate_environment():
         return [error["loc"][0] for error in e.errors()]
 
 
+@clears_on_token_change
 @lru_cache(maxsize=1)
 def get_settings() -> BERDLSettings:
     """

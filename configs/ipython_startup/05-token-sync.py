@@ -6,11 +6,8 @@ Starts a daemon thread that reads ~/.berdl_kbase_session every 30 seconds
 and updates os.environ["KBASE_AUTH_TOKEN"] in this kernel process when it
 changes.
 
-When the token changes, all lru_cache'd client factories are invalidated so
-they rebuild with the fresh token on next use.
-
-If you add a new @lru_cache client factory that uses KBASE_AUTH_TOKEN,
-add its cache_clear() call to _clear_client_caches() below.
+When the token changes, all @clears_on_token_change-registered caches are
+invalidated so they rebuild with the fresh token on next use.
 """
 
 import logging
@@ -25,27 +22,6 @@ TOKEN_CACHE_FILE = ".berdl_kbase_session"
 TOKEN_SYNC_INTERVAL_SECONDS = 30
 
 
-def _clear_client_caches():
-    """Clear all lru_cache'd factories that hold a KBASE_AUTH_TOKEN reference.
-
-    This list must be kept in sync with any @lru_cache client factories
-    that pass the KBase token into the client they construct.
-    """
-    from berdl_notebook_utils.berdl_settings import get_settings
-    from berdl_notebook_utils.clients import (
-        get_governance_client,
-        get_spark_cluster_client,
-        get_task_service_client,
-    )
-    from berdl_notebook_utils.mcp.client import get_datalake_mcp_client
-
-    get_settings.cache_clear()
-    get_governance_client.cache_clear()
-    get_spark_cluster_client.cache_clear()
-    get_task_service_client.cache_clear()
-    get_datalake_mcp_client.cache_clear()
-
-
 def _sync_token():
     """Read token from session file and update env var if changed."""
     try:
@@ -53,7 +29,8 @@ def _sync_token():
         if token and token != os.environ.get("KBASE_AUTH_TOKEN", ""):
             os.environ["KBASE_AUTH_TOKEN"] = token
             try:
-                _clear_client_caches()
+                from berdl_notebook_utils.berdl_settings import clear_token_caches
+                clear_token_caches()
             except Exception:
                 logger.debug("Failed to clear client caches", exc_info=True)
             logger.info("Kernel token updated from session file")
