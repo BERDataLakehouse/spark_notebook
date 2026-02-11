@@ -8,10 +8,10 @@ from minio import Minio
 from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from berdl_notebook_utils.cache import clears_on_token_change
+from berdl_notebook_utils.cache import kbase_token_dependent
 
 
-@clears_on_token_change
+@kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_task_service_client(settings: BERDLSettings | None = None) -> CTSClient:
     """Get an instance of the CDM Task Service client.
@@ -44,7 +44,7 @@ def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
     )
 
 
-@clears_on_token_change
+@kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_governance_client(
     settings: BERDLSettings | None = None,
@@ -64,7 +64,7 @@ def get_governance_client(
     )
 
 
-@clears_on_token_change
+@kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_spark_cluster_client(
     settings: BERDLSettings | None = None,

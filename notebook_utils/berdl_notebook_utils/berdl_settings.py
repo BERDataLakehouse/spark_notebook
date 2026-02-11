@@ -8,7 +8,7 @@ from functools import lru_cache
 from pydantic import AnyHttpUrl, AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings
 
-from berdl_notebook_utils.cache import clears_on_token_change
+from berdl_notebook_utils.cache import kbase_token_dependent
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ def validate_environment():
         return [error["loc"][0] for error in e.errors()]
 
 
-@clears_on_token_change
+@kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_settings() -> BERDLSettings:
     """

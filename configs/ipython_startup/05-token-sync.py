@@ -6,7 +6,7 @@ Starts a daemon thread that reads ~/.berdl_kbase_session every 30 seconds
 and updates os.environ["KBASE_AUTH_TOKEN"] in this kernel process when it
 changes.
 
-When the token changes, all @clears_on_token_change-registered caches are
+When the token changes, all @kbase_token_dependent-registered caches are
 invalidated so they rebuild with the fresh token on next use.
 """
 
@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from berdl_notebook_utils.cache import clear_token_caches
+from berdl_notebook_utils.cache import clear_kbase_token_caches
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def _sync_token():
         token = (Path.home() / TOKEN_CACHE_FILE).read_text().strip()
         if token and token != os.environ.get("KBASE_AUTH_TOKEN", ""):
             os.environ["KBASE_AUTH_TOKEN"] = token
-            clear_token_caches()
+            clear_kbase_token_caches()
             logger.info("Kernel token updated from session file")
     except Exception:
         logger.debug("Token sync skipped: session file not available")
