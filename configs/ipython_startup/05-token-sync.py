@@ -50,9 +50,7 @@ def _sync_token():
     """Read token from session file and update env var if changed."""
     try:
         token = (Path.home() / TOKEN_CACHE_FILE).read_text().strip()
-        if not token or len(token) < 32 or " " in token or "\n" in token:
-            return
-        if token != os.environ.get("KBASE_AUTH_TOKEN", ""):
+        if token and token != os.environ.get("KBASE_AUTH_TOKEN", ""):
             os.environ["KBASE_AUTH_TOKEN"] = token
             try:
                 _clear_client_caches()
