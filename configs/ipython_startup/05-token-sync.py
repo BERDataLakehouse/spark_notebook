@@ -16,6 +16,8 @@ import threading
 import time
 from pathlib import Path
 
+from berdl_notebook_utils.berdl_settings import clear_token_caches
+
 logger = logging.getLogger(__name__)
 
 TOKEN_CACHE_FILE = ".berdl_kbase_session"
@@ -28,11 +30,7 @@ def _sync_token():
         token = (Path.home() / TOKEN_CACHE_FILE).read_text().strip()
         if token and token != os.environ.get("KBASE_AUTH_TOKEN", ""):
             os.environ["KBASE_AUTH_TOKEN"] = token
-            try:
-                from berdl_notebook_utils.berdl_settings import clear_token_caches
-                clear_token_caches()
-            except Exception:
-                logger.debug("Failed to clear client caches", exc_info=True)
+            clear_token_caches()
             logger.info("Kernel token updated from session file")
     except Exception:
         logger.debug("Token sync skipped: session file not available")
