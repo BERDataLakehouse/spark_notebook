@@ -12,6 +12,7 @@ import httpx
 from datalake_mcp_server_client.client import AuthenticatedClient
 
 from berdl_notebook_utils.berdl_settings import get_settings
+from berdl_notebook_utils.cache import kbase_token_dependent
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 300.0
 
 
+@kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_datalake_mcp_client() -> AuthenticatedClient:
     """

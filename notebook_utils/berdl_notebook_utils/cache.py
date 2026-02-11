@@ -1,0 +1,20 @@
+"""
+Token-dependent cache management.
+
+Provides a decorator for registering lru_cache'd functions that should be
+invalidated when the KBase auth token changes.
+"""
+
+_token_change_caches = []
+
+
+def kbase_token_dependent(func):
+    """Register an lru_cache'd function for invalidation when the KBase token changes."""
+    _token_change_caches.append(func)
+    return func
+
+
+def clear_kbase_token_caches():
+    """Clear all registered token-dependent caches."""
+    for cached in _token_change_caches:
+        cached.cache_clear()
