@@ -12,13 +12,16 @@ Instead of having each S3 path as a top-level folder.
 """
 
 import logging
+import threading
+import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
 from jupyter_server.services.contents.checkpoints import Checkpoints
 from jupyter_server.services.contents.manager import ContentsManager
 from s3contents import S3ContentsManager
-from traitlets import Dict, Unicode
+from traitlets import Dict, Integer, Unicode
 
 logger = logging.getLogger("berdl.grouped_s3_contents")
 
@@ -80,14 +83,23 @@ class GroupedS3ContentsManager(ContentsManager):
     # Additional kwargs for s3fs
     s3fs_additional_kwargs = Dict(config=True, help="Additional kwargs for s3fs")
 
-    def __init__(self, **kwargs):
+    # How often (seconds) to re-check group membership when listing root
+    refresh_interval = Integer(60, config=True, help="Seconds between group membership re-checks")
+
+    def __init__(self, governance_path_resolver: Callable[[], dict] | None = None, **kwargs):
         super().__init__(**kwargs)
         self._s3_managers: dict[str, S3ContentsManager] = {}
-        self._init_managers()
+        self._governance_path_resolver = governance_path_resolver
+        self._last_refresh: float = 0.0
+        self._refresh_lock = threading.Lock()
+        self._refresh_pending = False
+        self._init_managers(self.managers)
 
-    def _init_managers(self):
+    def _init_managers(self, manager_configs: dict):
         """Initialize S3ContentsManager instances for each configured path."""
-        for name, config in self.managers.items():
+        for name, config in manager_configs.items():
+            if name in self._s3_managers:
+                continue  # Already initialized, skip
             try:
                 manager = S3ContentsManager(
                     access_key_id=self.access_key_id,
@@ -103,6 +115,66 @@ class GroupedS3ContentsManager(ContentsManager):
                 logger.info(f"Initialized S3 manager '{name}' -> {config.get('bucket')}/{config.get('prefix')}")
             except Exception as e:
                 logger.error(f"Failed to initialize S3 manager '{name}': {e}")
+
+    def _apply_governance_paths(self, current_paths: dict):
+        """Apply governance path changes to managers (add/remove as needed)."""
+        current_names = set(current_paths.keys())
+        existing_names = set(self._s3_managers.keys())
+
+        # Remove managers for groups the user lost access to
+        removed = existing_names - current_names
+        for name in removed:
+            del self._s3_managers[name]
+            logger.info(f"Removed S3 manager '{name}' (group access revoked)")
+
+        # Add managers for newly accessible groups
+        added = current_names - existing_names
+        if added:
+            new_configs = {name: current_paths[name] for name in added}
+            self._init_managers(new_configs)
+
+    def _refresh_in_background(self):
+        """Fetch governance paths in a background thread and apply changes."""
+        try:
+            current_paths = self._governance_path_resolver()
+            with self._refresh_lock:
+                self._apply_governance_paths(current_paths)
+        except Exception as e:
+            logger.warning(f"Background governance refresh failed: {e}")
+        finally:
+            self._refresh_pending = False
+
+    def _maybe_refresh_managers(self, wait_ms: int = 0):
+        """Trigger a background re-check of group membership.
+
+        When wait_ms > 0 (content listings / refresh clicks), always attempts
+        a refresh with a short cooldown (5s) to avoid hammering the API during
+        rapid navigation, and waits up to wait_ms for the result.
+
+        When wait_ms == 0 (metadata-only calls), uses the full refresh_interval
+        (default 60s) and never blocks.
+        """
+        if self._governance_path_resolver is None:
+            return
+
+        now = time.monotonic()
+        elapsed = now - self._last_refresh
+
+        # Content requests use a short 5s cooldown; background uses full interval
+        cooldown = 5 if wait_ms > 0 else self.refresh_interval
+        if elapsed < cooldown:
+            return
+
+        if self._refresh_pending:
+            return  # Already refreshing
+
+        self._last_refresh = now
+        self._refresh_pending = True
+        thread = threading.Thread(target=self._refresh_in_background, daemon=True)
+        thread.start()
+
+        if wait_ms > 0:
+            thread.join(timeout=wait_ms / 1000.0)
 
     def _split_path(self, path: str) -> tuple[str | None, str]:
         """
@@ -127,7 +199,16 @@ class GroupedS3ContentsManager(ContentsManager):
         return self._s3_managers.get(name)
 
     def _virtual_root_model(self, content: bool = True) -> dict[str, Any]:
-        """Create a virtual directory model for the root, listing all sub-managers."""
+        """Create a virtual directory model for the root, listing all sub-managers.
+
+        When content is requested (user clicks refresh or navigates into
+        lakehouse_minio/), waits up to 200ms for a background governance
+        refresh to complete. If the API responds in time, the listing is
+        fresh; otherwise stale data is returned instantly and the refresh
+        finishes in the background for the next request.
+        For metadata-only calls (content=False), fires a pure background
+        refresh with no wait."""
+        self._maybe_refresh_managers(wait_ms=200 if content else 0)
         model = {
             "name": "",
             "path": "",
