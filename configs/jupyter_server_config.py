@@ -176,6 +176,9 @@ c.HybridContentsManager.manager_kwargs = {
         "s3fs_additional_kwargs": {"use_ssl": use_ssl},
         # Each entry becomes a subdirectory under "lakehouse_minio/"
         "managers": governance_paths,
+        # Re-check group membership dynamically so the file browser
+        # reflects tenant changes without requiring logout/login
+        "governance_path_resolver": get_user_governance_paths,
     },
 }
 

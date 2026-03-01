@@ -117,3 +117,12 @@ spark.hadoop.fs.s3a.connection.ssl.enabled=false
 # - BERDL_ALLOWED_NAMESPACE_PREFIXES: Comma-separated allowed prefixes
 #   (e.g., "u_tgu2__,kbase_,research_"). Set dynamically by connect_server.py.
 spark.connect.grpc.interceptor.classes=us.kbase.spark.KBaseAuthServerInterceptor,us.kbase.spark.NamespaceValidationInterceptor
+
+# ------------------------------------------------------------------------------
+# Session Timeout (STATIC - Server-Side Only)
+# ------------------------------------------------------------------------------
+# How long the Spark Connect server keeps an idle session alive before closing it.
+# Default is 60m (1 hour), which causes INVALID_HANDLE.SESSION_CLOSED errors for
+# long-running notebooks. Set to -1 to never expire.
+# Note: This config is internal and not listed in the official Spark docs.
+spark.connect.session.manager.defaultSessionTimeout=10h
