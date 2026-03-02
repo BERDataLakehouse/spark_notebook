@@ -32,12 +32,12 @@ All BERDL JupyterHub notebooks automatically import these data governance functi
 - `get_my_groups()` - Get list of groups you belong to
 - `get_my_policies()` - Get detailed policy information
 
-*Sharing Functions:*
+*Sharing Functions (DEPRECATED):*
 - `get_table_access_info(namespace, table_name)` - Check who has access to a SQL table
-- `make_table_private(namespace, table_name)` - Remove public access from SQL tables
-- `make_table_public(namespace, table_name)` - Make SQL tables publicly accessible
-- `share_table(namespace, table_name, with_users, with_groups)` - Share SQL tables
-- `unshare_table(namespace, table_name, from_users, from_groups)` - Unshare SQL tables
+- `make_table_private(namespace, table_name)` - **(DEPRECATED)** Remove public access from SQL tables
+- `make_table_public(namespace, table_name)` - **(DEPRECATED)** Make SQL tables publicly accessible
+- `share_table(namespace, table_name, with_users, with_groups)` - **(DEPRECATED)** Share SQL tables
+- `unshare_table(namespace, table_name, from_users, from_groups)` - **(DEPRECATED)** Unshare SQL tables
 
 *Admin Functions (Tenant/Group Management):*
 - `create_tenant_and_assign_users(tenant_name, usernames)` - Create tenant and add users (admin only)
@@ -155,7 +155,9 @@ tenant_ns = get_namespace_prefix(tenant="kbase")
 print(f"Tenant databases should start with: {tenant_ns.tenant_namespace_prefix}")
 ```
 
-## Sharing SQL Warehouse Tables
+## Sharing SQL Warehouse Tables (DEPRECATED)
+
+> **⚠️ DEPRECATION WARNING**: Direct path sharing functions (`share_table`, `unshare_table`) are deprecated and will be removed in a future release. Please create a **Tenant Workspace** and manage access dynamically through tenant groups instead.
 
 ### Share Tables with Users
 
@@ -204,7 +206,9 @@ if response.errors:
     print(f"Errors: {response.errors}")
 ```
 
-## Unsharing SQL Warehouse Tables
+## Unsharing SQL Warehouse Tables (DEPRECATED)
+
+> **⚠️ DEPRECATION WARNING**: Direct path sharing functions (`share_table`, `unshare_table`) are deprecated and will be removed in a future release. Please create a **Tenant Workspace** and manage access dynamically through tenant groups instead.
 
 ### Remove Access from Users
 
@@ -252,7 +256,9 @@ if response.errors:
     print(f"Errors: {response.errors}")
 ```
 
-## Public and Private Table Access
+## Public and Private Table Access (DEPRECATED)
+
+> **⚠️ DEPRECATION WARNING**: Direct public path sharing functions (`make_table_public`, `make_table_private`) are deprecated. Please create a namespace under the `globalusers` tenant for public sharing activities instead.
 
 ### Make Tables Publicly Accessible
 
