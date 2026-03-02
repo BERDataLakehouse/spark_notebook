@@ -56,10 +56,10 @@ result = create_tenant_and_assign_users(
     usernames=["alice", "bob", "charlie"]
 )
 
-# Share a table with colleagues
+# Share a table with colleagues (DEPRECATED: Use Tenant Workspaces instead)
 share_table("analytics", "user_metrics", with_users=["alice", "bob"])
 
-# Make a table publicly accessible
+# Make a table publicly accessible (DEPRECATED: Use globalusers namespaces instead)
 make_table_public("research", "public_dataset")
 ```
 
