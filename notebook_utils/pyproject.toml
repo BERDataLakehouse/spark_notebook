@@ -5,7 +5,42 @@ description = "berdl_notebook_utils"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "berdl-notebook-python-base",
+    # --- Core utilities ---
+    "pydantic-settings>=2.0",
+    "httpx>=0.24",
+
+    # --- Spark ---
+    "pyspark[connect]>=4.0",
+
+    # --- Storage / Hive ---
+    "minio>=7.0",
+    "hmsclient>=0.1",
+
+    # --- BERDL internal clients ---
+    "cdm-task-service-client",
+    "cdm-spark-manager-client",
+    "minio-manager-service-client",
+    "datalake-mcp-server-client",
+]
+
+[project.optional-dependencies]
+# Jupyter notebook widgets & display (itables, sidecar, ipywidgets)
+notebook = [
+    "itables>=2.0",
+    "ipywidgets>=8.0",
+    "sidecar>=0.7",
+    "pandas>=2.0",
+]
+# AI agent (LangChain + LLM providers)
+agent = [
+    "langchain>=0.2",
+    "langchain-anthropic>=0.1",
+    "langchain-openai>=0.1",
+    "langchain-community>=0.2",
+]
+# Everything
+all = [
+    "berdl_notebook_utils[notebook,agent]",
 ]
 
 [dependency-groups]
@@ -75,7 +110,10 @@ DATALAKE_MCP_SERVER_URL = "http://localhost:8080"
 
 
 [tool.uv.sources]
-berdl-notebook-python-base = { git = "https://github.com/BERDataLakehouse/spark_notebook_base.git" }
+cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client", rev = "0.2.3" }
+cdm-spark-manager-client = { git = "https://github.com/kbase/cdm-kube-spark-manager-client.git", rev = "0.0.1" }
+minio-manager-service-client = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git", rev = "v0.0.7" }
+datalake-mcp-server-client = { git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git", rev = "v0.0.6" }
 
 [tool.ruff.lint.per-file-ignores]
 "**/cdm_spark_cluster_manager_api_client/**/*.py" = ["E501"]
