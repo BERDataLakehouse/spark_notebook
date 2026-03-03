@@ -36,6 +36,25 @@ jobs:
           cd notebook_utils
           uv run ruff format --check ..
 
+  local_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies and run (non-spark) tests
+        run: |
+          cd notebook_utils
+          uv run pytest -m "not requires_spark"
+
   test:
     runs-on: ubuntu-latest
     permissions:
