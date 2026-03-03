@@ -205,15 +205,25 @@ name = "berdl-notebook-utils"
 version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
+    { name = "attrs" },
     { name = "cdm-spark-manager-client" },
     { name = "cdm-task-service-client" },
     { name = "datalake-mcp-server-client" },
     { name = "hmsclient" },
     { name = "httpx" },
+    { name = "ipython" },
+    { name = "ipywidgets" },
+    { name = "itables" },
+    { name = "langchain" },
+    { name = "langchain-anthropic" },
+    { name = "langchain-community" },
+    { name = "langchain-openai" },
     { name = "minio" },
     { name = "minio-manager-service-client" },
+    { name = "pandas" },
     { name = "pydantic-settings" },
     { name = "pyspark", extra = ["connect"] },
+    { name = "sidecar" },
 ]
 
 [package.optional-dependencies]
@@ -250,23 +260,33 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "attrs", specifier = ">=25.4.0" },
     { name = "berdl-notebook-utils", extras = ["notebook", "agent"], marker = "extra == 'all'" },
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client?rev=0.2.3" },
     { name = "datalake-mcp-server-client", git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.6" },
     { name = "hmsclient", specifier = ">=0.1" },
     { name = "httpx", specifier = ">=0.24" },
+    { name = "ipython", specifier = ">=9.10.0" },
+    { name = "ipywidgets", specifier = ">=8.1.8" },
     { name = "ipywidgets", marker = "extra == 'notebook'", specifier = ">=8.0" },
+    { name = "itables", specifier = ">=2.7.0" },
     { name = "itables", marker = "extra == 'notebook'", specifier = ">=2.0" },
+    { name = "langchain", specifier = ">=0.3.27" },
     { name = "langchain", marker = "extra == 'agent'", specifier = ">=0.2" },
+    { name = "langchain-anthropic", specifier = ">=0.3.22" },
     { name = "langchain-anthropic", marker = "extra == 'agent'", specifier = ">=0.1" },
+    { name = "langchain-community", specifier = ">=0.3.31" },
     { name = "langchain-community", marker = "extra == 'agent'", specifier = ">=0.2" },
+    { name = "langchain-openai", specifier = ">=0.3.35" },
     { name = "langchain-openai", marker = "extra == 'agent'", specifier = ">=0.1" },
     { name = "minio", specifier = ">=7.0" },
     { name = "minio-manager-service-client", git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.7" },
+    { name = "pandas", specifier = ">=3.0.1" },
     { name = "pandas", marker = "extra == 'notebook'", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pyspark", extras = ["connect"], specifier = ">=4.0" },
+    { name = "sidecar", specifier = ">=0.8.1" },
     { name = "sidecar", marker = "extra == 'notebook'", specifier = ">=0.7" },
 ]
 provides-extras = ["notebook", "agent", "all"]
