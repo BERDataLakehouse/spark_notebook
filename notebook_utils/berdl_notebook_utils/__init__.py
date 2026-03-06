@@ -56,6 +56,7 @@ from berdl_notebook_utils.agent import (
     AgentSettings,
     get_agent_settings,
 )
+from berdl_notebook_utils.refresh import refresh_spark_environment
 
 __all__ = [
     "BERDLSettings",
@@ -106,6 +107,8 @@ __all__ = [
     "BERDLAgent",
     "AgentSettings",
     "get_agent_settings",
+    # Environment refresh
+    "refresh_spark_environment",
 ]
 
 

@@ -12,6 +12,7 @@ All functions are imported at the package level for convenient access.
 
 # Database utilities
 from berdl_notebook_utils.spark.database import (
+    create_iceberg_namespace,
     create_namespace_if_not_exists,
     table_exists,
     remove_table,
@@ -54,6 +55,7 @@ from berdl_notebook_utils.spark.connect_server import (
 
 __all__ = [
     # Database operations
+    "create_iceberg_namespace",
     "create_namespace_if_not_exists",
     "table_exists",
     "remove_table",

@@ -84,6 +84,7 @@ SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 
 # Credential caching configuration
 CREDENTIALS_CACHE_FILE = ".berdl_minio_credentials"
+POLARIS_CREDENTIALS_CACHE_FILE = ".berdl_polaris_credentials"
 
 
 # =============================================================================
@@ -92,12 +93,17 @@ CREDENTIALS_CACHE_FILE = ".berdl_minio_credentials"
 
 
 def _get_credentials_cache_path() -> Path:
-    """Get the path to the credentials cache file in the user's home directory."""
+    """Get the path to the MinIO credentials cache file in the user's home directory."""
     return Path.home() / CREDENTIALS_CACHE_FILE
 
 
+def _get_polaris_cache_path() -> Path:
+    """Get the path to the Polaris credentials cache file in the user's home directory."""
+    return Path.home() / POLARIS_CREDENTIALS_CACHE_FILE
+
+
 def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
-    """Read credentials from cache file. Returns None if file doesn't exist or is corrupted."""
+    """Read MinIO credentials from cache file. Returns None if file doesn't exist or is corrupted."""
     try:
         if not cache_path.exists():
             return None
@@ -109,10 +115,34 @@ def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
 
 
 def _write_credentials_cache(cache_path: Path, credentials: CredentialsResponse) -> None:
-    """Write credentials to cache file."""
+    """Write MinIO credentials to cache file."""
     try:
         with open(cache_path, "w") as f:
             json.dump(credentials.to_dict(), f)
+    except (OSError, TypeError):
+        pass
+
+
+def _read_cached_polaris_credentials(cache_path: Path) -> "PolarisCredentials | None":
+    """Read Polaris credentials from cache file. Returns None if file doesn't exist or is corrupted."""
+    try:
+        if not cache_path.exists():
+            return None
+        with open(cache_path, "r") as f:
+            data = json.load(f)
+        # Validate required keys are present
+        if all(k in data for k in ("client_id", "client_secret", "personal_catalog", "tenant_catalogs")):
+            return data
+        return None
+    except (json.JSONDecodeError, TypeError, KeyError, OSError):
+        return None
+
+
+def _write_polaris_credentials_cache(cache_path: Path, credentials: "PolarisCredentials") -> None:
+    """Write Polaris credentials to cache file."""
+    try:
+        with open(cache_path, "w") as f:
+            json.dump(credentials, f)
     except (OSError, TypeError):
         pass
 
@@ -198,6 +228,99 @@ def get_minio_credentials() -> CredentialsResponse:
     os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
 
     return credentials
+
+
+class PolarisCredentials(TypedDict):
+    """Polaris credential provisioning result."""
+
+    client_id: str
+    client_secret: str
+    personal_catalog: str
+    tenant_catalogs: list[str]
+
+
+def get_polaris_credentials() -> PolarisCredentials | None:
+    """
+    Provision a Polaris catalog for the current user and set credentials as environment variables.
+
+    Uses file locking and caching to prevent race conditions and avoid unnecessary
+    API calls when credentials are already cached (same pattern as get_minio_credentials).
+
+    Calls POST /polaris/user_provision/{username} on the governance API on cache miss.
+    This provisions the user's Polaris environment (catalog, principal, roles, credentials,
+    tenant access) and returns the configuration.
+
+    Sets the following environment variables:
+    - POLARIS_CREDENTIAL: client_id:client_secret for authenticating with Polaris
+    - POLARIS_PERSONAL_CATALOG: Name of the user's personal Polaris catalog
+    - POLARIS_TENANT_CATALOGS: Comma-separated list of tenant catalogs the user has access to
+
+    Returns:
+        PolarisCredentials dict, or None if Polaris is not configured
+    """
+    settings = get_settings()
+
+    if not settings.POLARIS_CATALOG_URI:
+        return None
+
+    cache_path = _get_polaris_cache_path()
+    lock_path = cache_path.with_suffix(".lock")
+
+    polaris_logger = logging.getLogger(__name__)
+
+    # Use file locking to prevent concurrent access
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            # Try to load from cache first
+            cached = _read_cached_polaris_credentials(cache_path)
+            if cached:
+                result = cached
+            else:
+                # No cache or cache corrupted, fetch fresh credentials from governance API
+                governance_url = str(settings.GOVERNANCE_API_URL).rstrip("/")
+                username = settings.USER
+
+                try:
+                    resp = httpx.post(
+                        f"{governance_url}/polaris/user_provision/{username}",
+                        headers={"Authorization": f"Bearer {settings.KBASE_AUTH_TOKEN}"},
+                        timeout=30.0,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                except httpx.HTTPStatusError as e:
+                    polaris_logger.warning(
+                        f"Polaris provisioning failed (HTTP {e.response.status_code}): {e.response.text}"
+                    )
+                    return None
+                except Exception as e:
+                    polaris_logger.warning(f"Polaris provisioning failed: {e}")
+                    return None
+
+                result: PolarisCredentials = {
+                    "client_id": data.get("client_id", ""),
+                    "client_secret": data.get("client_secret", ""),
+                    "personal_catalog": data.get("personal_catalog", ""),
+                    "tenant_catalogs": data.get("tenant_catalogs", []),
+                }
+                _write_polaris_credentials_cache(cache_path, result)
+        finally:
+            pass
+
+    # Clean up lock file if it exists
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    # Set as environment variables for Spark catalog configuration
+    os.environ["POLARIS_CREDENTIAL"] = f"{result['client_id']}:{result['client_secret']}"
+    os.environ["POLARIS_PERSONAL_CATALOG"] = result["personal_catalog"]
+    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(result["tenant_catalogs"])
+
+    return result
 
 
 def get_my_sql_warehouse() -> UserSqlWarehousePrefixResponse:
@@ -346,6 +469,11 @@ def share_table(
     Example:
         share_table("analytics", "user_metrics", with_users=["alice", "bob"])
     """
+    print(
+        "WARNING: share_table is DEPRECATED and will be removed in a future release.\n"
+        "Direct path sharing is no longer recommended. Please create a Tenant Workspace\n"
+        "and request access to the tenant for sharing activities."
+    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -384,6 +512,11 @@ def unshare_table(
     Example:
         unshare_table("analytics", "user_metrics", from_users=["alice"])
     """
+    print(
+        "WARNING: unshare_table is DEPRECATED and will be removed in a future release.\n"
+        "Direct path sharing is no longer recommended. Please create a Tenant Workspace\n"
+        "and request access to the tenant for unsharing activities."
+    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -418,6 +551,11 @@ def make_table_public(
     Example:
         make_table_public("research", "public_dataset")
     """
+    print(
+        "WARNING: make_table_public is DEPRECATED and will be removed in a future release.\n"
+        "Direct public path sharing is no longer recommended. Please create a namespace\n"
+        "under the `globalusers` tenant for public sharing activities."
+    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -444,6 +582,11 @@ def make_table_private(
     Example:
         make_table_private("research", "sensitive_data")
     """
+    print(
+        "WARNING: make_table_private is DEPRECATED and will be removed in a future release.\n"
+        "Direct public path sharing is no longer recommended. Please remove the namespace\n"
+        "under the `globalusers` tenant to revoke public access."
+    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER

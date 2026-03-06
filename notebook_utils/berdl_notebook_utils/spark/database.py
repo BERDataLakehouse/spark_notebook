@@ -3,6 +3,10 @@ Spark database utilities for BERDL notebook environments.
 
 This module contains utility functions to interact with the Spark catalog,
 including tenant-aware namespace management for BERDL SQL warehouses.
+
+Two namespace creation patterns are available:
+- create_namespace_if_not_exists(): Delta/Hive flow with governance prefixes (u_user__, t_tenant__)
+- create_iceberg_namespace(): Polaris Iceberg flow with catalog-level isolation (no prefixes)
 """
 
 from pyspark.sql import SparkSession
@@ -40,6 +44,11 @@ def generate_namespace_location(namespace: str | None = None, tenant_name: str |
     # Always fetch warehouse directory from governance API for proper S3 location
     # Don't rely on spark.sql.warehouse.dir as it may be set to local path by Spark Connect server
     warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
+
+    if hasattr(warehouse_response, "message") and not getattr(warehouse_response, "sql_warehouse_prefix", None):
+        print(f"Warning: Failed to get warehouse location: {getattr(warehouse_response, 'message', 'Unknown error')}")
+        return (namespace, None)
+
     warehouse_dir = warehouse_response.sql_warehouse_prefix
 
     if warehouse_dir and ("users-sql-warehouse" in warehouse_dir or "tenant-sql-warehouse" in warehouse_dir):
@@ -116,6 +125,23 @@ def create_namespace_if_not_exists(
         print(f"Namespace {namespace} is ready to use.")
 
     return namespace
+
+
+def create_iceberg_namespace(
+    spark: SparkSession,
+    namespace: str,
+    catalog: str = "my",
+) -> str:
+    """
+    Create a namespace in an Iceberg catalog.
+
+    Unlike create_namespace_if_not_exists(), this does NOT prepend governance
+    prefixes — the catalog itself provides isolation.
+    """
+    full_ns = f"{catalog}.{namespace}"
+    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {full_ns}")
+    print(f"Namespace {full_ns} is ready to use.")
+    return full_ns
 
 
 def table_exists(
