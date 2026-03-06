@@ -835,12 +835,16 @@ class TestGetPolarisCredentials:
     @patch("berdl_notebook_utils.minio_governance.operations._write_polaris_credentials_cache")
     @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
     @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch("berdl_notebook_utils.minio_governance.operations.httpx")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
+    )
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
     def test_fetches_fresh_credentials(
         self,
         mock_settings,
-        mock_httpx,
+        mock_get_client,
+        mock_provision,
         mock_cache_path,
         mock_read_cache,
         mock_write_cache,
@@ -850,51 +854,46 @@ class TestGetPolarisCredentials:
     ):
         """Test fetches fresh credentials from API when no cache."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_settings.return_value.GOVERNANCE_API_URL = "http://governance:8000"
         mock_settings.return_value.USER = "test_user"
-        mock_settings.return_value.KBASE_AUTH_TOKEN = "token123"
         mock_cache_path.return_value = tmp_path / ".polaris_cache"
         mock_read_cache.return_value = None
 
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        mock_api_response = Mock()
+        mock_api_response.to_dict.return_value = {
             "client_id": "new_id",
             "client_secret": "new_secret",
             "personal_catalog": "user_test_user",
             "tenant_catalogs": ["tenant_team"],
         }
-        mock_httpx.post.return_value = mock_response
+        mock_provision.sync.return_value = mock_api_response
 
         result = get_polaris_credentials()
 
         assert result["client_id"] == "new_id"
         assert result["personal_catalog"] == "user_test_user"
         mock_write_cache.assert_called_once()
+        mock_provision.sync.assert_called_once_with(username="test_user", client=mock_get_client.return_value)
 
     @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
     @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
     @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch("berdl_notebook_utils.minio_governance.operations.httpx")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
+    )
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_on_http_error(
-        self, mock_settings, mock_httpx, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
+    def test_returns_none_on_error_response(
+        self, mock_settings, mock_get_client, mock_provision, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
     ):
-        """Test returns None when API call fails with HTTP error."""
+        """Test returns None when API returns ErrorResponse."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_settings.return_value.GOVERNANCE_API_URL = "http://governance:8000"
         mock_settings.return_value.USER = "test_user"
-        mock_settings.return_value.KBASE_AUTH_TOKEN = "token123"
         mock_cache_path.return_value = tmp_path / ".polaris_cache"
         mock_read_cache.return_value = None
 
-        mock_httpx.HTTPStatusError = httpx.HTTPStatusError
-        mock_response = Mock()
-        mock_response.status_code = 500
-        mock_response.text = "Internal error"
-        mock_httpx.post.return_value = mock_response
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Error", request=Mock(), response=mock_response
-        )
+        mock_error = Mock(spec=ErrorResponse)
+        mock_error.message = "Internal server error"
+        mock_provision.sync.return_value = mock_error
 
         result = get_polaris_credentials()
 
@@ -903,21 +902,21 @@ class TestGetPolarisCredentials:
     @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
     @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
     @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch("berdl_notebook_utils.minio_governance.operations.httpx")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
+    )
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_on_connection_error(
-        self, mock_settings, mock_httpx, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
+    def test_returns_none_on_no_response(
+        self, mock_settings, mock_get_client, mock_provision, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
     ):
-        """Test returns None when API call fails with connection error."""
+        """Test returns None when API returns None (unexpected status)."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_settings.return_value.GOVERNANCE_API_URL = "http://governance:8000"
         mock_settings.return_value.USER = "test_user"
-        mock_settings.return_value.KBASE_AUTH_TOKEN = "token123"
         mock_cache_path.return_value = tmp_path / ".polaris_cache"
         mock_read_cache.return_value = None
 
-        mock_httpx.HTTPStatusError = httpx.HTTPStatusError
-        mock_httpx.post.side_effect = ConnectionError("Cannot connect")
+        mock_provision.sync.return_value = None
 
         result = get_polaris_credentials()
 
