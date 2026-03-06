@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from berdl_notebook_utils.minio_governance.operations import (
+    _fetch_with_file_cache,
     _get_credentials_cache_path,
     _get_polaris_cache_path,
     _read_cached_credentials,
@@ -118,6 +119,59 @@ class TestBuildTablePath:
         path = _build_table_path("user1", "analytics.db", "users")
 
         assert path == "s3a://cdm-lake/users-sql-warehouse/user1/analytics.db/users"
+
+
+class TestFetchWithFileCache:
+    """Tests for _fetch_with_file_cache helper."""
+
+    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
+    def test_returns_cached_value_on_cache_hit(self, mock_fcntl, tmp_path):
+        """Test returns cached value without calling fetch when cache hits."""
+        cache_path = tmp_path / "creds.json"
+        sentinel = {"key": "cached_value"}
+
+        read_cache = Mock(return_value=sentinel)
+        fetch = Mock()
+        write_cache = Mock()
+
+        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
+
+        assert result == sentinel
+        read_cache.assert_called_once_with(cache_path)
+        fetch.assert_not_called()
+        write_cache.assert_not_called()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
+    def test_fetches_and_writes_cache_on_cache_miss(self, mock_fcntl, tmp_path):
+        """Test fetches fresh data and writes cache when cache misses."""
+        cache_path = tmp_path / "creds.json"
+        sentinel = {"key": "fresh_value"}
+
+        read_cache = Mock(return_value=None)
+        fetch = Mock(return_value=sentinel)
+        write_cache = Mock()
+
+        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
+
+        assert result == sentinel
+        read_cache.assert_called_once_with(cache_path)
+        fetch.assert_called_once()
+        write_cache.assert_called_once_with(cache_path, sentinel)
+
+    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
+    def test_returns_none_without_writing_when_fetch_fails(self, mock_fcntl, tmp_path):
+        """Test returns None and does not write cache when fetch returns None."""
+        cache_path = tmp_path / "creds.json"
+
+        read_cache = Mock(return_value=None)
+        fetch = Mock(return_value=None)
+        write_cache = Mock()
+
+        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
+
+        assert result is None
+        fetch.assert_called_once()
+        write_cache.assert_not_called()
 
 
 class TestCheckGovernanceHealth:
