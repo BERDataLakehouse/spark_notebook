@@ -32,6 +32,9 @@ from berdl_notebook_utils.minio_governance.operations import (
     # Tenant access requests
     list_available_groups,
     request_tenant_access,
+    # Migration (admin-only)
+    ensure_polaris_resources,
+    regenerate_policies,
 )
 
 __all__ = [
@@ -61,4 +64,7 @@ __all__ = [
     # Tenant access requests
     "list_available_groups",
     "request_tenant_access",
+    # Migration (admin-only)
+    "ensure_polaris_resources",
+    "regenerate_policies",
 ]

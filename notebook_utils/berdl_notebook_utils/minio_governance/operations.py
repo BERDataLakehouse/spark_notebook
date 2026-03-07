@@ -21,8 +21,10 @@ from governance_client.api.polaris import provision_polaris_user_polaris_user_pr
 from governance_client.api.management import (
     add_group_member_management_groups_group_name_members_username_post,
     create_group_management_groups_group_name_post,
+    ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post,
     list_groups_management_groups_get,
     list_users_management_users_get,
+    regenerate_all_policies_management_migrate_regenerate_policies_post,
     remove_group_member_management_groups_group_name_members_username_delete,
 )
 from governance_client.api.management.list_group_names_management_groups_names_get import (
@@ -660,9 +662,13 @@ def list_groups() -> dict | ErrorResponse | None:
     return list_groups_management_groups_get.sync(client=client)
 
 
-def list_users():
+def list_users(page: int = 1, page_size: int = 500):
     """
     List all users in the system.
+
+    Args:
+        page: Page number (1-based). Default: 1.
+        page_size: Number of users per page. Default: 500.
 
     Returns:
         UserListResponse with user information, or ErrorResponse on failure.
@@ -672,7 +678,7 @@ def list_users():
         # Returns list of user information
     """
     client = get_governance_client()
-    return list_users_management_users_get.sync(client=client)
+    return list_users_management_users_get.sync(client=client, page=page, page_size=page_size)
 
 
 def add_group_member(
@@ -930,3 +936,40 @@ def request_tenant_access(
         raise RuntimeError(f"Failed to submit access request: {e.response.status_code} - {e.response.text}")
     except httpx.RequestError as e:
         raise RuntimeError(f"Failed to connect to tenant access service: {e}")
+
+
+# =============================================================================
+# MIGRATION - Admin-only bulk operations for IAM + Polaris migration
+# =============================================================================
+
+
+def regenerate_policies():
+    """
+    Force-regenerate all MinIO IAM HOME policies from the current template.
+
+    This admin-only endpoint updates pre-existing policies to include new path
+    statements (e.g., Iceberg paths). Each regeneration is independent — errors
+    do not block others.
+
+    Returns:
+        RegeneratePoliciesResponse with users_updated, groups_updated, errors,
+        or ErrorResponse on failure.
+    """
+    client = get_governance_client()
+    return regenerate_all_policies_management_migrate_regenerate_policies_post.sync(client=client)
+
+
+def ensure_polaris_resources():
+    """
+    Ensure Polaris resources exist for all users and groups.
+
+    Creates Polaris principals, personal catalogs, and roles for all users.
+    Creates tenant catalogs for all base groups. Grants correct principal roles
+    based on group memberships. All operations are idempotent.
+
+    Returns:
+        EnsurePolarisResponse with users_provisioned, groups_provisioned, errors,
+        or ErrorResponse on failure.
+    """
+    client = get_governance_client()
+    return ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post.sync(client=client)
