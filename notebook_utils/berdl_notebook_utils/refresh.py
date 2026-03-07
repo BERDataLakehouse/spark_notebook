@@ -24,16 +24,14 @@ logger = logging.getLogger("berdl.refresh")
 
 
 def _remove_cache_file(path: Path) -> bool:
-    """Remove a cache file and its .lock companion. Returns True if the main file existed."""
+    """Remove a cache file. Returns True if the main file existed."""
     existed = False
-    for p in (path, path.with_suffix(path.suffix + ".lock")):
-        try:
-            if p.exists():
-                p.unlink()
-                if p == path:
-                    existed = True
-        except OSError:
-            pass
+    try:
+        if path.exists():
+            path.unlink()
+            existed = True
+    except OSError:
+        pass
     return existed
 
 
