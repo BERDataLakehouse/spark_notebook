@@ -126,23 +126,38 @@ def migrate_table(
     except Exception as e:
         logger.warning(f"Could not fetch partitions for {source_ref} via catalog API: {e}")
 
-    # 3. Create target namespace
-    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {target_catalog}.{target_ns}")
+    # 3. Create target namespace, write data, and validate
+    try:
+        spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {target_catalog}.{target_ns}")
 
-    # 4. Write as Iceberg (applying partition logic if it existed)
-    writer = df.writeTo(target_table_ref)
-    if partition_cols:
-        writer = writer.partitionedBy(*partition_cols)
+        # 4. Write as Iceberg (applying partition logic if it existed)
+        writer = df.writeTo(target_table_ref)
+        if partition_cols:
+            writer = writer.partitionedBy(*partition_cols)
 
-    logger.info(f"Writing data to {target_table_ref}...")
-    writer.createOrReplace()
-    logger.info(f"Successfully wrote data to {target_table_ref}")
+        logger.info(f"Writing data to {target_table_ref}...")
+        writer.create()
+        logger.info(f"Write completed for {target_table_ref}")
 
-    # 5. Validate row counts
-    original_count = spark.sql(f"SELECT COUNT(*) as cnt FROM {source_ref}").collect()[0]["cnt"]
-    migrated_count = spark.sql(f"SELECT COUNT(*) as cnt FROM {target_table_ref}").collect()[0]["cnt"]
+        # 5. Validate row counts
+        original_count = spark.sql(f"SELECT COUNT(*) as cnt FROM {source_ref}").collect()[0]["cnt"]
+        migrated_count = spark.sql(f"SELECT COUNT(*) as cnt FROM {target_table_ref}").collect()[0]["cnt"]
 
-    if original_count == migrated_count:
+        if original_count != migrated_count:
+            msg = f"Row count mismatch: {original_count} vs {migrated_count}"
+            logger.error(f"Validation FAILED: {msg}")
+            if tracker:
+                tracker.add(
+                    TableResult(
+                        source=source_ref,
+                        target=target_table_ref,
+                        status="failed",
+                        row_count=migrated_count,
+                        error=msg,
+                    )
+                )
+            raise ValueError(msg)
+
         logger.info(f"Validation SUCCESS: {migrated_count} rows migrated exactly.")
         if tracker:
             tracker.add(
@@ -153,20 +168,11 @@ def migrate_table(
                     row_count=migrated_count,
                 )
             )
-    else:
-        msg = f"Row count mismatch: {original_count} vs {migrated_count}"
-        logger.error(f"Validation FAILED: {msg}")
-        if tracker:
-            tracker.add(
-                TableResult(
-                    source=source_ref,
-                    target=target_table_ref,
-                    status="failed",
-                    row_count=migrated_count,
-                    error=msg,
-                )
-            )
-        raise AssertionError(msg)
+    except Exception as e:
+        logger.error(f"Failed to migrate {source_ref} -> {target_table_ref}: {e}")
+        if tracker and not any(r.target == target_table_ref for r in tracker.results):
+            tracker.add(TableResult(source=source_ref, target=target_table_ref, status="failed", error=str(e)))
+        raise
 
 
 def migrate_user(
