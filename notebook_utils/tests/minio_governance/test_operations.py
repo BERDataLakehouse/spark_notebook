@@ -9,6 +9,8 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
+from governance_client.models.user_names_response import UserNamesResponse
+
 from berdl_notebook_utils.minio_governance.operations import (
     _fetch_with_file_cache,
     _get_credentials_cache_path,
@@ -35,6 +37,7 @@ from berdl_notebook_utils.minio_governance.operations import (
     make_table_private,
     list_available_groups,
     list_groups,
+    list_user_names,
     list_users,
     add_group_member,
     remove_group_member,
@@ -551,6 +554,47 @@ class TestListUsers:
         result = list_users()
 
         assert result.users == ["user1", "user2"]
+
+
+class TestListUserNames:
+    """Tests for list_user_names function."""
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
+    def test_list_user_names_success(self, mock_list_user_names, mock_get_client):
+        """Test list_user_names returns list of usernames."""
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        mock_list_user_names.return_value = Mock(
+            spec=UserNamesResponse, usernames=["user1", "user2", "user3"]
+        )
+
+        result = list_user_names()
+
+        assert result == ["user1", "user2", "user3"]
+        mock_list_user_names.assert_called_once_with(client=mock_client)
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
+    def test_list_user_names_error_response(self, mock_list_user_names, mock_get_client):
+        """Test list_user_names raises on error response."""
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        mock_list_user_names.return_value = Mock(spec=ErrorResponse, message="Forbidden")
+
+        with pytest.raises(RuntimeError, match="Failed to list usernames"):
+            list_user_names()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
+    def test_list_user_names_none_response(self, mock_list_user_names, mock_get_client):
+        """Test list_user_names raises on None response."""
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        mock_list_user_names.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            list_user_names()
 
 
 class TestAddGroupMember:
