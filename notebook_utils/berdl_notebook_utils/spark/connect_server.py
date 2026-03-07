@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -296,8 +297,6 @@ class SparkConnectServerManager:
         Returns:
             True if port is free, False if timeout reached.
         """
-        import socket
-
         port = self.config.spark_connect_port
         start_time = time.time()
 
