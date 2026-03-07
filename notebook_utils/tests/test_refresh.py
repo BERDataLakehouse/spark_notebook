@@ -19,8 +19,8 @@ class TestRemoveCacheFile:
         assert result is True
         assert not cache_file.exists()
 
-    def test_removes_lock_file_too(self, tmp_path):
-        """Test also removes the .lock companion file."""
+    def test_preserves_lock_file(self, tmp_path):
+        """Test leaves the .lock companion file in place."""
         cache_file = tmp_path / "test_cache"
         lock_file = tmp_path / "test_cache.lock"
         cache_file.write_text("cached data")
@@ -29,23 +29,13 @@ class TestRemoveCacheFile:
         _remove_cache_file(cache_file)
 
         assert not cache_file.exists()
-        assert not lock_file.exists()
+        assert lock_file.exists()
 
     def test_returns_false_when_file_missing(self, tmp_path):
-        """Test returns False when neither file exists."""
+        """Test returns False when file doesn't exist."""
         result = _remove_cache_file(tmp_path / "nonexistent")
 
         assert result is False
-
-    def test_handles_lock_only(self, tmp_path):
-        """Test returns False but still removes lock when only lock exists."""
-        lock_file = tmp_path / "test_cache.lock"
-        lock_file.write_text("lock")
-
-        result = _remove_cache_file(tmp_path / "test_cache")
-
-        assert result is False
-        assert not lock_file.exists()
 
     def test_handles_os_error(self, tmp_path):
         """Test silently handles OSError on unlink."""
