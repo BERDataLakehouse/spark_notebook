@@ -565,9 +565,7 @@ class TestListUserNames:
         """Test list_user_names returns list of usernames."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_list_user_names.return_value = Mock(
-            spec=UserNamesResponse, usernames=["user1", "user2", "user3"]
-        )
+        mock_list_user_names.return_value = Mock(spec=UserNamesResponse, usernames=["user1", "user2", "user3"])
 
         result = list_user_names()
 
