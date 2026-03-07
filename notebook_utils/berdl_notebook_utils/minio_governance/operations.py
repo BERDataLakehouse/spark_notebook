@@ -30,6 +30,10 @@ from governance_client.api.management import (
 from governance_client.api.management.list_group_names_management_groups_names_get import (
     sync as list_group_names_sync,
 )
+from governance_client.api.management.list_user_names_management_users_names_get import (
+    sync as list_user_names_sync,
+)
+from governance_client.models.user_names_response import UserNamesResponse
 from governance_client.api.sharing import (
     get_path_access_info_sharing_get_path_access_info_post,
     make_path_private_sharing_make_private_post,
@@ -664,7 +668,11 @@ def list_groups() -> dict | ErrorResponse | None:
 
 def list_users(page: int = 1, page_size: int = 500):
     """
-    List all users in the system.
+    List all users in the system with full details.
+
+    This fetches full user info (policies, groups, paths) for each user,
+    which can be slow with many users. If you only need usernames,
+    use ``list_user_names()`` instead.
 
     Args:
         page: Page number (1-based). Default: 1.
@@ -679,6 +687,31 @@ def list_users(page: int = 1, page_size: int = 500):
     """
     client = get_governance_client()
     return list_users_management_users_get.sync(client=client, page=page, page_size=page_size)
+
+
+def list_user_names() -> list[str]:
+    """
+    List all usernames in the system (lightweight).
+
+    This is much faster than ``list_users()`` because it only returns
+    usernames without fetching full user details (policies, groups, paths).
+
+    Returns:
+        List of usernames.
+
+    Raises:
+        RuntimeError: If the API call fails.
+    """
+    client = get_governance_client()
+    response = list_user_names_sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to list usernames: {response.message}")
+
+    if not isinstance(response, UserNamesResponse):
+        raise RuntimeError("Failed to list usernames: no response from API")
+
+    return response.usernames
 
 
 def add_group_member(

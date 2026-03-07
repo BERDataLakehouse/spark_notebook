@@ -21,6 +21,7 @@ from berdl_notebook_utils.minio_governance.operations import (
     add_group_member,
     create_tenant_and_assign_users,
     list_groups,
+    list_user_names,
     list_users,
     remove_group_member,
     # Table operations
@@ -53,6 +54,7 @@ __all__ = [
     "add_group_member",
     "create_tenant_and_assign_users",
     "list_groups",
+    "list_user_names",
     "list_users",
     "remove_group_member",
     # Table operations
