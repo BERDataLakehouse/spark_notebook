@@ -347,3 +347,207 @@ def test_executor_conf_no_auth_token_for_legacy_mode(monkeypatch: pytest.MonkeyP
     assert "spark.driver.host" in config
     # Verify master URL does NOT contain auth token (legacy mode doesn't use URL-based auth)
     assert "authorization" not in config.get("spark.master", "")
+
+
+# =============================================================================
+# convert_memory_format tests
+# =============================================================================
+
+
+class TestConvertMemoryFormat:
+    """Tests for convert_memory_format edge cases."""
+
+    def test_invalid_memory_format_raises(self):
+        """Test that invalid memory format raises ValueError."""
+        from berdl_notebook_utils.setup_spark_session import convert_memory_format
+
+        with pytest.raises(ValueError, match="Invalid memory format"):
+            convert_memory_format("not_a_memory_value")
+
+    def test_invalid_memory_format_no_unit(self):
+        """Test that bare number without unit raises ValueError."""
+        from berdl_notebook_utils.setup_spark_session import convert_memory_format
+
+        with pytest.raises(ValueError, match="Invalid memory format"):
+            convert_memory_format("1024")
+
+    def test_small_memory_returns_kb(self):
+        """Test small memory values return kilobyte format."""
+        from berdl_notebook_utils.setup_spark_session import convert_memory_format
+
+        # 1 MiB with 10% overhead = ~921.6 KiB → "922k"
+        result = convert_memory_format("1MiB", 0.1)
+        assert result.endswith("k")
+
+    def test_very_small_memory_returns_bytes(self):
+        """Test very small memory values (< 1 KiB) return byte format (no unit suffix)."""
+        from berdl_notebook_utils.setup_spark_session import convert_memory_format
+
+        # The regex requires [kmgtKMGT] prefix, so smallest valid unit is "kb"
+        # 0.5 kb = 512 bytes, with 10% overhead = 460.8 bytes → "461" (no unit)
+        result = convert_memory_format("0.5kb", 0.1)
+        assert not result.endswith("k")
+        assert not result.endswith("m")
+        assert not result.endswith("g")
+
+    def test_gib_memory(self):
+        """Test GiB memory format."""
+        from berdl_notebook_utils.setup_spark_session import convert_memory_format
+
+        result = convert_memory_format("4GiB", 0.1)
+        assert result.endswith("g")
+
+    def test_unit_key_fallback(self):
+        """Test unit key fallback for unusual unit formats."""
+        from berdl_notebook_utils.setup_spark_session import convert_memory_format
+
+        # "4gb" should work
+        result = convert_memory_format("4gb", 0.1)
+        assert result.endswith("g")
+
+
+# =============================================================================
+# _get_catalog_conf tests
+# =============================================================================
+
+
+class TestGetCatalogConf:
+    """Tests for _get_catalog_conf with Polaris configuration."""
+
+    def test_returns_empty_when_no_polaris_uri(self):
+        """Test returns empty dict when POLARIS_CATALOG_URI is None."""
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = None
+
+        result = _get_catalog_conf(settings)
+
+        assert result == {}
+
+    def test_personal_catalog_config(self):
+        """Test generates personal catalog config when POLARIS_PERSONAL_CATALOG is set."""
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = "user_tgu2"
+        settings.POLARIS_TENANT_CATALOGS = None
+
+        result = _get_catalog_conf(settings)
+
+        assert "spark.sql.catalog.my" in result
+        assert result["spark.sql.catalog.my"] == "org.apache.iceberg.spark.SparkCatalog"
+        assert result["spark.sql.catalog.my.type"] == "rest"
+        assert result["spark.sql.catalog.my.warehouse"] == "user_tgu2"
+        assert "spark.sql.catalog.my.s3.endpoint" in result
+        assert result["spark.sql.catalog.my.s3.path-style-access"] == "true"
+
+    def test_tenant_catalog_config(self):
+        """Test generates tenant catalog config with 'tenant_' prefix stripped."""
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = None
+        settings.POLARIS_TENANT_CATALOGS = "tenant_globalusers,tenant_research"
+
+        result = _get_catalog_conf(settings)
+
+        # "tenant_globalusers" → alias "globalusers"
+        assert "spark.sql.catalog.globalusers" in result
+        assert result["spark.sql.catalog.globalusers.warehouse"] == "tenant_globalusers"
+        # "tenant_research" → alias "research"
+        assert "spark.sql.catalog.research" in result
+        assert result["spark.sql.catalog.research.warehouse"] == "tenant_research"
+
+    def test_empty_tenant_catalog_entries_skipped(self):
+        """Test empty entries in POLARIS_TENANT_CATALOGS are skipped."""
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = None
+        settings.POLARIS_TENANT_CATALOGS = "tenant_kbase,,  "
+
+        result = _get_catalog_conf(settings)
+
+        assert "spark.sql.catalog.kbase" in result
+        # Empty entries should not produce catalog configs
+        catalog_keys = [
+            k for k in result if k.startswith("spark.sql.catalog.") and "." not in k[len("spark.sql.catalog.") :]
+        ]
+        assert all("kbase" in k for k in catalog_keys)
+
+    def test_s3_endpoint_without_http_prefix(self):
+        """Test s3 endpoint gets http:// prefix if missing."""
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = "user_test"
+        settings.POLARIS_TENANT_CATALOGS = None
+        settings.MINIO_ENDPOINT_URL = "minio:9000"
+
+        result = _get_catalog_conf(settings)
+
+        assert result["spark.sql.catalog.my.s3.endpoint"] == "http://minio:9000"
+
+    def test_both_personal_and_tenant_catalogs(self):
+        """Test generates config for both personal and tenant catalogs."""
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = "user_alice"
+        settings.POLARIS_TENANT_CATALOGS = "tenant_team"
+
+        result = _get_catalog_conf(settings)
+
+        assert "spark.sql.catalog.my" in result
+        assert "spark.sql.catalog.team" in result
+
+
+# =============================================================================
+# _is_immutable_config tests
+# =============================================================================
+
+
+class TestIsImmutableConfig:
+    """Tests for _is_immutable_config function."""
+
+    def test_known_immutable_configs(self):
+        """Test known immutable config keys are detected."""
+        from berdl_notebook_utils.setup_spark_session import _is_immutable_config
+
+        for key in IMMUTABLE_CONFIGS:
+            assert _is_immutable_config(key) is True, f"Expected {key} to be immutable"
+
+    def test_catalog_config_keys_are_immutable(self):
+        """Test that spark.sql.catalog.<name>.* keys are immutable."""
+        from berdl_notebook_utils.setup_spark_session import _is_immutable_config
+
+        assert _is_immutable_config("spark.sql.catalog.my") is True
+        assert _is_immutable_config("spark.sql.catalog.my.type") is True
+        assert _is_immutable_config("spark.sql.catalog.globalusers") is True
+        assert _is_immutable_config("spark.sql.catalog.globalusers.warehouse") is True
+
+    def test_spark_catalog_is_not_custom_catalog(self):
+        """Test spark_catalog is handled by IMMUTABLE_CONFIGS set, not the prefix check."""
+        from berdl_notebook_utils.setup_spark_session import _is_immutable_config
+
+        # spark.sql.catalog.spark_catalog is in IMMUTABLE_CONFIGS explicitly
+        assert _is_immutable_config("spark.sql.catalog.spark_catalog") is True
+
+    def test_mutable_config_keys(self):
+        """Test that non-immutable keys return False."""
+        from berdl_notebook_utils.setup_spark_session import _is_immutable_config
+
+        assert _is_immutable_config("spark.app.name") is False
+        assert _is_immutable_config("spark.sql.autoBroadcastJoinThreshold") is False
+        assert _is_immutable_config("spark.hadoop.fs.s3a.endpoint") is False

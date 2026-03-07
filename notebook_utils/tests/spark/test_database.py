@@ -6,6 +6,7 @@ import pytest
 from berdl_notebook_utils.spark.database import (
     generate_namespace_location,
     create_namespace_if_not_exists,
+    create_iceberg_namespace,
     DEFAULT_NAMESPACE,
     _namespace_norm,
 )
@@ -110,6 +111,11 @@ def test_generate_namespace_location_no_match_warns(
         assert "Warning: Could not determine target name from warehouse directory" in captured.out
 
 
+# ============================================================================
+# create_namespace_if_not_exists tests (Delta/Hive flow)
+# ============================================================================
+
+
 @pytest.mark.parametrize("tenant", [None, TENANT_NAME])
 @pytest.mark.parametrize("namespace_arg", EXPECTED_NS)
 def test_create_namespace_if_not_exists_user_tenant_warehouse(namespace_arg: str | None, tenant: str | None) -> None:
@@ -186,3 +192,37 @@ def test_create_namespace_if_not_exists_error() -> None:
         pytest.raises(RuntimeError, match="things went wrong"),
     ):
         create_namespace_if_not_exists(Mock(), "some_namespace")
+
+
+# ============================================================================
+# create_iceberg_namespace tests (Polaris Iceberg flow)
+# ============================================================================
+
+
+@pytest.mark.parametrize("namespace_arg", EXPECTED_NS)
+def test_create_iceberg_namespace_default_catalog(namespace_arg: str | None, capfd: pytest.CaptureFixture[str]) -> None:
+    """Test Iceberg namespace creation uses 'my' catalog by default."""
+    mock_spark = make_mock_spark()
+    namespace = EXPECTED_NS[namespace_arg]
+    result = create_iceberg_namespace(mock_spark, namespace)
+    assert result == f"my.{namespace}"
+    mock_spark.sql.assert_called_once_with(f"CREATE NAMESPACE IF NOT EXISTS my.{namespace}")
+    captured = capfd.readouterr()
+    assert f"Namespace my.{namespace} is ready to use." in captured.out
+
+
+@pytest.mark.parametrize("catalog", ["my", "globalusers", "research"])
+def test_create_iceberg_namespace_custom_catalog(catalog: str) -> None:
+    """Test Iceberg namespace creation with custom catalog."""
+    mock_spark = make_mock_spark()
+    result = create_iceberg_namespace(mock_spark, "test_db", catalog=catalog)
+    assert result == f"{catalog}.test_db"
+    mock_spark.sql.assert_called_once_with(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.test_db")
+
+
+def test_create_iceberg_namespace_no_governance_prefix() -> None:
+    """Test that create_iceberg_namespace does NOT call governance API for prefixes."""
+    mock_spark = make_mock_spark()
+    with patch("berdl_notebook_utils.spark.database.get_namespace_prefix") as mock_prefix:
+        create_iceberg_namespace(mock_spark, "test_db")
+        mock_prefix.assert_not_called()
