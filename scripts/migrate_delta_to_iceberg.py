@@ -70,10 +70,14 @@ def _validate_target_catalog(spark: SparkSession, target_catalog: str) -> None:
 
 
 def table_exists_in_catalog(spark: SparkSession, catalog: str, namespace: str, table_name: str) -> bool:
-    """Check if a table already exists in the target Iceberg catalog."""
+    """Check if a table already exists in the target Iceberg catalog.
+
+    Uses SHOW TABLES instead of DESCRIBE TABLE to avoid JVM-level
+    TABLE_OR_VIEW_NOT_FOUND error logs when the table doesn't exist.
+    """
     try:
-        spark.sql(f"DESCRIBE TABLE {catalog}.{namespace}.{table_name}")
-        return True
+        tables = spark.sql(f"SHOW TABLES IN {catalog}.{namespace}").collect()
+        return any(row["tableName"] == table_name for row in tables)
     except Exception:
         return False
 
