@@ -53,7 +53,6 @@ from berdl_notebook_utils.spark import (  # noqa: F401
     start_spark_connect_server,
     stop_spark_connect_server,
     # Database operations
-    create_iceberg_namespace,
     create_namespace_if_not_exists,
     get_table_info,
     list_namespaces,

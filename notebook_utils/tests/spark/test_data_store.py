@@ -1,77 +1,18 @@
 """
-Tests for spark/data_store.py - Data store operations.
+Tests for spark/data_store.py - Iceberg catalog data store operations.
 """
 
-from unittest.mock import Mock, patch
 import json
+from unittest.mock import MagicMock, patch
 
 from berdl_notebook_utils.spark.data_store import (
-    _ttl_cache,
-    clear_governance_cache,
     _format_output,
-    _extract_databases_from_paths,
+    _list_iceberg_catalogs,
     get_databases,
     get_tables,
     get_table_schema,
     get_db_structure,
-    _execute_with_spark,
 )
-
-
-class TestTtlCache:
-    """Tests for _ttl_cache decorator."""
-
-    def test_cache_returns_cached_value(self):
-        """Test cache returns cached value within TTL."""
-        call_count = 0
-
-        @_ttl_cache(ttl_seconds=60)
-        def expensive_func():
-            nonlocal call_count
-            call_count += 1
-            return "result"
-
-        # First call
-        result1 = expensive_func()
-        # Second call should use cache
-        result2 = expensive_func()
-
-        assert result1 == "result"
-        assert result2 == "result"
-        assert call_count == 1
-
-    def test_cache_clear(self):
-        """Test cache can be cleared."""
-        call_count = 0
-
-        @_ttl_cache(ttl_seconds=60)
-        def expensive_func():
-            nonlocal call_count
-            call_count += 1
-            return "result"
-
-        expensive_func()
-        expensive_func.clear_cache()
-        expensive_func()
-
-        assert call_count == 2
-
-
-class TestClearGovernanceCache:
-    """Tests for clear_governance_cache function."""
-
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_groups")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_accessible_paths")
-    def test_clear_governance_cache(self, mock_paths, mock_prefix, mock_groups):
-        """Test clear_governance_cache clears all caches."""
-        mock_groups.clear_cache = Mock()
-        mock_prefix.clear_cache = Mock()
-        mock_paths.clear_cache = Mock()
-
-        clear_governance_cache()
-
-        # The function uses getattr, so we just verify it doesn't raise
 
 
 class TestFormatOutput:
@@ -80,50 +21,59 @@ class TestFormatOutput:
     def test_format_output_json(self):
         """Test format_output returns JSON string."""
         result = _format_output(["item1", "item2"], return_json=True)
-
         assert json.loads(result) == ["item1", "item2"]
 
     def test_format_output_raw(self):
         """Test format_output returns raw data."""
         data = ["item1", "item2"]
         result = _format_output(data, return_json=False)
-
         assert result == data
 
+    def test_format_output_dict_json(self):
+        """Test format_output with dict data."""
+        data = {"db1": ["table1"]}
+        result = _format_output(data, return_json=True)
+        assert json.loads(result) == data
 
-class TestExtractDatabasesFromPaths:
-    """Tests for _extract_databases_from_paths function."""
 
-    def test_extract_databases_from_sql_warehouse_paths(self):
-        """Test extracting databases from SQL warehouse paths."""
-        paths = [
-            "s3a://cdm-lake/users-sql-warehouse/user1/test_db.db/table1/",
-            "s3a://cdm-lake/users-sql-warehouse/user1/analytics.db/metrics/",
-            "s3a://cdm-lake/tenant-sql-warehouse/team/shared.db/data/",
-        ]
+def _make_set_rows(*catalog_names: str) -> list:
+    """Create mock SET command rows for catalog configs."""
+    rows = []
+    for name in catalog_names:
+        rows.append({"key": f"spark.sql.catalog.{name}", "value": "org.apache.iceberg.spark.SparkCatalog"})
+        rows.append({"key": f"spark.sql.catalog.{name}.type", "value": "rest"})
+    rows.append({"key": "spark.app.name", "value": "test"})
+    return rows
 
-        result = _extract_databases_from_paths(paths)
 
-        assert "test_db" in result
-        assert "analytics" in result
-        assert "shared" in result
+class TestListIcebergCatalogs:
+    """Tests for _list_iceberg_catalogs."""
 
-    def test_ignores_non_sql_warehouse_paths(self):
-        """Test ignoring paths not in SQL warehouses."""
-        paths = [
-            "s3a://cdm-lake/logs/app.log",
-            "s3a://cdm-lake/warehouse/some.db/table/",
-            "s3a://cdm-lake/users-sql-warehouse/user1/valid.db/table/",
-        ]
+    def test_excludes_spark_catalog(self):
+        """Test that spark_catalog is excluded."""
+        mock_spark = MagicMock()
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows("spark_catalog", "my", "kbase")
 
-        result = _extract_databases_from_paths(paths)
+        result = _list_iceberg_catalogs(mock_spark)
 
-        assert "valid" in result
-        assert "some" not in result
+        assert result == ["kbase", "my"]
+        assert "spark_catalog" not in result
 
-    def test_handles_empty_paths(self):
-        """Test handling empty paths list."""
-        result = _extract_databases_from_paths([])
+    def test_returns_sorted(self):
+        """Test that catalogs are returned sorted."""
+        mock_spark = MagicMock()
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows("zebra", "alpha")
+
+        result = _list_iceberg_catalogs(mock_spark)
+
+        assert result == ["alpha", "zebra"]
+
+    def test_empty_catalogs(self):
+        """Test handling when no catalogs exist."""
+        mock_spark = MagicMock()
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows()
+
+        result = _list_iceberg_catalogs(mock_spark)
 
         assert result == []
 
@@ -131,146 +81,212 @@ class TestExtractDatabasesFromPaths:
 class TestGetDatabases:
     """Tests for get_databases function."""
 
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_hms_no_filter(self, mock_hms):
-        """Test get_databases using HMS without filtering."""
-        mock_hms.get_databases.return_value = ["db1", "db2"]
+    @patch("berdl_notebook_utils.spark.data_store._list_iceberg_catalogs")
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_databases_returns_catalog_namespace_format(self, mock_get_spark, mock_list_catalogs):
+        """Test that databases are returned in catalog.namespace format."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_list_catalogs.return_value = ["kbase", "my"]
 
-        result = get_databases(use_hms=True, filter_by_namespace=False)
+        def sql_side_effect(query):
+            result = MagicMock()
+            if "SHOW NAMESPACES IN kbase" in query:
+                result.collect.return_value = [{"namespace": "shared_data"}, {"namespace": "research"}]
+            elif "SHOW NAMESPACES IN my" in query:
+                result.collect.return_value = [{"namespace": "demo"}, {"namespace": "analysis"}]
+            return result
 
-        assert "db1" in result
-        assert "db2" in result
+        mock_spark.sql.side_effect = sql_side_effect
 
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_databases_spark_no_filter(self, mock_execute):
-        """Test get_databases using Spark without filtering."""
-        mock_execute.return_value = ["db1", "db2"]
+        result = get_databases(return_json=False)
 
-        result = get_databases(use_hms=False, filter_by_namespace=False, return_json=False)
+        assert result == ["kbase.research", "kbase.shared_data", "my.analysis", "my.demo"]
 
-        assert result == ["db1", "db2"]
+    @patch("berdl_notebook_utils.spark.data_store._list_iceberg_catalogs")
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_databases_returns_json(self, mock_get_spark, mock_list_catalogs):
+        """Test get_databases returns JSON string."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_list_catalogs.return_value = ["my"]
+        mock_spark.sql.return_value.collect.return_value = [{"namespace": "demo"}]
 
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_accessible_paths")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_groups")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_with_filter(self, mock_hms, mock_groups, mock_prefix, mock_paths):
-        """Test get_databases with namespace filtering."""
-        mock_hms.get_databases.return_value = ["u_test__db1", "u_other__db2", "shared_db"]
+        result = get_databases(return_json=True)
 
-        mock_groups.return_value = Mock(groups=["team1"])
-        mock_prefix.return_value = Mock(
-            user_namespace_prefix="u_test__",
-            tenant_namespace_prefix="t_team1__",
-        )
-        mock_paths.return_value = Mock(accessible_paths=["s3a://cdm-lake/users-sql-warehouse/other/shared_db.db/"])
+        assert json.loads(result) == ["my.demo"]
 
-        result = get_databases(use_hms=True, filter_by_namespace=True, return_json=False)
+    @patch("berdl_notebook_utils.spark.data_store._list_iceberg_catalogs")
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_databases_handles_inaccessible_catalog(self, mock_get_spark, mock_list_catalogs):
+        """Test that inaccessible catalogs are skipped."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_list_catalogs.return_value = ["my", "broken"]
 
-        assert "u_test__db1" in result
+        def sql_side_effect(query):
+            if "broken" in query:
+                raise Exception("Catalog not accessible")
+            result = MagicMock()
+            result.collect.return_value = [{"namespace": "demo"}]
+            return result
+
+        mock_spark.sql.side_effect = sql_side_effect
+
+        result = get_databases(return_json=False)
+
+        assert result == ["my.demo"]
+
+    @patch("berdl_notebook_utils.spark.data_store._list_iceberg_catalogs")
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_databases_empty(self, mock_get_spark, mock_list_catalogs):
+        """Test get_databases with no catalogs."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_list_catalogs.return_value = []
+
+        result = get_databases(return_json=False)
+
+        assert result == []
 
 
 class TestGetTables:
     """Tests for get_tables function."""
 
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_tables_hms(self, mock_hms):
-        """Test get_tables using HMS."""
-        mock_hms.get_tables.return_value = ["table1", "table2"]
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_tables(self, mock_get_spark):
+        """Test get_tables returns sorted table names."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_spark.sql.return_value.collect.return_value = [
+            {"tableName": "users"},
+            {"tableName": "orders"},
+        ]
 
-        result = get_tables("test_db", use_hms=True, return_json=False)
+        result = get_tables("my.demo", return_json=False)
 
-        assert result == ["table1", "table2"]
-        mock_hms.get_tables.assert_called_once_with("test_db")
+        assert result == ["orders", "users"]
+        mock_spark.sql.assert_called_with("SHOW TABLES IN my.demo")
 
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_tables_spark(self, mock_execute):
-        """Test get_tables using Spark."""
-        mock_execute.return_value = ["table1", "table2"]
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_tables_returns_json(self, mock_get_spark):
+        """Test get_tables returns JSON string."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_spark.sql.return_value.collect.return_value = [{"tableName": "t1"}]
 
-        result = get_tables("test_db", use_hms=False, return_json=False)
+        result = get_tables("my.demo", return_json=True)
 
-        assert result == ["table1", "table2"]
+        assert json.loads(result) == ["t1"]
+
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_tables_handles_error(self, mock_get_spark):
+        """Test get_tables returns empty list on error."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_spark.sql.side_effect = Exception("Namespace not found")
+
+        result = get_tables("my.nonexistent", return_json=False)
+
+        assert result == []
 
 
 class TestGetTableSchema:
     """Tests for get_table_schema function."""
 
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_table_schema(self, mock_execute):
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_table_schema(self, mock_get_spark):
         """Test get_table_schema returns column names."""
-        mock_execute.return_value = ["col1", "col2", "col3"]
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_spark.sql.return_value.collect.return_value = [
+            {"col_name": "id", "data_type": "int", "comment": ""},
+            {"col_name": "name", "data_type": "string", "comment": ""},
+            {"col_name": "age", "data_type": "int", "comment": ""},
+        ]
 
-        result = get_table_schema("test_db", "test_table", return_json=False)
+        result = get_table_schema("my.demo", "users", return_json=False)
 
-        assert result == ["col1", "col2", "col3"]
+        assert result == ["id", "name", "age"]
+        mock_spark.sql.assert_called_with("DESCRIBE my.demo.users")
+
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_table_schema_filters_metadata_rows(self, mock_get_spark):
+        """Test that partition/metadata rows starting with # are filtered."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_spark.sql.return_value.collect.return_value = [
+            {"col_name": "id", "data_type": "int", "comment": ""},
+            {"col_name": "# Partitioning", "data_type": "", "comment": ""},
+            {"col_name": "# col_name", "data_type": "data_type", "comment": ""},
+        ]
+
+        result = get_table_schema("my.demo", "users", return_json=False)
+
+        assert result == ["id"]
+
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_table_schema_handles_error(self, mock_get_spark):
+        """Test get_table_schema returns empty list on error."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_spark.sql.side_effect = Exception("Table not found")
+
+        result = get_table_schema("my.demo", "nonexistent", return_json=False)
+
+        assert result == []
 
 
 class TestGetDbStructure:
     """Tests for get_db_structure function."""
 
+    @patch("berdl_notebook_utils.spark.data_store.get_table_schema")
+    @patch("berdl_notebook_utils.spark.data_store.get_tables")
     @patch("berdl_notebook_utils.spark.data_store.get_databases")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_db_structure_without_schema(self, mock_hms, mock_get_dbs):
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_db_structure_without_schema(self, mock_get_spark, mock_get_dbs, mock_get_tables, mock_schema):
         """Test get_db_structure without schema."""
-        mock_get_dbs.return_value = ["db1"]
-        mock_hms.get_tables.return_value = ["table1", "table2"]
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_get_dbs.return_value = ["my.demo", "kbase.shared"]
+        mock_get_tables.side_effect = lambda database, **kwargs: {
+            "my.demo": ["table1", "table2"],
+            "kbase.shared": ["dataset"],
+        }[database]
 
-        result = get_db_structure(with_schema=False, use_hms=True, return_json=False)
+        result = get_db_structure(with_schema=False, return_json=False)
 
-        assert "db1" in result
-        assert result["db1"] == ["table1", "table2"]
+        assert result == {
+            "my.demo": ["table1", "table2"],
+            "kbase.shared": ["dataset"],
+        }
 
     @patch("berdl_notebook_utils.spark.data_store.get_table_schema")
-    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
+    @patch("berdl_notebook_utils.spark.data_store.get_tables")
     @patch("berdl_notebook_utils.spark.data_store.get_databases")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_db_structure_with_schema(self, mock_hms, mock_get_dbs, mock_spark, mock_schema):
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_db_structure_with_schema(self, mock_get_spark, mock_get_dbs, mock_get_tables, mock_schema):
         """Test get_db_structure with schema."""
-        mock_get_dbs.return_value = ["db1"]
-        mock_hms.get_tables.return_value = ["table1"]
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_get_dbs.return_value = ["my.demo"]
+        mock_get_tables.return_value = ["table1"]
         mock_schema.return_value = ["col1", "col2"]
 
-        result = get_db_structure(with_schema=True, use_hms=True, return_json=False)
+        result = get_db_structure(with_schema=True, return_json=False)
 
-        assert "db1" in result
-        assert "table1" in result["db1"]
-        assert result["db1"]["table1"] == ["col1", "col2"]
+        assert result == {"my.demo": {"table1": ["col1", "col2"]}}
 
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_db_structure_using_spark(self, mock_execute):
-        """Test get_db_structure using Spark."""
-        mock_execute.return_value = {"db1": ["table1"]}
+    @patch("berdl_notebook_utils.spark.data_store.get_tables")
+    @patch("berdl_notebook_utils.spark.data_store.get_databases")
+    @patch("berdl_notebook_utils.spark.data_store._get_spark")
+    def test_get_db_structure_returns_json(self, mock_get_spark, mock_get_dbs, mock_get_tables):
+        """Test get_db_structure returns JSON string."""
+        mock_spark = MagicMock()
+        mock_get_spark.return_value = mock_spark
+        mock_get_dbs.return_value = ["my.demo"]
+        mock_get_tables.return_value = ["t1"]
 
-        result = get_db_structure(use_hms=False, return_json=False)
+        result = get_db_structure(with_schema=False, return_json=True)
 
-        assert result == {"db1": ["table1"]}
-
-
-class TestExecuteWithSpark:
-    """Tests for _execute_with_spark helper."""
-
-    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
-    def test_execute_with_spark_creates_session(self, mock_get_session):
-        """Test creates Spark session if not provided."""
-        mock_spark = Mock()
-        mock_get_session.return_value = mock_spark
-
-        def test_func(spark, arg1):
-            return f"result_{arg1}"
-
-        result = _execute_with_spark(test_func, None, "test")
-
-        mock_get_session.assert_called_once()
-        assert result == "result_test"
-
-    def test_execute_with_spark_uses_provided_session(self):
-        """Test uses provided Spark session."""
-        mock_spark = Mock()
-
-        def test_func(spark, arg1):
-            return f"result_{arg1}"
-
-        result = _execute_with_spark(test_func, mock_spark, "test")
-
-        assert result == "result_test"
+        assert json.loads(result) == {"my.demo": ["t1"]}

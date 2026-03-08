@@ -6,7 +6,6 @@ import pytest
 from berdl_notebook_utils.spark.database import (
     generate_namespace_location,
     create_namespace_if_not_exists,
-    create_iceberg_namespace,
     DEFAULT_NAMESPACE,
     _namespace_norm,
 )
@@ -121,7 +120,6 @@ def test_generate_namespace_location_no_match_warns(
 def test_create_namespace_if_not_exists_user_tenant_warehouse(namespace_arg: str | None, tenant: str | None) -> None:
     """Test user and tenant namespace creation."""
     mock_spark = make_mock_spark()
-    # Run with append_target=True (default)
     ns = create_namespace_if_not_exists(mock_spark, namespace=namespace_arg, tenant_name=tenant)  # type: ignore
     namespace = EXPECTED_NS[namespace_arg]
     if tenant:
@@ -136,30 +134,22 @@ def test_create_namespace_if_not_exists_user_tenant_warehouse(namespace_arg: str
 
 @pytest.mark.parametrize("tenant", [None, TENANT_NAME])
 @pytest.mark.parametrize("namespace_arg", EXPECTED_NS)
-def test_create_namespace_if_not_exists_without_prefix(namespace_arg: str | None, tenant: str | None) -> None:
-    """Test namespace creation when append_target is set to false."""
-    mock_spark = make_mock_spark()
-    ns = create_namespace_if_not_exists(mock_spark, namespace=namespace_arg, append_target=False, tenant_name=tenant)  # type: ignore
-    namespace = EXPECTED_NS[namespace_arg]
-    assert ns == namespace
-    # Should create database without LOCATION clause
-    mock_spark.sql.assert_called_once_with(f"CREATE DATABASE IF NOT EXISTS {namespace}")
-
-
-@pytest.mark.parametrize("tenant", [None, TENANT_NAME])
-@pytest.mark.parametrize("namespace_arg", EXPECTED_NS)
 def test_create_namespace_if_not_exists_already_exists(
     namespace_arg: str | None, tenant: str | None, capfd: pytest.CaptureFixture[str]
 ) -> None:
     """Test namespace creation when the namespace has already been registered."""
     mock_spark = make_mock_spark(database_exists=True)
-    ns = create_namespace_if_not_exists(mock_spark, namespace=namespace_arg, append_target=False, tenant_name=tenant)  # type: ignore
+    ns = create_namespace_if_not_exists(mock_spark, namespace=namespace_arg, tenant_name=tenant)  # type: ignore
     namespace = EXPECTED_NS[namespace_arg]
-    assert ns == namespace
+    if tenant:
+        expected_ns = f"tenant__{namespace}"
+    else:
+        expected_ns = f"user__{namespace}"
+    assert ns == expected_ns
     # No call to spark.sql as the namespace already exists
     mock_spark.sql.assert_not_called()
     captured = capfd.readouterr()
-    assert f"Namespace {namespace} is already registered and ready to use" in captured.out
+    assert f"Namespace {expected_ns} is already registered and ready to use" in captured.out
 
 
 @pytest.mark.parametrize("namespace_arg", EXPECTED_NS)
@@ -195,34 +185,34 @@ def test_create_namespace_if_not_exists_error() -> None:
 
 
 # ============================================================================
-# create_iceberg_namespace tests (Polaris Iceberg flow)
+# create_namespace_if_not_exists iceberg=True tests (Polaris Iceberg flow)
 # ============================================================================
 
 
 @pytest.mark.parametrize("namespace_arg", EXPECTED_NS)
-def test_create_iceberg_namespace_default_catalog(namespace_arg: str | None, capfd: pytest.CaptureFixture[str]) -> None:
-    """Test Iceberg namespace creation uses 'my' catalog by default."""
+def test_create_namespace_iceberg_default_catalog(namespace_arg: str | None, capfd: pytest.CaptureFixture[str]) -> None:
+    """Test Iceberg namespace creation uses 'my' catalog by default (no tenant_name)."""
     mock_spark = make_mock_spark()
     namespace = EXPECTED_NS[namespace_arg]
-    result = create_iceberg_namespace(mock_spark, namespace)
+    result = create_namespace_if_not_exists(mock_spark, namespace, iceberg=True)
     assert result == f"my.{namespace}"
     mock_spark.sql.assert_called_once_with(f"CREATE NAMESPACE IF NOT EXISTS my.{namespace}")
     captured = capfd.readouterr()
     assert f"Namespace my.{namespace} is ready to use." in captured.out
 
 
-@pytest.mark.parametrize("catalog", ["my", "globalusers", "research"])
-def test_create_iceberg_namespace_custom_catalog(catalog: str) -> None:
-    """Test Iceberg namespace creation with custom catalog."""
+@pytest.mark.parametrize("tenant", ["globalusers", "research"])
+def test_create_namespace_iceberg_tenant_as_catalog(tenant: str) -> None:
+    """Test Iceberg namespace creation uses tenant_name as catalog."""
     mock_spark = make_mock_spark()
-    result = create_iceberg_namespace(mock_spark, "test_db", catalog=catalog)
-    assert result == f"{catalog}.test_db"
-    mock_spark.sql.assert_called_once_with(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.test_db")
+    result = create_namespace_if_not_exists(mock_spark, "test_db", iceberg=True, tenant_name=tenant)
+    assert result == f"{tenant}.test_db"
+    mock_spark.sql.assert_called_once_with(f"CREATE NAMESPACE IF NOT EXISTS {tenant}.test_db")
 
 
-def test_create_iceberg_namespace_no_governance_prefix() -> None:
-    """Test that create_iceberg_namespace does NOT call governance API for prefixes."""
+def test_create_namespace_iceberg_no_governance_prefix() -> None:
+    """Test that iceberg=True does NOT call governance API for prefixes."""
     mock_spark = make_mock_spark()
     with patch("berdl_notebook_utils.spark.database.get_namespace_prefix") as mock_prefix:
-        create_iceberg_namespace(mock_spark, "test_db")
+        create_namespace_if_not_exists(mock_spark, "test_db", iceberg=True)
         mock_prefix.assert_not_called()

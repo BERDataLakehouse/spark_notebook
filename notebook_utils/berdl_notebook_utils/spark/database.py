@@ -4,9 +4,9 @@ Spark database utilities for BERDL notebook environments.
 This module contains utility functions to interact with the Spark catalog,
 including tenant-aware namespace management for BERDL SQL warehouses.
 
-Two namespace creation patterns are available:
-- create_namespace_if_not_exists(): Delta/Hive flow with governance prefixes (u_user__, t_tenant__)
-- create_iceberg_namespace(): Polaris Iceberg flow with catalog-level isolation (no prefixes)
+create_namespace_if_not_exists() supports two flows:
+- Delta/Hive: governance prefixes (u_user__, t_tenant__) when no catalog is specified
+- Polaris Iceberg: catalog-level isolation (no prefixes) when catalog is specified
 """
 
 from pyspark.sql import SparkSession
@@ -82,35 +82,48 @@ def generate_namespace_location(namespace: str | None = None, tenant_name: str |
 def create_namespace_if_not_exists(
     spark: SparkSession,
     namespace: str | None = DEFAULT_NAMESPACE,
-    append_target: bool = True,
     tenant_name: str | None = None,
+    iceberg: bool = False,
 ) -> str:
     """
     Create a namespace in the Spark catalog if it does not exist.
 
-    If append_target is True, automatically prepends the governance-provided namespace prefix
-    based on the warehouse directory type (user vs tenant) to create the properly formatted namespace.
+    Supports two flows controlled by the *iceberg* flag:
 
-    For Spark Connect, this function explicitly sets the database LOCATION to ensure tables are
-    written to the correct S3 path, since spark.sql.warehouse.dir cannot be modified per session.
+    **Iceberg flow** (``iceberg=True``):
+      Creates ``{catalog}.{namespace}`` with no governance prefixes — the
+      catalog itself provides isolation.  The catalog is determined by
+      *tenant_name*: ``None`` → ``"my"`` (user catalog), otherwise the
+      tenant name is used as the catalog name.
+
+    **Delta/Hive flow** (``iceberg=False``, the default):
+      Prepends the governance-provided namespace prefix based on the
+      warehouse directory type (user vs tenant) and explicitly sets the
+      database LOCATION for Spark Connect compatibility.
 
     :param spark: The Spark session.
     :param namespace: The name of the namespace.
-    :param append_target: If True, prepends governance namespace prefix based on warehouse type.
-                         If False, uses namespace as-is.
-    :param tenant_name: Optional tenant name. If provided, uses tenant warehouse. Otherwise uses user warehouse.
-    :return: The name of the namespace.
+    :param tenant_name: Delta/Hive: optional tenant name for tenant warehouse.
+                        Iceberg: used as catalog name (defaults to ``"my"`` when None).
+    :param iceberg: If True, uses the Iceberg flow with catalog-level isolation.
+    :return: The fully-qualified namespace name.
     """
-    db_location = None
+    namespace = _namespace_norm(namespace)
 
-    if append_target:
-        try:
-            namespace, db_location = generate_namespace_location(namespace, tenant_name)
-        except Exception as e:
-            print(f"Error creating namespace: {e}")
-            raise e
-    else:
-        namespace = _namespace_norm(namespace)
+    # Iceberg flow: catalog-level isolation, no governance prefixes
+    if iceberg:
+        catalog = tenant_name or "my"
+        full_ns = f"{catalog}.{namespace}"
+        spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {full_ns}")
+        print(f"Namespace {full_ns} is ready to use.")
+        return full_ns
+
+    # Delta/Hive flow
+    try:
+        namespace, db_location = generate_namespace_location(namespace, tenant_name)
+    except Exception as e:
+        print(f"Error creating namespace: {e}")
+        raise e
 
     if spark.catalog.databaseExists(namespace):
         print(f"Namespace {namespace} is already registered and ready to use")
@@ -125,23 +138,6 @@ def create_namespace_if_not_exists(
         print(f"Namespace {namespace} is ready to use.")
 
     return namespace
-
-
-def create_iceberg_namespace(
-    spark: SparkSession,
-    namespace: str,
-    catalog: str = "my",
-) -> str:
-    """
-    Create a namespace in an Iceberg catalog.
-
-    Unlike create_namespace_if_not_exists(), this does NOT prepend governance
-    prefixes — the catalog itself provides isolation.
-    """
-    full_ns = f"{catalog}.{namespace}"
-    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {full_ns}")
-    print(f"Namespace {full_ns} is ready to use.")
-    return full_ns
 
 
 def table_exists(
