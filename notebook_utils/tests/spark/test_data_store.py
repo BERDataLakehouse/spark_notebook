@@ -52,9 +52,7 @@ class TestListIcebergCatalogs:
     def test_excludes_spark_catalog(self):
         """Test that spark_catalog is excluded."""
         mock_spark = MagicMock()
-        mock_spark.sql.return_value.collect.return_value = _make_set_rows(
-            "spark_catalog", "my", "kbase"
-        )
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows("spark_catalog", "my", "kbase")
 
         result = _list_iceberg_catalogs(mock_spark)
 
@@ -64,9 +62,7 @@ class TestListIcebergCatalogs:
     def test_returns_sorted(self):
         """Test that catalogs are returned sorted."""
         mock_spark = MagicMock()
-        mock_spark.sql.return_value.collect.return_value = _make_set_rows(
-            "zebra", "alpha"
-        )
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows("zebra", "alpha")
 
         result = _list_iceberg_catalogs(mock_spark)
 

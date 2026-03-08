@@ -62,10 +62,7 @@ def _list_iceberg_catalogs(spark: SparkSession) -> List[str]:
         match = _CATALOG_KEY_PATTERN.match(row["key"])
         if match:
             catalog_names.add(match.group(1))
-    logger.info(
-        f"Discovered {len(catalog_names)} catalog(s) from Spark config: "
-        f"{sorted(catalog_names)}"
-    )
+    logger.info(f"Discovered {len(catalog_names)} catalog(s) from Spark config: {sorted(catalog_names)}")
     return sorted(c for c in catalog_names if c not in _EXCLUDED_CATALOGS)
 
 
