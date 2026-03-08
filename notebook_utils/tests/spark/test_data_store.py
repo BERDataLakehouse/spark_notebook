@@ -36,17 +36,25 @@ class TestFormatOutput:
         assert json.loads(result) == data
 
 
+def _make_set_rows(*catalog_names: str) -> list:
+    """Create mock SET command rows for catalog configs."""
+    rows = []
+    for name in catalog_names:
+        rows.append({"key": f"spark.sql.catalog.{name}", "value": "org.apache.iceberg.spark.SparkCatalog"})
+        rows.append({"key": f"spark.sql.catalog.{name}.type", "value": "rest"})
+    rows.append({"key": "spark.app.name", "value": "test"})
+    return rows
+
+
 class TestListIcebergCatalogs:
     """Tests for _list_iceberg_catalogs."""
 
     def test_excludes_spark_catalog(self):
         """Test that spark_catalog is excluded."""
         mock_spark = MagicMock()
-        mock_spark.sql.return_value.collect.return_value = [
-            {"catalog": "spark_catalog"},
-            {"catalog": "my"},
-            {"catalog": "kbase"},
-        ]
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows(
+            "spark_catalog", "my", "kbase"
+        )
 
         result = _list_iceberg_catalogs(mock_spark)
 
@@ -56,10 +64,9 @@ class TestListIcebergCatalogs:
     def test_returns_sorted(self):
         """Test that catalogs are returned sorted."""
         mock_spark = MagicMock()
-        mock_spark.sql.return_value.collect.return_value = [
-            {"catalog": "zebra"},
-            {"catalog": "alpha"},
-        ]
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows(
+            "zebra", "alpha"
+        )
 
         result = _list_iceberg_catalogs(mock_spark)
 
@@ -68,7 +75,7 @@ class TestListIcebergCatalogs:
     def test_empty_catalogs(self):
         """Test handling when no catalogs exist."""
         mock_spark = MagicMock()
-        mock_spark.sql.return_value.collect.return_value = []
+        mock_spark.sql.return_value.collect.return_value = _make_set_rows()
 
         result = _list_iceberg_catalogs(mock_spark)
 
