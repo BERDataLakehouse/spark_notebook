@@ -404,9 +404,9 @@ print("Done!")
 No. `get_spark_session()` automatically configures both Delta and Iceberg catalogs. Your Polaris catalogs are ready to use.
 
 **Q: Can I still access my old Delta tables?**
-Yes. During the dual-read period, your Delta tables remain accessible at their original names (e.g., `u_tgu2__analysis.my_table`). Iceberg copies are at `my.analysis.my_table`.
+Yes. During the dual-read period, your Delta tables remain accessible at their original names (e.g., `u_{username}__analysis.my_table`). Iceberg copies are at `my.analysis.my_table`.
 
-**Q: What happened to my namespace prefixes (`u_tgu2__`)?**
+**Q: What happened to my namespace prefixes (`u_{username}__`)?**
 They're no longer needed. With Iceberg, your personal catalog `my` is isolated at the catalog level — only you can access it. No prefix is required.
 
 **Q: How do I share data with my team?**

@@ -1,3 +1,70 @@
+"""
+Delta Lake to Iceberg migration utilities for BERDL Phase 4.
+
+This script migrates Delta Lake tables (Hive Metastore) to Iceberg tables
+(Polaris REST catalog), preserving partitions and validating row counts.
+
+Functions:
+    migrate_table   - Migrate a single Delta table to an Iceberg catalog
+    migrate_user    - Migrate all of a user's Delta databases to their Iceberg catalog
+    migrate_tenant  - Migrate all of a tenant's Delta databases to their Iceberg catalog
+
+Usage in the migration notebook (migration_phase4.ipynb):
+
+    # Import after adding scripts/ to sys.path
+    from migrate_delta_to_iceberg import MigrationTracker, migrate_user, migrate_tenant
+
+    tracker = MigrationTracker()
+
+    # Migrate all tables for a user (idempotent — skips existing tables)
+    migrate_user(spark, "tgu2", target_catalog="user_tgu2", tracker=tracker)
+
+    # Migrate all tables for a tenant
+    migrate_tenant(spark, "globalusers", target_catalog="tenant_globalusers", tracker=tracker)
+
+    # View results
+    tracker.to_dataframe(spark).show(truncate=False)
+    print(tracker.summary())
+
+Force re-migration (drops existing Iceberg table and re-copies from Delta):
+
+    # Force re-migrate a single user table
+    migrate_table(
+        spark,
+        hive_db="u_tian_gu_test__demo_personal",
+        table_name="personal_test_table",
+        target_catalog="user_tian_gu_test",
+        target_ns="demo_personal",
+        tracker=tracker,
+        force=True,
+    )
+
+    # Force re-migrate a single tenant table
+    migrate_table(
+        spark,
+        hive_db="globalusers_demo_shared",
+        table_name="tenant_test_table",
+        target_catalog="tenant_globalusers",
+        target_ns="demo_shared",
+        tracker=tracker,
+        force=True,
+    )
+
+    # Force re-migrate all tables for a user
+    migrate_user(spark, "tian_gu_test", target_catalog="user_tian_gu_test", tracker=tracker, force=True)
+
+    # Force re-migrate all tables for a tenant
+    migrate_tenant(spark, "globalusers", target_catalog="tenant_globalusers", tracker=tracker, force=True)
+
+Note:
+    - Requires an admin Spark session configured with cross-user catalog access
+      (see Section 3 of migration_phase4.ipynb)
+    - By default, migration is idempotent: tables that already exist in the target
+      catalog are skipped. Use force=True to drop and re-migrate.
+    - DROP TABLE PURGE does not delete S3 data files due to an Iceberg bug (#14743).
+      To fully clean up, delete files from S3 directly using get_minio_client().
+"""
+
 import logging
 from dataclasses import dataclass, field
 
@@ -89,6 +156,7 @@ def migrate_table(
     target_catalog: str,
     target_ns: str,
     tracker: MigrationTracker | None = None,
+    force: bool = False,
 ):
     """
     Migrate a single Delta table to Iceberg via Polaris, preserving partitions.
@@ -100,17 +168,22 @@ def migrate_table(
         target_catalog: Target Iceberg catalog name (e.g., 'my')
         target_ns: Target namespace in Iceberg (e.g., 'test_db')
         tracker: Optional MigrationTracker for progress tracking
+        force: If True, drop existing target table and re-migrate
     """
     source_ref = f"{hive_db}.{table_name}"
     target_table_ref = f"{target_catalog}.{target_ns}.{table_name}"
     logger.info(f"Starting migration for {source_ref} -> {target_table_ref}")
 
-    # 0. Idempotency: skip if target already exists
+    # 0. Idempotency: skip if target already exists (unless force=True)
     if table_exists_in_catalog(spark, target_catalog, target_ns, table_name):
-        logger.info(f"Skipping {target_table_ref} — already exists in target catalog")
-        if tracker:
-            tracker.add(TableResult(source=source_ref, target=target_table_ref, status="skipped"))
-        return
+        if force:
+            logger.info(f"Force mode: dropping existing {target_table_ref}")
+            spark.sql(f"DROP TABLE {target_table_ref} PURGE")
+        else:
+            logger.info(f"Skipping {target_table_ref} — already exists in target catalog")
+            if tracker:
+                tracker.add(TableResult(source=source_ref, target=target_table_ref, status="skipped"))
+            return
 
     # 1. Read from Delta using spark.table fallback
     try:
@@ -184,6 +257,7 @@ def migrate_user(
     username: str,
     target_catalog: str = "my",
     tracker: MigrationTracker | None = None,
+    force: bool = False,
 ):
     """
     Migrate all of a user's Delta databases to their Iceberg catalog.
@@ -193,6 +267,7 @@ def migrate_user(
         username: The user's username
         target_catalog: The target catalog (e.g., 'user_{username}')
         tracker: Optional MigrationTracker for progress tracking
+        force: If True, drop existing target tables and re-migrate
     """
     _validate_target_catalog(spark, target_catalog)
 
@@ -211,7 +286,7 @@ def migrate_user(
             for table_row in tables:
                 table_name = table_row["tableName"]
                 try:
-                    migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker)
+                    migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker, force=force)
                 except Exception as e:
                     logger.error(f"Error migrating {hive_db}.{table_name}: {e}")
         except Exception as e:
@@ -223,6 +298,7 @@ def migrate_tenant(
     tenant_name: str,
     target_catalog: str,
     tracker: MigrationTracker | None = None,
+    force: bool = False,
 ):
     """
     Migrate all Delta databases for a tenant to their Iceberg catalog.
@@ -235,6 +311,7 @@ def migrate_tenant(
         tenant_name: The tenant/group name (e.g., 'kbase')
         target_catalog: Target Iceberg catalog (e.g., 'tenant_kbase')
         tracker: Optional MigrationTracker for progress tracking
+        force: If True, drop existing target tables and re-migrate
     """
     _validate_target_catalog(spark, target_catalog)
 
@@ -253,7 +330,7 @@ def migrate_tenant(
             for table_row in tables:
                 table_name = table_row["tableName"]
                 try:
-                    migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker)
+                    migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker, force=force)
                 except Exception as e:
                     logger.error(f"Error migrating {hive_db}.{table_name}: {e}")
         except Exception as e:
