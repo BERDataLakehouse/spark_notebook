@@ -1,4 +1,4 @@
-# Iceberg Catalog Migration Guide
+# Polaris Catalog Migration Guide
 
 ## Why We Migrated
 
