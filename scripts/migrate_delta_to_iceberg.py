@@ -73,6 +73,19 @@ from pyspark.sql import SparkSession
 logger = logging.getLogger(__name__)
 
 
+def _clean_error(e: Exception, max_len: int = 150) -> str:
+    """Extract a short, readable error message without JVM stacktraces."""
+    msg = str(e)
+    # Strip everything after "JVM stacktrace:" if present
+    if "JVM stacktrace:" in msg:
+        msg = msg[: msg.index("JVM stacktrace:")].strip()
+    # Take only the first line
+    msg = msg.split("\n")[0].strip()
+    if len(msg) > max_len:
+        msg = msg[:max_len] + "..."
+    return msg
+
+
 @dataclass
 class TableResult:
     """Result of a single table migration."""
@@ -172,6 +185,7 @@ def migrate_table(
     """
     source_ref = f"{hive_db}.{table_name}"
     target_table_ref = f"{target_catalog}.{target_ns}.{table_name}"
+    print(f"  {source_ref} -> {target_table_ref}")
     logger.info(f"Starting migration for {source_ref} -> {target_table_ref}")
 
     # 0. Idempotency: skip if target already exists (unless force=True)
@@ -189,9 +203,26 @@ def migrate_table(
     try:
         df = spark.table(source_ref)
     except Exception as e:
-        logger.error(f"Failed to read source table {source_ref}: {e}")
+        err_str = str(e)
+        if "DELTA_READ_TABLE_WITHOUT_COLUMNS" in err_str:
+            msg = "Delta table has no columns (empty schema) — skipping"
+            logger.warning(f"Skipping {source_ref} — {msg}")
+            if tracker:
+                tracker.add(TableResult(source=source_ref, target=target_table_ref, status="skipped", error=msg))
+            return
+        short_err = _clean_error(e)
+        print(f"    FAILED (read): {short_err}")
+        logger.error(f"Failed to read source table {source_ref}: {short_err}")
         if tracker:
-            tracker.add(TableResult(source=source_ref, target=target_table_ref, status="failed", error=str(e)))
+            tracker.add(TableResult(source=source_ref, target=target_table_ref, status="failed", error=short_err))
+        return
+
+    # 1b. Skip tables with empty schema (corrupt Delta tables with no columns)
+    if len(df.columns) == 0:
+        msg = "Delta table has no columns (empty schema)"
+        logger.warning(f"Skipping {source_ref} — {msg}")
+        if tracker:
+            tracker.add(TableResult(source=source_ref, target=target_table_ref, status="skipped", error=msg))
         return
 
     # 2. Extract partition columns from the original Delta table
@@ -246,10 +277,11 @@ def migrate_table(
                 )
             )
     except Exception as e:
-        logger.error(f"Failed to migrate {source_ref} -> {target_table_ref}: {e}")
+        short_err = _clean_error(e)
+        print(f"    FAILED: {short_err}")
+        logger.error(f"Failed to migrate {source_ref} -> {target_table_ref}: {short_err}")
         if tracker and not any(r.target == target_table_ref for r in tracker.results):
-            tracker.add(TableResult(source=source_ref, target=target_table_ref, status="failed", error=str(e)))
-        raise
+            tracker.add(TableResult(source=source_ref, target=target_table_ref, status="failed", error=short_err))
 
 
 def migrate_user(
@@ -283,14 +315,16 @@ def migrate_user(
         logger.info(f"Scanning database {hive_db}...")
         try:
             tables = spark.sql(f"SHOW TABLES IN {hive_db}").collect()
-            for table_row in tables:
-                table_name = table_row["tableName"]
-                try:
-                    migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker, force=force)
-                except Exception as e:
-                    logger.error(f"Error migrating {hive_db}.{table_name}: {e}")
         except Exception as e:
-            logger.error(f"Error listing tables in {hive_db}: {e}")
+            print(f"  Error listing tables in {hive_db}: {_clean_error(e)}")
+            continue
+
+        for table_row in tables:
+            table_name = table_row["tableName"]
+            try:
+                migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker, force=force)
+            except Exception as e:
+                print(f"    FAILED (unexpected): {_clean_error(e)}")
 
 
 def migrate_tenant(
@@ -327,14 +361,16 @@ def migrate_tenant(
         logger.info(f"Scanning tenant database {hive_db}...")
         try:
             tables = spark.sql(f"SHOW TABLES IN {hive_db}").collect()
-            for table_row in tables:
-                table_name = table_row["tableName"]
-                try:
-                    migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker, force=force)
-                except Exception as e:
-                    logger.error(f"Error migrating {hive_db}.{table_name}: {e}")
         except Exception as e:
-            logger.error(f"Error listing tables in {hive_db}: {e}")
+            print(f"  Error listing tables in {hive_db}: {_clean_error(e)}")
+            continue
+
+        for table_row in tables:
+            table_name = table_row["tableName"]
+            try:
+                migrate_table(spark, hive_db, table_name, target_catalog, iceberg_ns, tracker, force=force)
+            except Exception as e:
+                print(f"    FAILED (unexpected): {_clean_error(e)}")
 
 
 if __name__ == "__main__":
