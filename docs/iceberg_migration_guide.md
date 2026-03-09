@@ -19,7 +19,7 @@ We migrated to **Apache Polaris + Apache Iceberg**, which provides:
 
 ## What Changed
 
-| Aspect | Before (Delta/Hive) | After (Iceberg/Polaris) |
+| Aspect | Before (Delta/Hive) | After (Polaris/Iceberg) |
 |--------|---------------------|------------------------|
 | **Metadata catalog** | Hive Metastore | Apache Polaris (Iceberg REST catalog) |
 | **Table format** | Delta Lake | Apache Iceberg |
