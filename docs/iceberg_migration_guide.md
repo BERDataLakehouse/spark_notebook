@@ -1,4 +1,4 @@
-# Iceberg Catalog Migration Guide
+# Polaris Catalog Migration Guide
 
 ## Why We Migrated
 
@@ -9,7 +9,7 @@ KBERDL previously used **Delta Lake + Hive Metastore** with namespace isolation 
 - **Single-engine lock-in** — Delta Lake tables are only accessible through Spark with the Delta extension
 - **No time travel or schema evolution** — Delta supports these, but Hive Metastore doesn't track them natively
 
-We migrated to **Apache Iceberg + Apache Polaris**, which provides:
+We migrated to **Apache Polaris + Apache Iceberg**, which provides:
 
 - **Catalog-level isolation** — each user gets their own Polaris catalog (`my`), and each tenant gets a shared catalog (e.g., `kbase`). No naming prefixes needed.
 - **Multi-engine support** — Iceberg tables can be read by Spark, Trino, DuckDB, PyIceberg, and other engines
@@ -19,7 +19,7 @@ We migrated to **Apache Iceberg + Apache Polaris**, which provides:
 
 ## What Changed
 
-| Aspect | Before (Delta/Hive) | After (Iceberg/Polaris) |
+| Aspect | Before (Delta/Hive) | After (Polaris/Iceberg) |
 |--------|---------------------|------------------------|
 | **Metadata catalog** | Hive Metastore | Apache Polaris (Iceberg REST catalog) |
 | **Table format** | Delta Lake | Apache Iceberg |
