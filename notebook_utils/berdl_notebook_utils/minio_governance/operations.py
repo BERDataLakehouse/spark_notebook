@@ -93,8 +93,7 @@ class TenantCreationResult(TypedDict):
 SQL_WAREHOUSE_BUCKET = "cdm-lake"  # TODO: change to berdl-lake
 SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 
-# Credential caching configuration
-CREDENTIALS_CACHE_FILE = ".berdl_minio_credentials"
+# Credential caching configuration (Polaris only — MinIO uses DB-backed API cache)
 POLARIS_CREDENTIALS_CACHE_FILE = ".berdl_polaris_credentials"
 
 
@@ -131,35 +130,13 @@ def _fetch_with_file_cache(
         return result
 
 
-def _get_credentials_cache_path() -> Path:
-    """Get the path to the MinIO credentials cache file in the user's home directory."""
-    return Path.home() / CREDENTIALS_CACHE_FILE
-
-
 def _get_polaris_cache_path() -> Path:
-    """Get the path to the Polaris credentials cache file in the user's home directory."""
-    return Path.home() / POLARIS_CREDENTIALS_CACHE_FILE
+    """Get the path to the Polaris credentials cache file.
 
-
-def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
-    """Read MinIO credentials from cache file. Returns None if file doesn't exist or is corrupted."""
-    try:
-        if not cache_path.exists():
-            return None
-        with open(cache_path, "r") as f:
-            data = json.load(f)
-        return CredentialsResponse.from_dict(data)
-    except (json.JSONDecodeError, TypeError, KeyError, OSError):
-        return None
-
-
-def _write_credentials_cache(cache_path: Path, credentials: CredentialsResponse) -> None:
-    """Write MinIO credentials to cache file."""
-    try:
-        with open(cache_path, "w") as f:
-            json.dump(credentials.to_dict(), f)
-    except (OSError, TypeError):
-        pass
+    Uses /tmp to keep credentials ephemeral per container session and avoid
+    persisting secrets to the S3 FUSE-mounted home directory.
+    """
+    return Path("/tmp") / POLARIS_CREDENTIALS_CACHE_FILE
 
 
 def _read_cached_polaris_credentials(cache_path: Path) -> "PolarisCredentials | None":
@@ -229,8 +206,8 @@ def get_minio_credentials() -> CredentialsResponse:
     """
     Get MinIO credentials for the current user and set them as environment variables.
 
-    Uses file locking to prevent race conditions when multiple processes/notebooks
-    try to access credentials simultaneously.
+    Calls GET /credentials on the governance API, which returns DB-cached credentials
+    without rotating. No local file cache needed — the API is the cache.
 
     Sets the following environment variables:
     - MINIO_ACCESS_KEY: User's MinIO access key
@@ -239,16 +216,39 @@ def get_minio_credentials() -> CredentialsResponse:
     Returns:
         CredentialsResponse with username, access_key, and secret_key
     """
-    credentials = _fetch_with_file_cache(
-        _get_credentials_cache_path(),
-        _read_cached_credentials,
-        _fetch_minio_credentials,
-        _write_credentials_cache,
-    )
+    credentials = _fetch_minio_credentials()
     if credentials is None:
         raise RuntimeError("Failed to fetch credentials from API")
 
-    # Set MinIO credentials as environment variables
+    os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
+    os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
+
+    return credentials
+
+
+def rotate_minio_credentials() -> CredentialsResponse:
+    """
+    Force-rotate MinIO credentials via POST /credentials/rotate.
+
+    Calls the rotate endpoint on the governance API which rotates the password
+    in MinIO and updates the DB cache. No local file cache needed.
+
+    Returns:
+        CredentialsResponse with fresh username, access_key, and secret_key
+    """
+    settings = get_settings()
+
+    url = f"{str(settings.GOVERNANCE_API_URL).rstrip('/')}/credentials/rotate"
+    response = httpx.post(
+        url,
+        headers={"Authorization": f"Bearer {settings.KBASE_AUTH_TOKEN}"},
+        timeout=10.0,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    credentials = CredentialsResponse.from_dict(data)
+
     os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
     os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
 

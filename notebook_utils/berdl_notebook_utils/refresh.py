@@ -13,10 +13,9 @@ from pyspark.sql import SparkSession
 
 from berdl_notebook_utils.berdl_settings import get_settings
 from berdl_notebook_utils.minio_governance.operations import (
-    CREDENTIALS_CACHE_FILE,
-    POLARIS_CREDENTIALS_CACHE_FILE,
-    get_minio_credentials,
+    _get_polaris_cache_path,
     get_polaris_credentials,
+    rotate_minio_credentials,
 )
 from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
 
@@ -51,29 +50,23 @@ def refresh_spark_environment() -> dict:
         dict with keys ``minio``, ``polaris``, ``spark_connect``,
         ``spark_session_stopped`` summarising what happened.
     """
-    home = Path.home()
     result: dict = {}
 
-    # 1. Delete credential cache files
-    minio_removed = _remove_cache_file(home / CREDENTIALS_CACHE_FILE)
-    polaris_removed = _remove_cache_file(home / POLARIS_CREDENTIALS_CACHE_FILE)
-    logger.info(
-        "Cleared credential caches (minio=%s, polaris=%s)",
-        minio_removed,
-        polaris_removed,
-    )
+    # 1. Delete Polaris credential cache file (MinIO uses DB-backed API cache)
+    polaris_removed = _remove_cache_file(_get_polaris_cache_path())
+    logger.info("Cleared Polaris credential cache (removed=%s)", polaris_removed)
 
     # 2. Clear in-memory settings cache
     get_settings.cache_clear()
 
-    # 3. Re-fetch MinIO credentials
+    # 3. Rotate MinIO credentials (force rotation, not just re-fetch)
     try:
-        minio_creds = get_minio_credentials()
+        minio_creds = rotate_minio_credentials()
         result["minio"] = {"status": "ok", "username": minio_creds.username}
-        logger.info("MinIO credentials refreshed for user: %s", minio_creds.username)
+        logger.info("MinIO credentials rotated for user: %s", minio_creds.username)
     except Exception as exc:
         result["minio"] = {"status": "error", "error": str(exc)}
-        logger.warning("Failed to refresh MinIO credentials: %s", exc)
+        logger.warning("Failed to rotate MinIO credentials: %s", exc)
 
     # 4. Re-fetch Polaris credentials
     try:

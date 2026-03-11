@@ -54,7 +54,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
-    @patch("berdl_notebook_utils.refresh.get_minio_credentials")
+    @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_happy_path(self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
@@ -86,7 +86,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
-    @patch("berdl_notebook_utils.refresh.get_minio_credentials")
+    @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_stops_existing_spark_session(
@@ -108,7 +108,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
-    @patch("berdl_notebook_utils.refresh.get_minio_credentials")
+    @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_polaris_not_configured(
@@ -127,7 +127,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
-    @patch("berdl_notebook_utils.refresh.get_minio_credentials")
+    @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_minio_error_does_not_block(
@@ -154,7 +154,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
-    @patch("berdl_notebook_utils.refresh.get_minio_credentials")
+    @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_spark_connect_error_captured(
@@ -174,7 +174,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
-    @patch("berdl_notebook_utils.refresh.get_minio_credentials")
+    @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_cache_files_removed_first(
@@ -188,15 +188,15 @@ class TestRefreshSparkEnvironment:
 
         refresh_spark_environment()
 
-        # _remove_cache_file called twice (minio + polaris) before get_minio_credentials
-        assert mock_remove.call_count == 2
+        # _remove_cache_file called once (polaris only — MinIO uses DB-backed API cache)
+        assert mock_remove.call_count == 1
         # Settings cache cleared before credential fetches
         mock_settings.cache_clear.assert_called()
 
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
-    @patch("berdl_notebook_utils.refresh.get_minio_credentials")
+    @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_all_errors_still_returns_result(
