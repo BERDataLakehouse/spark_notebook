@@ -7,33 +7,22 @@ import json
 import logging
 import os
 import time
-import warnings
 from pathlib import Path
-from collections.abc import Callable
-from typing import TypeVar
-
 from typing import TypedDict
 
 import httpx
 from governance_client.api.credentials import get_credentials_credentials_get
 from governance_client.api.health import health_check_health_get
-from governance_client.api.polaris import provision_polaris_user_polaris_user_provision_username_post
 from governance_client.api.management import (
     add_group_member_management_groups_group_name_members_username_post,
     create_group_management_groups_group_name_post,
-    ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post,
     list_groups_management_groups_get,
     list_users_management_users_get,
-    regenerate_all_policies_management_migrate_regenerate_policies_post,
     remove_group_member_management_groups_group_name_members_username_delete,
 )
 from governance_client.api.management.list_group_names_management_groups_names_get import (
     sync as list_group_names_sync,
 )
-from governance_client.api.management.list_user_names_management_users_names_get import (
-    sync as list_user_names_sync,
-)
-from governance_client.models.user_names_response import UserNamesResponse
 from governance_client.api.sharing import (
     get_path_access_info_sharing_get_path_access_info_post,
     make_path_private_sharing_make_private_post,
@@ -95,54 +84,20 @@ SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 
 # Credential caching configuration
 CREDENTIALS_CACHE_FILE = ".berdl_minio_credentials"
-POLARIS_CREDENTIALS_CACHE_FILE = ".berdl_polaris_credentials"
 
 
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
-_T = TypeVar("_T")
-
-
-def _fetch_with_file_cache(
-    cache_path: Path,
-    read_cache: Callable[[Path], _T | None],
-    fetch: Callable[[], _T | None],
-    write_cache: Callable[[Path, _T], None],
-) -> _T | None:
-    """Fetch credentials using file-based caching with exclusive file locking.
-
-    The lock is released when the file handle is closed (exiting the `with` block).
-    We intentionally do NOT delete the lock file afterward — another process
-    may have already acquired a lock on it between our unlock and unlink.
-    """
-    lock_path = cache_path.with_suffix(".lock")
-    with open(lock_path, "w") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-
-        cached = read_cache(cache_path)
-        if cached is not None:
-            return cached
-
-        result = fetch()
-        if result is not None:
-            write_cache(cache_path, result)
-        return result
-
 
 def _get_credentials_cache_path() -> Path:
-    """Get the path to the MinIO credentials cache file in the user's home directory."""
+    """Get the path to the credentials cache file in the user's home directory."""
     return Path.home() / CREDENTIALS_CACHE_FILE
 
 
-def _get_polaris_cache_path() -> Path:
-    """Get the path to the Polaris credentials cache file in the user's home directory."""
-    return Path.home() / POLARIS_CREDENTIALS_CACHE_FILE
-
-
 def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
-    """Read MinIO credentials from cache file. Returns None if file doesn't exist or is corrupted."""
+    """Read credentials from cache file. Returns None if file doesn't exist or is corrupted."""
     try:
         if not cache_path.exists():
             return None
@@ -154,34 +109,10 @@ def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
 
 
 def _write_credentials_cache(cache_path: Path, credentials: CredentialsResponse) -> None:
-    """Write MinIO credentials to cache file."""
+    """Write credentials to cache file."""
     try:
         with open(cache_path, "w") as f:
             json.dump(credentials.to_dict(), f)
-    except (OSError, TypeError):
-        pass
-
-
-def _read_cached_polaris_credentials(cache_path: Path) -> "PolarisCredentials | None":
-    """Read Polaris credentials from cache file. Returns None if file doesn't exist or is corrupted."""
-    try:
-        if not cache_path.exists():
-            return None
-        with open(cache_path, "r") as f:
-            data = json.load(f)
-        # Validate required keys are present
-        if all(k in data for k in ("client_id", "client_secret", "personal_catalog", "tenant_catalogs")):
-            return data
-        return None
-    except (json.JSONDecodeError, TypeError, KeyError, OSError):
-        return None
-
-
-def _write_polaris_credentials_cache(cache_path: Path, credentials: "PolarisCredentials") -> None:
-    """Write Polaris credentials to cache file."""
-    try:
-        with open(cache_path, "w") as f:
-            json.dump(credentials, f)
     except (OSError, TypeError):
         pass
 
@@ -216,15 +147,6 @@ def check_governance_health() -> HealthResponse:
     return health_check_health_get.sync(client=client)
 
 
-def _fetch_minio_credentials() -> CredentialsResponse | None:
-    """Fetch fresh MinIO credentials from the governance API."""
-    client = get_governance_client()
-    api_response = get_credentials_credentials_get.sync(client=client)
-    if isinstance(api_response, CredentialsResponse):
-        return api_response
-    return None
-
-
 def get_minio_credentials() -> CredentialsResponse:
     """
     Get MinIO credentials for the current user and set them as environment variables.
@@ -239,96 +161,43 @@ def get_minio_credentials() -> CredentialsResponse:
     Returns:
         CredentialsResponse with username, access_key, and secret_key
     """
-    credentials = _fetch_with_file_cache(
-        _get_credentials_cache_path(),
-        _read_cached_credentials,
-        _fetch_minio_credentials,
-        _write_credentials_cache,
-    )
-    if credentials is None:
-        raise RuntimeError("Failed to fetch credentials from API")
+    cache_path = _get_credentials_cache_path()
+    lock_path = cache_path.with_suffix(".lock")
+
+    # Use file locking to prevent concurrent access
+    with open(lock_path, "w") as lock_file:
+        try:
+            # Acquire exclusive lock (blocks until available)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            # Try to load from cache first (double-check after acquiring lock)
+            cached_credentials = _read_cached_credentials(cache_path)
+            if cached_credentials:
+                credentials = cached_credentials
+            else:
+                # No cache or cache corrupted, fetch fresh credentials
+                client = get_governance_client()
+                api_response = get_credentials_credentials_get.sync(client=client)
+                if isinstance(api_response, CredentialsResponse):
+                    credentials = api_response
+                    _write_credentials_cache(cache_path, credentials)
+                else:
+                    raise RuntimeError("Failed to fetch credentials from API")
+        finally:
+            # Lock is automatically released when file is closed
+            pass
+
+    # Clean up lock file if it exists
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
     # Set MinIO credentials as environment variables
     os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
     os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
 
     return credentials
-
-
-class PolarisCredentials(TypedDict):
-    """Polaris credential provisioning result."""
-
-    client_id: str
-    client_secret: str
-    personal_catalog: str
-    tenant_catalogs: list[str]
-
-
-def _fetch_polaris_credentials() -> PolarisCredentials | None:
-    """Fetch fresh Polaris credentials from the governance API."""
-    settings = get_settings()
-    polaris_logger = logging.getLogger(__name__)
-
-    client = get_governance_client()
-    api_response = provision_polaris_user_polaris_user_provision_username_post.sync(
-        username=settings.USER, client=client
-    )
-
-    if isinstance(api_response, ErrorResponse):
-        polaris_logger.warning(f"Polaris provisioning failed: {api_response.message}")
-        return None
-    if api_response is None:
-        polaris_logger.warning("Polaris provisioning returned no response")
-        return None
-
-    data = api_response.to_dict()
-    return {
-        "client_id": data.get("client_id", ""),
-        "client_secret": data.get("client_secret", ""),
-        "personal_catalog": data.get("personal_catalog", ""),
-        "tenant_catalogs": data.get("tenant_catalogs", []),
-    }
-
-
-def get_polaris_credentials() -> PolarisCredentials | None:
-    """
-    Provision a Polaris catalog for the current user and set credentials as environment variables.
-
-    Uses file locking and caching to prevent race conditions and avoid unnecessary
-    API calls when credentials are already cached (same pattern as get_minio_credentials).
-
-    Calls POST /polaris/user_provision/{username} on the governance API on cache miss.
-    This provisions the user's Polaris environment (catalog, principal, roles, credentials,
-    tenant access) and returns the configuration.
-
-    Sets the following environment variables:
-    - POLARIS_CREDENTIAL: client_id:client_secret for authenticating with Polaris
-    - POLARIS_PERSONAL_CATALOG: Name of the user's personal Polaris catalog
-    - POLARIS_TENANT_CATALOGS: Comma-separated list of tenant catalogs the user has access to
-
-    Returns:
-        PolarisCredentials dict, or None if Polaris is not configured
-    """
-    settings = get_settings()
-
-    if not settings.POLARIS_CATALOG_URI:
-        return None
-
-    result = _fetch_with_file_cache(
-        _get_polaris_cache_path(),
-        _read_cached_polaris_credentials,
-        _fetch_polaris_credentials,
-        _write_polaris_credentials_cache,
-    )
-    if result is None:
-        return None
-
-    # Set as environment variables for Spark catalog configuration
-    os.environ["POLARIS_CREDENTIAL"] = f"{result['client_id']}:{result['client_secret']}"
-    os.environ["POLARIS_PERSONAL_CATALOG"] = result["personal_catalog"]
-    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(result["tenant_catalogs"])
-
-    return result
 
 
 def get_my_sql_warehouse() -> UserSqlWarehousePrefixResponse:
@@ -477,13 +346,6 @@ def share_table(
     Example:
         share_table("analytics", "user_metrics", with_users=["alice", "bob"])
     """
-    warnings.warn(
-        "share_table is deprecated and will be removed in a future release. "
-        "Direct path sharing is no longer recommended. Please create a Tenant Workspace "
-        "and request access to the tenant for sharing activities.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -522,13 +384,6 @@ def unshare_table(
     Example:
         unshare_table("analytics", "user_metrics", from_users=["alice"])
     """
-    warnings.warn(
-        "unshare_table is deprecated and will be removed in a future release. "
-        "Direct path sharing is no longer recommended. Please create a Tenant Workspace "
-        "and request access to the tenant for unsharing activities.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -563,13 +418,6 @@ def make_table_public(
     Example:
         make_table_public("research", "public_dataset")
     """
-    warnings.warn(
-        "make_table_public is deprecated and will be removed in a future release. "
-        "Direct public path sharing is no longer recommended. Please create a namespace "
-        "under the `globalusers` tenant for public sharing activities.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -596,13 +444,6 @@ def make_table_private(
     Example:
         make_table_private("research", "sensitive_data")
     """
-    warnings.warn(
-        "make_table_private is deprecated and will be removed in a future release. "
-        "Direct public path sharing is no longer recommended. Please remove the namespace "
-        "under the `globalusers` tenant to revoke public access.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -666,17 +507,9 @@ def list_groups() -> dict | ErrorResponse | None:
     return list_groups_management_groups_get.sync(client=client)
 
 
-def list_users(page: int = 1, page_size: int = 500):
+def list_users():
     """
-    List all users in the system with full details.
-
-    This fetches full user info (policies, groups, paths) for each user,
-    which can be slow with many users. If you only need usernames,
-    use ``list_user_names()`` instead.
-
-    Args:
-        page: Page number (1-based). Default: 1.
-        page_size: Number of users per page. Default: 500.
+    List all users in the system.
 
     Returns:
         UserListResponse with user information, or ErrorResponse on failure.
@@ -686,32 +519,7 @@ def list_users(page: int = 1, page_size: int = 500):
         # Returns list of user information
     """
     client = get_governance_client()
-    return list_users_management_users_get.sync(client=client, page=page, page_size=page_size)
-
-
-def list_user_names() -> list[str]:
-    """
-    List all usernames in the system (lightweight).
-
-    This is much faster than ``list_users()`` because it only returns
-    usernames without fetching full user details (policies, groups, paths).
-
-    Returns:
-        List of usernames.
-
-    Raises:
-        RuntimeError: If the API call fails.
-    """
-    client = get_governance_client()
-    response = list_user_names_sync(client=client)
-
-    if isinstance(response, ErrorResponse):
-        raise RuntimeError(f"Failed to list usernames: {response.message}")
-
-    if not isinstance(response, UserNamesResponse):
-        raise RuntimeError("Failed to list usernames: no response from API")
-
-    return response.usernames
+    return list_users_management_users_get.sync(client=client)
 
 
 def add_group_member(
@@ -969,40 +777,3 @@ def request_tenant_access(
         raise RuntimeError(f"Failed to submit access request: {e.response.status_code} - {e.response.text}")
     except httpx.RequestError as e:
         raise RuntimeError(f"Failed to connect to tenant access service: {e}")
-
-
-# =============================================================================
-# MIGRATION - Admin-only bulk operations for IAM + Polaris migration
-# =============================================================================
-
-
-def regenerate_policies():
-    """
-    Force-regenerate all MinIO IAM HOME policies from the current template.
-
-    This admin-only endpoint updates pre-existing policies to include new path
-    statements (e.g., Iceberg paths). Each regeneration is independent — errors
-    do not block others.
-
-    Returns:
-        RegeneratePoliciesResponse with users_updated, groups_updated, errors,
-        or ErrorResponse on failure.
-    """
-    client = get_governance_client()
-    return regenerate_all_policies_management_migrate_regenerate_policies_post.sync(client=client)
-
-
-def ensure_polaris_resources():
-    """
-    Ensure Polaris resources exist for all users and groups.
-
-    Creates Polaris principals, personal catalogs, and roles for all users.
-    Creates tenant catalogs for all base groups. Grants correct principal roles
-    based on group memberships. All operations are idempotent.
-
-    Returns:
-        EnsurePolarisResponse with users_provisioned, groups_provisioned, errors,
-        or ErrorResponse on failure.
-    """
-    client = get_governance_client()
-    return ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post.sync(client=client)

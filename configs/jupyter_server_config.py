@@ -1,12 +1,13 @@
 import os
 import sys
 import logging
+import json
+from pathlib import Path
 
 # Add config directory to path for local imports
 # Note: __file__ may not be defined when exec'd by traitlets config loader
 sys.path.insert(0, "/etc/jupyter")
 
-from berdl_notebook_utils.berdl_settings import get_settings
 from hybridcontents import HybridContentsManager
 from jupyter_server.services.contents.largefilemanager import LargeFileManager
 from grouped_s3_contents import GroupedS3ContentsManager
@@ -47,20 +48,31 @@ c.ServerApp.contents_manager_class = HybridContentsManager
 
 
 def get_minio_config():
-    """Extract MinIO configuration, provisioning credentials via governance API if needed."""
-    from berdl_notebook_utils.minio_governance import get_minio_credentials
+    """Extract MinIO configuration from credentials file or environment."""
 
-    # Provision user + fetch credentials (checks cache first, calls API if needed,
-    # sets MINIO_ACCESS_KEY/MINIO_SECRET_KEY env vars)
-    credentials = get_minio_credentials()
-    access_key = credentials.access_key
-    secret_key = credentials.secret_key
-
+    # Default values
     endpoint = os.environ.get("MINIO_ENDPOINT_URL")
+    access_key = os.environ.get("MINIO_ACCESS_KEY")
+    secret_key = os.environ.get("MINIO_SECRET_KEY")
     use_ssl = os.environ.get("MINIO_SECURE", "false").lower() == "true"
 
-    if not endpoint:
-        raise ValueError("MINIO_ENDPOINT_URL is required")
+    # Try reading from credential file
+    try:
+        username = os.environ.get("NB_USER", "jovyan")
+        cred_path = Path(f"/home/{username}/.berdl_minio_credentials")
+        if cred_path.exists():
+            data = json.loads(cred_path.read_text())
+            access_key = data.get("access_key") or access_key
+            secret_key = data.get("secret_key") or secret_key
+            logger.info(f"Loaded MinIO credentials from {cred_path} for user: {data.get('username', 'unknown')}")
+    except Exception as e:
+        logger.warning(f"Failed to read credential file: {e}")
+
+    # Validate required config
+    if not endpoint or not access_key or not secret_key:
+        configs = [("MINIO_ENDPOINT_URL", endpoint), ("MINIO_ACCESS_KEY", access_key), ("MINIO_SECRET_KEY", secret_key)]
+        missing = [k for k, v in configs if not v]
+        raise ValueError(f"Missing required MinIO configuration: {missing}")
 
     if not endpoint.startswith(("http://", "https://")):
         protocol = "https://" if use_ssl else "http://"
@@ -135,72 +147,17 @@ def get_user_governance_paths():
     return sources
 
 
-def provision_polaris():
-    """Provision Polaris credentials at server startup and set env vars.
-
-    Called once at Jupyter Server startup so credentials are available
-    before any notebook kernel opens. Subsequent calls from IPython startup
-    scripts will hit the file cache and return immediately.
-    """
-    try:
-        from berdl_notebook_utils.minio_governance import get_polaris_credentials
-
-        polaris_creds = get_polaris_credentials()
-        if polaris_creds:
-            logger.info(f"\u2705 Polaris credentials provisioned for catalog: {polaris_creds['personal_catalog']}")
-            if polaris_creds["tenant_catalogs"]:
-                logger.info(f"   Tenant catalogs: {', '.join(polaris_creds['tenant_catalogs'])}")
-        else:
-            logger.info("\u2139\ufe0f  Polaris not configured, skipping Polaris credential provisioning")
-    except Exception as e:
-        logger.error(f"Failed to provision Polaris credentials: {e}")
-
-
-def start_spark_connect():
-    """Start Spark Connect server at Jupyter Server startup.
-
-    Runs in a background thread so it doesn't block the server from accepting
-    connections. Idempotent: reuses existing process if already running.
-    """
-    import threading
-
-    def _start():
-        try:
-            from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
-
-            server_info = start_spark_connect_server()
-            logger.info(f"\u2705 Spark Connect server ready at {server_info['url']}")
-        except Exception as e:
-            logger.error(f"\u274c Failed to start Spark Connect server: {e}")
-
-    t = threading.Thread(target=_start, name="spark-connect-startup", daemon=True)
-    t.start()
-
-
 # --- Main Configuration Logic ---
 
 # 1. Local Manager (Root)
 # We map the root directory to the user's home
 username = os.environ.get("NB_USER", "jovyan")
 
-# 2. Get MinIO configuration (also provisions/caches the user in MinIO)
+# 2. Get MinIO configuration
 endpoint_url, access_key, secret_key, use_ssl = get_minio_config()
 governance_paths = get_user_governance_paths()
 
-# 3. Provision Polaris credentials — MUST be before Spark Connect so that
-#    POLARIS_CREDENTIAL env vars are set when generating spark-defaults.conf
-provision_polaris()
-
-# Clear the settings cache so start_spark_connect picks up the new
-# POLARIS_CREDENTIAL/POLARIS_PERSONAL_CATALOG/POLARIS_TENANT_CATALOGS env vars
-# that provision_polaris() just set. Without this, the lru_cache returns the
-# stale settings object captured before Polaris provisioning ran.
-get_settings.cache_clear()
-
-# 4. Start Spark Connect server in background (non-blocking)
-start_spark_connect()
-
-# 5. Configure HybridContentsManager
+# 3. Configure HybridContentsManager
 # - Root ("") -> Local filesystem
 # - "datalake_minio" -> GroupedS3ContentsManager with all S3 paths as subdirectories
 c.HybridContentsManager.manager_classes = {

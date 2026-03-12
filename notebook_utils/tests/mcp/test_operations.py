@@ -76,6 +76,19 @@ class TestMcpListDatabases:
 
             assert result == ["default", "analytics", "user_data"]
 
+    def test_passes_use_hms_parameter(self, mock_client):
+        """Test that use_hms parameter is passed correctly."""
+        mock_response = Mock()
+        mock_response.databases = []
+
+        with patch("berdl_notebook_utils.mcp.operations.list_databases") as mock_api:
+            mock_api.sync.return_value = mock_response
+
+            mcp_list_databases(use_hms=False)
+
+            call_kwargs = mock_api.sync.call_args[1]
+            assert call_kwargs["body"].use_hms is False
+
     def test_raises_on_none_response(self, mock_client):
         """Test that None response raises an exception."""
         with patch("berdl_notebook_utils.mcp.operations.list_databases") as mock_api:

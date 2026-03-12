@@ -10,7 +10,6 @@ from berdl_notebook_utils.minio_governance.operations import (
     check_governance_health,
     get_group_sql_warehouse,
     get_minio_credentials,
-    get_polaris_credentials,
     get_my_accessible_paths,
     get_my_groups,
     get_my_policies,
@@ -21,7 +20,6 @@ from berdl_notebook_utils.minio_governance.operations import (
     add_group_member,
     create_tenant_and_assign_users,
     list_groups,
-    list_user_names,
     list_users,
     remove_group_member,
     # Table operations
@@ -33,9 +31,6 @@ from berdl_notebook_utils.minio_governance.operations import (
     # Tenant access requests
     list_available_groups,
     request_tenant_access,
-    # Migration (admin-only)
-    ensure_polaris_resources,
-    regenerate_policies,
 )
 
 __all__ = [
@@ -43,7 +38,6 @@ __all__ = [
     "check_governance_health",
     "get_group_sql_warehouse",
     "get_minio_credentials",
-    "get_polaris_credentials",
     "get_my_accessible_paths",
     "get_my_groups",
     "get_my_policies",
@@ -54,7 +48,6 @@ __all__ = [
     "add_group_member",
     "create_tenant_and_assign_users",
     "list_groups",
-    "list_user_names",
     "list_users",
     "remove_group_member",
     # Table operations
@@ -66,7 +59,4 @@ __all__ = [
     # Tenant access requests
     "list_available_groups",
     "request_tenant_access",
-    # Migration (admin-only)
-    "ensure_polaris_resources",
-    "regenerate_policies",
 ]

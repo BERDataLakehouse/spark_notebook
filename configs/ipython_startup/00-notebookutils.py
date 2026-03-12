@@ -102,7 +102,6 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
     create_tenant_and_assign_users,
     get_group_sql_warehouse,
     get_minio_credentials,
-    get_polaris_credentials,
     get_my_accessible_paths,
     get_my_groups,
     get_my_policies,
@@ -117,11 +116,6 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
     share_table,
     unshare_table,
 )
-
-# ============================================================================
-# Environment Refresh
-# ============================================================================
-from berdl_notebook_utils.refresh import refresh_spark_environment  # noqa: F401
 
 # ============================================================================
 # Help Utilities
