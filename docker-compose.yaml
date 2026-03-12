@@ -113,6 +113,8 @@ services:
     command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
   spark-connect-proxy:
+    # image: ghcr.io/berdatalakehouse/spark_connect_proxy:main
+    # platform: linux/amd64
     build:
       context: ../spark_connect_proxy
       dockerfile: Dockerfile
