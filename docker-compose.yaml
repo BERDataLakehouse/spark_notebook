@@ -112,6 +112,20 @@ services:
       - hive-metastore
     command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
+  spark-connect-proxy:
+    build:
+      context: ../spark_connect_proxy
+      dockerfile: Dockerfile
+    ports:
+      - "15004:15002"  # Proxy exposed on host port 15004
+    environment:
+      - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
+      - PROXY_LISTEN_PORT=15002
+      - BACKEND_PORT=15002
+      - SERVICE_TEMPLATE=spark-notebook-{username}
+      - TOKEN_CACHE_TTL=300
+      - MFA_EXEMPT_USERS=${CI_KBASE_USERNAME}
+
   minio-manager-service:
     # image: ghcr.io/berdatalakehouse/minio_manager_service:main
     # platform: linux/amd64
@@ -142,10 +156,7 @@ services:
       - "8005:8000"  # MCP server port
     environment:
       # Shared MCP service - connects to user-specific Spark Connect servers
-      # For docker-compose local dev, we default to the primary notebook (tgu2)
-      # NOTE: Due to different port mappings in docker-compose (tgu2:15002, tgu1:15003),
-      #       the MCP server will primarily work with tgu2. In Kubernetes, all users
-      #       follow the same pattern: sc://jupyter-{username}.jupyterhub-{env}:15002
+      # For docker-compose local dev, we default to the primary notebook
       - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
       - MINIO_ENDPOINT_URL=minio:9002
@@ -235,10 +246,6 @@ services:
       - SPARK_WORKER_MEMORY=5g
       - SPARK_WORKER_PORT=8081
       - SPARK_WORKER_WEBUI_PORT=8081
-      - BERDL_REDIS_HOST=redis
-      - BERDL_REDIS_PORT=6379
-      - BERDL_DELTALAKE_WAREHOUSE_DIRECTORY_PATH=s3a://cdm-lake/users-sql-warehouse
-      - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
     depends_on:
       - spark-master
 
