@@ -318,7 +318,14 @@ class SparkJobMetrics:
                 seen.add(app_dir)
                 unique.append((username, app_dir))
 
-        unique.sort(key=lambda x: x[1], reverse=True)
+        def _extract_ts(entry: tuple[str, str]) -> str:
+            """Extract timestamp from app dir for sorting (e.g. '20260311022136-0003')."""
+            try:
+                return entry[1].split("eventlog_v2_app-")[1].split("/")[0]
+            except (IndexError, ValueError):
+                return ""
+
+        unique.sort(key=_extract_ts, reverse=True)
 
         if limit:
             unique = unique[:limit]
@@ -363,25 +370,27 @@ class SparkJobMetrics:
         for obj in self._client.list_objects(self._bucket, prefix=app_dir, recursive=False):
             if not obj.object_name.endswith(".zstd"):
                 continue
+            object_name = obj.object_name or ""
+            response = None
             try:
-                response = self._client.get_object(self._bucket, obj.object_name)
+                response = self._client.get_object(self._bucket, object_name)
                 compressed = response.read()
-                response.close()
-                response.release_conn()
-
                 dctx = zstandard.ZstdDecompressor()
                 reader = dctx.stream_reader(io.BytesIO(compressed))
-                decompressed = reader.read()
-                reader.close()
-
-                for line in decompressed.decode("utf-8").strip().split("\n"):
-                    if line.strip():
+                text_stream = io.TextIOWrapper(reader, encoding="utf-8")
+                for line in text_stream:
+                    line = line.strip()
+                    if line:
                         try:
                             events.append(json.loads(line))
                         except json.JSONDecodeError:
                             continue
             except Exception as e:
                 logger.warning(f"Failed to read {obj.object_name}: {e}")
+            finally:
+                if response is not None:
+                    response.close()
+                    response.release_conn()
         return events
 
     # ------------------------------------------------------------------
