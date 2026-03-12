@@ -45,12 +45,10 @@ All BERDL JupyterHub notebooks automatically import these data governance functi
 
 **Pre-Initialized Client:**
 - `governance` - Pre-initialized `DataGovernanceClient()` instance for advanced operations
-**Other Auto-Imported Functions:**
-- `get_spark_session()` - Create Spark sessions with Iceberg + Delta Lake support
-- `create_namespace_if_not_exists()` - Create namespaces (use `iceberg=True` for Iceberg catalogs)
-- Plus many other utility functions for data operations
 
-> **Note:** With the migration to Iceberg, **tenant catalogs** are the recommended way to share data. Create tables in a tenant catalog (e.g., `kbase`) and all members can access them. See the [Iceberg Migration Guide](iceberg_migration_guide.md) for details.
+**Other Auto-Imported Functions:**
+- `get_spark_session()` - Create Spark sessions with Delta Lake support
+- Plus many other utility functions for data operations
 
 ### Quick Start
 
@@ -260,7 +258,7 @@ if response.errors:
 
 ## Public and Private Table Access (DEPRECATED)
 
-> **⚠️ DEPRECATION WARNING**: Direct public path sharing functions (`make_table_public`, `make_table_private`) are deprecated. Please create a namespace under the `kbase` tenant for public sharing activities instead.
+> **⚠️ DEPRECATION WARNING**: Direct public path sharing functions (`make_table_public`, `make_table_private`) are deprecated. Please create a namespace under the `globalusers` tenant for public sharing activities instead.
 
 ### Make Tables Publicly Accessible
 
