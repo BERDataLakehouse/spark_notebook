@@ -503,8 +503,9 @@ class TestSparkConnectServerManagerStop:
         mock_sock.connect_ex.return_value = 0
 
         manager = SparkConnectServerManager()
-        # Patch socket inside the method's local import
-        with patch("socket.socket", return_value=mock_sock):
+        # Patch socket and sleep inside the method's local imports to avoid real waiting
+        with patch("socket.socket", return_value=mock_sock), \
+             patch("berdl_notebook_utils.spark.connect_server.time.sleep", return_value=None):
             result = manager._wait_for_port_release(timeout=0.1)
 
         assert result is False
