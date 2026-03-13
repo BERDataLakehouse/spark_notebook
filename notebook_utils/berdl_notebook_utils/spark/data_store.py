@@ -10,10 +10,11 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-from berdl_notebook_utils import hive_metastore
 from pyspark.sql import SparkSession
-from berdl_notebook_utils.setup_spark_session import get_spark_session
+
+from berdl_notebook_utils import hive_metastore
 from berdl_notebook_utils.minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
+from berdl_notebook_utils.setup_spark_session import get_spark_session
 
 # =============================================================================
 # TTL CACHE FOR GOVERNANCE API CALLS
