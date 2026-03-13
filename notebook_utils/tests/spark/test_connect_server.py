@@ -125,6 +125,59 @@ class TestSparkConnectServerConfig:
         assert "test_user" in content
         assert "spark.eventLog.dir" in content
 
+    @patch("berdl_notebook_utils.spark.connect_server.get_my_groups")
+    @patch("berdl_notebook_utils.spark.connect_server.get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.connect_server.get_settings")
+    def test_compute_allowed_namespace_prefixes(self, mock_get_settings, mock_ns_prefix, mock_groups):
+        """Test compute_allowed_namespace_prefixes returns correct prefixes."""
+        mock_settings = Mock()
+        mock_settings.USER = "test_user"
+        mock_settings.SPARK_HOME = "/opt/spark"
+        mock_settings.SPARK_CONNECT_DEFAULTS_TEMPLATE = "/etc/template.conf"
+        mock_url = Mock()
+        mock_url.port = 15002
+        mock_settings.SPARK_CONNECT_URL = mock_url
+        mock_settings.SPARK_MASTER_URL = "spark://master:7077"
+        mock_get_settings.return_value = mock_settings
+
+        # Mock governance responses
+        mock_ns_prefix.return_value = Mock(user_namespace_prefix="u_test_user__")
+        mock_groups.return_value = Mock(groups=["kbase", "kbasero", "research"])
+
+        config = SparkConnectServerConfig()
+        result = config.compute_allowed_namespace_prefixes()
+
+        assert "u_test_user__" in result
+        assert "kbase_" in result
+        assert "research_" in result
+        # "kbasero" ends with "ro" so should be excluded
+        assert "kbasero_" not in result
+
+    @patch("berdl_notebook_utils.spark.connect_server.get_my_groups")
+    @patch("berdl_notebook_utils.spark.connect_server.get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.connect_server.get_settings")
+    def test_compute_allowed_namespace_prefixes_errors(self, mock_get_settings, mock_ns_prefix, mock_groups):
+        """Test compute_allowed_namespace_prefixes handles API errors gracefully."""
+        mock_settings = Mock()
+        mock_settings.USER = "test_user"
+        mock_settings.SPARK_HOME = "/opt/spark"
+        mock_settings.SPARK_CONNECT_DEFAULTS_TEMPLATE = "/etc/template.conf"
+        mock_url = Mock()
+        mock_url.port = 15002
+        mock_settings.SPARK_CONNECT_URL = mock_url
+        mock_settings.SPARK_MASTER_URL = "spark://master:7077"
+        mock_get_settings.return_value = mock_settings
+
+        # Both API calls fail
+        mock_ns_prefix.side_effect = Exception("API error")
+        mock_groups.side_effect = Exception("API error")
+
+        config = SparkConnectServerConfig()
+        result = config.compute_allowed_namespace_prefixes()
+
+        # Should return empty string (no prefixes)
+        assert result == ""
+
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
     def test_generate_spark_config_template_not_found(self, mock_get_settings):
         """Test generate_spark_config raises if template not found."""
@@ -438,6 +491,54 @@ class TestSparkConnectServerManagerStop:
 
         assert result is True
 
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_wait_for_port_release_timeout(self, mock_config_class):
+        """Test _wait_for_port_release returns False on timeout."""
+        mock_config = Mock()
+        mock_config.spark_connect_port = 15002
+        mock_config_class.return_value = mock_config
+
+        # Simulate port always in use (connect_ex returns 0 = success = port in use)
+        mock_sock = Mock()
+        mock_sock.connect_ex.return_value = 0
+
+        manager = SparkConnectServerManager()
+        # Patch socket inside the method's local import
+        with patch("socket.socket", return_value=mock_sock):
+            result = manager._wait_for_port_release(timeout=0.1)
+
+        assert result is False
+
+    @patch("berdl_notebook_utils.spark.connect_server.subprocess.run")
+    @patch("berdl_notebook_utils.spark.connect_server.os.kill")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_kill_java_process_pgrep_finds_but_kill_fails(self, mock_config_class, mock_kill, mock_run):
+        """Test _kill_java_process handles failure to kill found processes."""
+        mock_config = Mock()
+        mock_config_class.return_value = mock_config
+
+        mock_run.return_value = Mock(returncode=0, stdout="12345\n12346")
+        # os.kill raises for both PIDs
+        mock_kill.side_effect = [ProcessLookupError(), OSError("Permission denied")]
+
+        manager = SparkConnectServerManager()
+        # Should not raise
+        manager._kill_java_process()
+
+    @patch("berdl_notebook_utils.spark.connect_server.subprocess.run")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_kill_java_process_both_pgrep_pkill_not_found(self, mock_config_class, mock_run):
+        """Test _kill_java_process handles neither pgrep nor pkill available."""
+        mock_config = Mock()
+        mock_config_class.return_value = mock_config
+
+        # Both pgrep and pkill raise FileNotFoundError
+        mock_run.side_effect = [FileNotFoundError(), FileNotFoundError()]
+
+        manager = SparkConnectServerManager()
+        # Should not raise
+        manager._kill_java_process()
+
 
 class TestSparkConnectServerManagerForceRestart:
     """Tests for force_restart functionality."""
@@ -469,3 +570,87 @@ class TestSparkConnectServerManagerForceRestart:
                 pass  # Expected - start script doesn't exist
 
         mock_stop.assert_called_once()
+
+    @patch("berdl_notebook_utils.spark.connect_server.time")
+    @patch("berdl_notebook_utils.spark.connect_server.subprocess.Popen")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_start_new_server_success(self, mock_config_class, mock_popen, mock_time, tmp_path):
+        """Test starting a new Spark Connect server successfully."""
+        mock_config = Mock()
+        mock_config.username = "test_user"
+        mock_config.spark_home = str(tmp_path)
+        mock_config.spark_master_url = "spark://master:7077"
+        mock_config.spark_connect_port = 15002
+        mock_config.user_conf_dir = tmp_path / "conf"
+        mock_config.log_file_path = tmp_path / "log"
+        mock_config.pid_file_path = tmp_path / "pid"
+        mock_config_class.return_value = mock_config
+
+        # Create the start script
+        sbin_dir = tmp_path / "sbin"
+        sbin_dir.mkdir()
+        start_script = sbin_dir / "start-connect-server.sh"
+        start_script.write_text("#!/bin/bash\n")
+        start_script.chmod(0o755)
+
+        # Mock process
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process still running
+        mock_process.pid = 54321
+        mock_popen.return_value = mock_process
+
+        manager = SparkConnectServerManager()
+
+        # get_server_info: None (not running), then return info after start
+        with patch.object(manager, "get_server_info") as mock_get_info:
+            mock_get_info.side_effect = [
+                None,  # First call: not running
+                {  # Second call: after start
+                    "pid": 54321,
+                    "port": 15002,
+                    "url": "sc://localhost:15002",
+                    "log_file": str(tmp_path / "log"),
+                    "master_url": "spark://master:7077",
+                },
+            ]
+
+            result = manager.start()
+
+        assert result["pid"] == 54321
+        assert result["port"] == 15002
+        mock_config.create_directories.assert_called_once()
+        mock_config.generate_spark_config.assert_called_once()
+
+    @patch("berdl_notebook_utils.spark.connect_server.time")
+    @patch("berdl_notebook_utils.spark.connect_server.subprocess.Popen")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
+    def test_start_new_server_fails(self, mock_config_class, mock_popen, mock_time, tmp_path):
+        """Test start raises RuntimeError when server fails to start."""
+        mock_config = Mock()
+        mock_config.username = "test_user"
+        mock_config.spark_home = str(tmp_path)
+        mock_config.spark_master_url = "spark://master:7077"
+        mock_config.spark_connect_port = 15002
+        mock_config.user_conf_dir = tmp_path / "conf"
+        mock_config.log_file_path = tmp_path / "log"
+        mock_config.pid_file_path = tmp_path / "pid"
+        mock_config_class.return_value = mock_config
+
+        # Create the start script
+        sbin_dir = tmp_path / "sbin"
+        sbin_dir.mkdir()
+        start_script = sbin_dir / "start-connect-server.sh"
+        start_script.write_text("#!/bin/bash\n")
+        start_script.chmod(0o755)
+
+        # Mock process - failed (poll returns exit code)
+        mock_process = Mock()
+        mock_process.poll.return_value = 1  # Process exited with error
+        mock_process.returncode = 1
+        mock_popen.return_value = mock_process
+
+        manager = SparkConnectServerManager()
+
+        with patch.object(manager, "get_server_info", return_value=None):
+            with pytest.raises(RuntimeError, match="Spark Connect server failed to start"):
+                manager.start()

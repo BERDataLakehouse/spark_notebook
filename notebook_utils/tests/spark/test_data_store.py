@@ -2,19 +2,24 @@
 Tests for spark/data_store.py - Data store operations.
 """
 
-from unittest.mock import Mock, patch
 import json
+from unittest.mock import Mock, patch
+
+import pytest
 
 from berdl_notebook_utils.spark.data_store import (
+    _cached_get_my_accessible_paths,
+    _cached_get_my_groups,
+    _cached_get_namespace_prefix,
+    _execute_with_spark,
+    _extract_databases_from_paths,
+    _format_output,
     _ttl_cache,
     clear_governance_cache,
-    _format_output,
-    _extract_databases_from_paths,
     get_databases,
-    get_tables,
-    get_table_schema,
     get_db_structure,
-    _execute_with_spark,
+    get_table_schema,
+    get_tables,
 )
 
 
@@ -274,3 +279,122 @@ class TestExecuteWithSpark:
         result = _execute_with_spark(test_func, mock_spark, "test")
 
         assert result == "result_test"
+
+
+class TestCachedWrappers:
+    """Tests for cached governance API wrappers."""
+
+    @patch("berdl_notebook_utils.spark.data_store.get_my_groups")
+    def test_cached_get_my_groups(self, mock_get_my_groups):
+        """Test _cached_get_my_groups calls through to get_my_groups."""
+        mock_get_my_groups.return_value = Mock(groups=["team1"])
+        _cached_get_my_groups.clear_cache()
+
+        result = _cached_get_my_groups()
+
+        assert result.groups == ["team1"]
+        mock_get_my_groups.assert_called_once()
+
+    @patch("berdl_notebook_utils.spark.data_store.get_namespace_prefix")
+    def test_cached_get_namespace_prefix(self, mock_get_ns):
+        """Test _cached_get_namespace_prefix calls through to get_namespace_prefix."""
+        mock_get_ns.return_value = Mock(user_namespace_prefix="u_test__")
+        _cached_get_namespace_prefix.clear_cache()
+
+        result = _cached_get_namespace_prefix()
+
+        assert result.user_namespace_prefix == "u_test__"
+        mock_get_ns.assert_called_once()
+
+    @patch("berdl_notebook_utils.spark.data_store.get_my_accessible_paths")
+    def test_cached_get_my_accessible_paths(self, mock_get_paths):
+        """Test _cached_get_my_accessible_paths calls through to get_my_accessible_paths."""
+        mock_get_paths.return_value = Mock(accessible_paths=["s3a://bucket/path"])
+        _cached_get_my_accessible_paths.clear_cache()
+
+        result = _cached_get_my_accessible_paths()
+
+        assert result.accessible_paths == ["s3a://bucket/path"]
+        mock_get_paths.assert_called_once()
+
+
+class TestGetDatabasesFilterError:
+    """Tests for get_databases filter_by_namespace error path."""
+
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_accessible_paths")
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_groups")
+    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
+    def test_filter_error_raises(self, mock_hms, mock_groups, mock_prefix, mock_paths):
+        """Test get_databases raises when filter_by_namespace fails."""
+        mock_hms.get_databases.return_value = ["db1"]
+        mock_groups.side_effect = Exception("API error")
+
+        with pytest.raises(Exception, match="Could not filter databases by namespace"):
+            get_databases(use_hms=True, filter_by_namespace=True, return_json=False)
+
+
+class TestGetTablesSparkInnerFunction:
+    """Tests for get_tables using Spark (inner _get_tbls function)."""
+
+    def test_get_tables_spark_calls_catalog(self):
+        """Test get_tables with use_hms=False uses Spark catalog."""
+        mock_spark = Mock()
+        mock_table1 = Mock()
+        mock_table1.name = "table1"
+        mock_table2 = Mock()
+        mock_table2.name = "table2"
+        mock_spark.catalog.listTables.return_value = [mock_table1, mock_table2]
+
+        result = get_tables("test_db", spark=mock_spark, use_hms=False, return_json=False)
+
+        assert result == ["table1", "table2"]
+        mock_spark.catalog.listTables.assert_called_once_with(dbName="test_db")
+
+
+class TestGetTableSchemaErrorPath:
+    """Tests for get_table_schema inner error handling."""
+
+    def test_schema_error_returns_empty_list(self):
+        """Test _get_schema returns [] when catalog raises Exception."""
+        mock_spark = Mock()
+        mock_spark.catalog.listColumns.side_effect = Exception("table not found")
+
+        result = get_table_schema("test_db", "broken_table", spark=mock_spark, return_json=False)
+
+        assert result == []
+
+
+class TestGetDbStructureSparkPath:
+    """Tests for get_db_structure with use_hms=False (Spark inner function)."""
+
+    @patch("berdl_notebook_utils.spark.data_store.get_table_schema")
+    @patch("berdl_notebook_utils.spark.data_store.get_tables")
+    @patch("berdl_notebook_utils.spark.data_store.get_databases")
+    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
+    def test_spark_path_without_schema(self, mock_get_session, mock_get_dbs, mock_get_tables, mock_get_schema):
+        """Test get_db_structure via Spark without schema."""
+        mock_spark = Mock()
+        mock_get_session.return_value = mock_spark
+        mock_get_dbs.return_value = ["db1"]
+        mock_get_tables.return_value = ["t1", "t2"]
+
+        result = get_db_structure(with_schema=False, use_hms=False, return_json=False)
+
+        assert result == {"db1": ["t1", "t2"]}
+
+    @patch("berdl_notebook_utils.spark.data_store.get_table_schema")
+    @patch("berdl_notebook_utils.spark.data_store.get_tables")
+    @patch("berdl_notebook_utils.spark.data_store.get_databases")
+    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
+    def test_spark_path_with_schema(self, mock_get_session, mock_get_dbs, mock_get_tables, mock_get_schema):
+        """Test get_db_structure via Spark with schema."""
+        mock_spark = Mock()
+        mock_get_session.return_value = mock_spark
+        mock_get_dbs.return_value = ["db1"]
+        mock_get_tables.return_value = ["t1"]
+        mock_get_schema.return_value = ["col1", "col2"]
+
+        result = get_db_structure(with_schema=True, use_hms=False, return_json=False)
+
+        assert result == {"db1": {"t1": ["col1", "col2"]}}
