@@ -118,6 +118,8 @@ services:
     command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
   spark-connect-proxy:
+    # image: ghcr.io/berdatalakehouse/spark_connect_proxy:main
+    # platform: linux/amd64
     build:
       context: ../spark_connect_proxy
       dockerfile: Dockerfile
@@ -165,10 +167,7 @@ services:
     environment:
       # Shared MCP service - connects to user-specific Spark Connect servers
       # For docker-compose local dev, we default to the primary notebook
-      # NOTE: Due to different port mappings in docker-compose (user1:15002, user2:15003),
-      #       the MCP server will primarily work with the primary user. In Kubernetes, all users
-      #       follow the same pattern: sc://jupyter-{username}.jupyterhub-{env}:15002
-      - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook-${CI_KBASE_USERNAME}:15002
+      - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
       - MINIO_ENDPOINT_URL=minio:9002
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
