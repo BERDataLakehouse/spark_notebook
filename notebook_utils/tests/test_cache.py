@@ -16,18 +16,20 @@ class TestKbaseTokenDependent:
         """Test that decorator registers the function in _token_change_caches."""
         initial_len = len(_token_change_caches)
 
-        # Production order: @kbase_token_dependent on top of @lru_cache
-        # This means lru_cache wraps first, then kbase_token_dependent registers the wrapper
-        @kbase_token_dependent
-        @lru_cache
-        def dummy_func():
-            return "value"
+        try:
+            # Production order: @kbase_token_dependent on top of @lru_cache
+            # This means lru_cache wraps first, then kbase_token_dependent registers the wrapper
+            @kbase_token_dependent
+            @lru_cache
+            def dummy_func():
+                return "value"
 
-        assert len(_token_change_caches) == initial_len + 1
-        assert dummy_func in _token_change_caches
-
-        # Clean up
-        _token_change_caches.remove(dummy_func)
+            assert len(_token_change_caches) == initial_len + 1
+            assert dummy_func in _token_change_caches
+        finally:
+            # Clean up without assuming registration always occurred
+            if "dummy_func" in locals() and dummy_func in _token_change_caches:
+                _token_change_caches.remove(dummy_func)
 
     def test_returns_function_unchanged(self):
         """Test that decorator returns the function without modification."""
@@ -36,12 +38,14 @@ class TestKbaseTokenDependent:
         def original():
             return 42
 
-        result = kbase_token_dependent(original)
-        assert result is original
-        assert result() == 42
-
-        # Clean up
-        _token_change_caches.remove(original)
+        try:
+            result = kbase_token_dependent(original)
+            assert result is original
+            assert result() == 42
+        finally:
+            # Clean up without assuming registration always occurred
+            if original in _token_change_caches:
+                _token_change_caches.remove(original)
 
 
 class TestClearKbaseTokenCaches:

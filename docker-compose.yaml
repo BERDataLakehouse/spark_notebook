@@ -129,7 +129,7 @@ services:
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
       - PROXY_LISTEN_PORT=15002
       - BACKEND_PORT=15002
-      - SERVICE_TEMPLATE=spark-notebook-{username}
+      - SERVICE_TEMPLATE=spark-notebook
       - TOKEN_CACHE_TTL=300
       - MFA_EXEMPT_USERS=${CI_KBASE_USERNAME}
 

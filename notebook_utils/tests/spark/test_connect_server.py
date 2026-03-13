@@ -181,24 +181,6 @@ class TestSparkConnectServerConfig:
         assert "spark.sql.catalog.my=org.apache.iceberg.spark.SparkCatalog" in content
         assert "spark.sql.catalog.my.type=rest" in content
 
-    @patch("berdl_notebook_utils.spark.connect_server.get_settings")
-    def test_generate_spark_config_template_not_found(self, mock_get_settings):
-        """Test generate_spark_config raises if template not found."""
-        mock_settings = Mock()
-        mock_settings.USER = "test_user"
-        mock_settings.SPARK_HOME = "/opt/spark"
-        mock_settings.SPARK_CONNECT_DEFAULTS_TEMPLATE = "/nonexistent/template.conf"
-        mock_url = Mock()
-        mock_url.port = 15002
-        mock_settings.SPARK_CONNECT_URL = mock_url
-        mock_settings.SPARK_MASTER_URL = "spark://master:7077"
-        mock_get_settings.return_value = mock_settings
-
-        config = SparkConnectServerConfig()
-
-        with pytest.raises(FileNotFoundError, match="Spark config template not found"):
-            config.generate_spark_config()
-
     @patch("berdl_notebook_utils.spark.connect_server.get_my_groups")
     @patch("berdl_notebook_utils.spark.connect_server.get_namespace_prefix")
     @patch("berdl_notebook_utils.spark.connect_server.get_settings")
@@ -251,6 +233,24 @@ class TestSparkConnectServerConfig:
 
         # Should return empty string (no prefixes)
         assert result == ""
+
+    @patch("berdl_notebook_utils.spark.connect_server.get_settings")
+    def test_generate_spark_config_template_not_found(self, mock_get_settings):
+        """Test generate_spark_config raises if template not found."""
+        mock_settings = Mock()
+        mock_settings.USER = "test_user"
+        mock_settings.SPARK_HOME = "/opt/spark"
+        mock_settings.SPARK_CONNECT_DEFAULTS_TEMPLATE = "/nonexistent/template.conf"
+        mock_url = Mock()
+        mock_url.port = 15002
+        mock_settings.SPARK_CONNECT_URL = mock_url
+        mock_settings.SPARK_MASTER_URL = "spark://master:7077"
+        mock_get_settings.return_value = mock_settings
+
+        config = SparkConnectServerConfig()
+
+        with pytest.raises(FileNotFoundError, match="Spark config template not found"):
+            config.generate_spark_config()
 
 
 class TestSparkConnectServerManager:
@@ -559,8 +559,11 @@ class TestSparkConnectServerManagerStop:
         mock_sock.connect_ex.return_value = 0
 
         manager = SparkConnectServerManager()
-        # Patch socket inside the method's local import
-        with patch("socket.socket", return_value=mock_sock):
+        # Patch socket and sleep inside the method's local imports to avoid real waiting
+        with (
+            patch("socket.socket", return_value=mock_sock),
+            patch("berdl_notebook_utils.spark.connect_server.time.sleep", return_value=None),
+        ):
             result = manager._wait_for_port_release(timeout=0.1)
 
         assert result is False

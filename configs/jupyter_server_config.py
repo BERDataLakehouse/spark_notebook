@@ -147,11 +147,11 @@ def provision_polaris():
 
         polaris_creds = get_polaris_credentials()
         if polaris_creds:
-            logger.info(f"\u2705 Polaris credentials provisioned for catalog: {polaris_creds['personal_catalog']}")
+            logger.info(f"Polaris credentials provisioned for catalog: {polaris_creds['personal_catalog']}")
             if polaris_creds["tenant_catalogs"]:
                 logger.info(f"   Tenant catalogs: {', '.join(polaris_creds['tenant_catalogs'])}")
         else:
-            logger.info("\u2139\ufe0f  Polaris not configured, skipping Polaris credential provisioning")
+            logger.info("Polaris not configured, skipping Polaris credential provisioning")
     except Exception as e:
         logger.error(f"Failed to provision Polaris credentials: {e}")
 
@@ -169,9 +169,9 @@ def start_spark_connect():
             from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
 
             server_info = start_spark_connect_server()
-            logger.info(f"\u2705 Spark Connect server ready at {server_info['url']}")
+            logger.info(f"Spark Connect server ready at {server_info['url']}")
         except Exception as e:
-            logger.error(f"\u274c Failed to start Spark Connect server: {e}")
+            logger.error(f"Failed to start Spark Connect server: {e}")
 
     t = threading.Thread(target=_start, name="spark-connect-startup", daemon=True)
     t.start()

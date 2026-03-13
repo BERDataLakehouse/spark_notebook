@@ -396,3 +396,276 @@ class TestListUsers:
 
         users = metrics.list_users()
         assert users == ["alice", "bob", "charlie"]
+
+
+class TestInitEndpointParsing:
+    """Tests for __init__ endpoint URL parsing and secure inference."""
+
+    def test_https_url_strips_scheme_and_sets_secure(self):
+        """Test https:// URL is stripped and secure is inferred as True."""
+        with patch("berdl_notebook_utils.spark.metrics.Minio") as mock_minio:
+            SparkJobMetrics(endpoint="https://minio.example.com", access_key="ak", secret_key="sk")
+            mock_minio.assert_called_once_with("minio.example.com", access_key="ak", secret_key="sk", secure=True)
+
+    def test_http_url_strips_scheme_and_sets_insecure(self):
+        """Test http:// URL is stripped and secure is inferred as False."""
+        with patch("berdl_notebook_utils.spark.metrics.Minio") as mock_minio:
+            SparkJobMetrics(endpoint="http://localhost:9000", access_key="ak", secret_key="sk")
+            mock_minio.assert_called_once_with("localhost:9000", access_key="ak", secret_key="sk", secure=False)
+
+    def test_explicit_secure_overrides_scheme(self):
+        """Test explicit secure=False with https:// URL — explicit wins."""
+        with patch("berdl_notebook_utils.spark.metrics.Minio") as mock_minio:
+            SparkJobMetrics(endpoint="https://minio.example.com", access_key="ak", secret_key="sk", secure=False)
+            mock_minio.assert_called_once_with("minio.example.com", access_key="ak", secret_key="sk", secure=False)
+
+    def test_no_scheme_falls_back_to_env_var(self):
+        """Test no scheme falls back to MINIO_SECURE env var."""
+        with (
+            patch("berdl_notebook_utils.spark.metrics.Minio") as mock_minio,
+            patch.dict("os.environ", {"MINIO_SECURE": "true"}),
+        ):
+            SparkJobMetrics(endpoint="minio.example.com:9000", access_key="ak", secret_key="sk")
+            mock_minio.assert_called_once_with("minio.example.com:9000", access_key="ak", secret_key="sk", secure=True)
+
+
+class TestGetJobSummaryAllUsers:
+    """Tests for get_job_summary with username=None (all-users path)."""
+
+    def test_all_users_returns_summary(self, metrics):
+        """Test get_job_summary without username queries all users."""
+        compressed = _compress_events(SAMPLE_EVENTS)
+
+        # _list_all_app_dirs: recursive list returning objects from multiple users
+        metrics._client.list_objects.side_effect = [
+            # First call: recursive list for _list_all_app_dirs
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+            # Second call: list files in app dir for _read_event_files
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+        ]
+        metrics._client.get_object.return_value = _make_minio_response(compressed)
+
+        df = metrics.get_job_summary(username=None)
+
+        assert len(df) == 1
+        assert df.iloc[0]["username"] == "alice"
+
+    def test_all_users_skips_empty_events(self, metrics):
+        """Test all-users path skips apps with no events."""
+        metrics._client.list_objects.side_effect = [
+            # _list_all_app_dirs finds one app
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+            # _read_event_files returns no .zstd files
+            [],
+        ]
+
+        df = metrics.get_job_summary(username=None)
+        assert df.empty
+
+    def test_all_users_skips_no_app_id(self, metrics):
+        """Test all-users path skips jobs with empty app_id."""
+        events_no_app_id = [
+            {"Event": "SparkListenerEnvironmentUpdate", "Spark Properties": []},
+        ]
+        compressed = _compress_events(events_no_app_id)
+
+        metrics._client.list_objects.side_effect = [
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+        ]
+        metrics._client.get_object.return_value = _make_minio_response(compressed)
+
+        df = metrics.get_job_summary(username=None)
+        assert df.empty
+
+
+class TestGetTaskDetailAllUsers:
+    """Tests for get_task_detail all-users path and edge cases."""
+
+    def test_all_users_returns_task_rows(self, metrics):
+        """Test get_task_detail without username queries all users."""
+        compressed = _compress_events(SAMPLE_EVENTS)
+
+        metrics._client.list_objects.side_effect = [
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+        ]
+        metrics._client.get_object.return_value = _make_minio_response(compressed)
+
+        df = metrics.get_task_detail(username=None)
+        assert len(df) == 1
+
+    def test_skips_empty_task_metrics(self, metrics):
+        """Test that TaskEnd events with empty Task Metrics are skipped."""
+        events = [
+            {"Event": "SparkListenerApplicationStart", "App ID": "app-1", "App Name": "test"},
+            {"Event": "SparkListenerTaskEnd", "Task Metrics": {}},
+            {"Event": "SparkListenerTaskEnd", "Task Metrics": None},
+            {
+                "Event": "SparkListenerTaskEnd",
+                "Task Metrics": {
+                    "Executor Run Time": 100,
+                    "Executor CPU Time": 0,
+                    "JVM GC Time": 0,
+                    "Peak Execution Memory": 1000,
+                    "Memory Bytes Spilled": 0,
+                    "Disk Bytes Spilled": 0,
+                    "Input Metrics": {},
+                    "Output Metrics": {},
+                    "Shuffle Read Metrics": {},
+                    "Shuffle Write Metrics": {},
+                },
+                "Task Info": {"Task ID": 0, "Executor ID": "1", "Host": "w1", "Launch Time": 0, "Finish Time": 100},
+            },
+        ]
+        compressed = _compress_events(events)
+
+        metrics._client.list_objects.side_effect = [
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/")],
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+        ]
+        metrics._client.get_object.return_value = _make_minio_response(compressed)
+
+        df = metrics.get_task_detail(username="alice")
+        # Only 1 task has valid Task Metrics
+        assert len(df) == 1
+
+
+class TestListAllAppDirsEdgeCases:
+    """Tests for _list_all_app_dirs edge cases."""
+
+    def test_skips_entries_with_few_path_parts(self, metrics):
+        """Test that entries with <2 path parts after prefix are skipped."""
+        metrics._client.list_objects.return_value = [
+            _make_obj("spark-job-logs/lonely-file.txt"),  # Only 1 part after prefix
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260311000000-0001/events.zstd"),
+        ]
+
+        result = metrics._list_all_app_dirs()
+        assert len(result) == 1
+        assert result[0][0] == "alice"
+
+    def test_extract_ts_fallback_on_malformed_dir(self, metrics):
+        """Test that _extract_ts returns empty string for malformed eventlog dirs."""
+        metrics._client.list_objects.return_value = [
+            # Has eventlog_v2_ but no valid app-TIMESTAMP format
+            _make_obj("spark-job-logs/alice/eventlog_v2_malformed/events.zstd"),
+            _make_obj("spark-job-logs/bob/eventlog_v2_app-20260311000000-0001/events.zstd"),
+        ]
+
+        result = metrics._list_all_app_dirs()
+        # Both should be returned; malformed one sorts with empty timestamp
+        assert len(result) == 2
+
+
+class TestListAppDirsFiltering:
+    """Tests for _list_app_dirs since and limit filtering."""
+
+    def test_since_filters_old_dirs(self, metrics):
+        """Test since parameter filters out old dirs."""
+        metrics._client.list_objects.return_value = [
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260313000000-0001/"),
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260301000000-0001/"),
+        ]
+
+        result = metrics._list_app_dirs("alice", since="20260310")
+        assert len(result) == 1
+        assert "20260313" in result[0]
+
+    def test_since_handles_malformed_timestamp(self, metrics):
+        """Test since filter gracefully handles dirs without valid timestamp."""
+        metrics._client.list_objects.return_value = [
+            _make_obj("spark-job-logs/alice/eventlog_v2_malformed/"),
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260313000000-0001/"),
+        ]
+
+        result = metrics._list_app_dirs("alice", since="20260310")
+        # Malformed dir is kept (IndexError caught, not skipped)
+        assert len(result) == 2
+
+    def test_limit_returns_most_recent(self, metrics):
+        """Test limit returns N most recent dirs."""
+        metrics._client.list_objects.return_value = [
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260311000000-0001/"),
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260313000000-0001/"),
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260312000000-0001/"),
+        ]
+
+        result = metrics._list_app_dirs("alice", limit=2)
+        assert len(result) == 2
+        # Should be sorted descending
+        assert "20260313" in result[0]
+        assert "20260312" in result[1]
+
+    def test_skips_non_eventlog_dirs(self, metrics):
+        """Test that non-eventlog directories are skipped."""
+        metrics._client.list_objects.return_value = [
+            _make_obj("spark-job-logs/alice/some-other-dir/"),
+            _make_obj("spark-job-logs/alice/eventlog_v2_app-20260311000000-0001/"),
+        ]
+
+        result = metrics._list_app_dirs("alice")
+        assert len(result) == 1
+
+
+class TestParseUserLogsEdgeCases:
+    """Tests for _parse_user_logs edge cases."""
+
+    def test_skips_jobs_without_app_id(self, metrics):
+        """Test _parse_user_logs skips jobs with empty app_id."""
+        events_no_app = [{"Event": "SparkListenerStageCompleted"}]
+        compressed = _compress_events(events_no_app)
+
+        metrics._client.list_objects.side_effect = [
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/")],
+            [_make_obj("spark-job-logs/alice/eventlog_v2_app-20260311022136-0001/events.zstd")],
+        ]
+        metrics._client.get_object.return_value = _make_minio_response(compressed)
+
+        jobs = metrics._parse_user_logs("alice")
+        assert len(jobs) == 0
+
+
+class TestEventsToJobMetricsAdditionalEvents:
+    """Tests for event types not covered by existing tests."""
+
+    def test_resource_profile_added(self, metrics):
+        """Test SparkListenerResourceProfileAdded sets allocated memory/cores."""
+        events = [
+            {"Event": "SparkListenerApplicationStart", "App ID": "app-1"},
+            {
+                "Event": "SparkListenerResourceProfileAdded",
+                "Executor Resource Requests": {
+                    "memory": {"Amount": 4096},
+                    "cores": {"Amount": 4},
+                },
+            },
+        ]
+        job = metrics._events_to_job_metrics(events, "alice")
+
+        assert job.allocated_executor_memory_mb == 4096
+        assert job.allocated_executor_cores == 4
+
+    def test_block_manager_added_tracks_max(self, metrics):
+        """Test SparkListenerBlockManagerAdded tracks maximum memory values."""
+        events = [
+            {"Event": "SparkListenerApplicationStart", "App ID": "app-1"},
+            {"Event": "SparkListenerBlockManagerAdded", "Maximum Memory": 1000, "Maximum Onheap Memory": 800},
+            {"Event": "SparkListenerBlockManagerAdded", "Maximum Memory": 2000, "Maximum Onheap Memory": 1500},
+            {"Event": "SparkListenerBlockManagerAdded", "Maximum Memory": 500, "Maximum Onheap Memory": 400},
+        ]
+        job = metrics._events_to_job_metrics(events, "alice")
+
+        assert job.block_manager_max_memory_bytes == 2000
+        assert job.block_manager_max_onheap_bytes == 1500
+
+    def test_task_end_with_empty_metrics_skipped(self, metrics):
+        """Test SparkListenerTaskEnd with empty Task Metrics is skipped."""
+        events = [
+            {"Event": "SparkListenerApplicationStart", "App ID": "app-1"},
+            {"Event": "SparkListenerTaskEnd", "Task Metrics": {}},
+            {"Event": "SparkListenerTaskEnd"},  # No Task Metrics key at all
+        ]
+        job = metrics._events_to_job_metrics(events, "alice")
+
+        assert job.total_tasks == 0

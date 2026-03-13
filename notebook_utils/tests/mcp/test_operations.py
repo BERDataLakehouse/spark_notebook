@@ -500,3 +500,119 @@ class TestMcpSelectTable:
 
             call_kwargs = mock_api.sync.call_args[1]
             assert call_kwargs["body"].distinct is True
+
+
+class TestNoneResponseErrors:
+    """Tests for None response error paths across all MCP operations."""
+
+    def test_list_tables_none_response(self, mock_client):
+        """Test mcp_list_tables raises on None response."""
+        with patch("berdl_notebook_utils.mcp.operations.list_database_tables") as mock_api:
+            mock_api.sync.return_value = None
+
+            with pytest.raises(Exception, match="no response for list_tables"):
+                mcp_list_tables("test_db")
+
+    def test_get_table_schema_none_response(self, mock_client):
+        """Test mcp_get_table_schema raises on None response."""
+        with patch("berdl_notebook_utils.mcp.operations.get_table_schema") as mock_api:
+            mock_api.sync.return_value = None
+
+            with pytest.raises(Exception, match="no response for get_table_schema"):
+                mcp_get_table_schema("db", "table")
+
+    def test_get_database_structure_none_response(self, mock_client):
+        """Test mcp_get_database_structure raises on None response."""
+        with patch("berdl_notebook_utils.mcp.operations.get_database_structure") as mock_api:
+            mock_api.sync.return_value = None
+
+            with pytest.raises(Exception, match="no response for get_database_structure"):
+                mcp_get_database_structure()
+
+    def test_count_table_none_response(self, mock_client):
+        """Test mcp_count_table raises on None response."""
+        with patch("berdl_notebook_utils.mcp.operations.count_delta_table") as mock_api:
+            mock_api.sync.return_value = None
+
+            with pytest.raises(Exception, match="no response for count_table"):
+                mcp_count_table("db", "table")
+
+    def test_sample_table_none_response(self, mock_client):
+        """Test mcp_sample_table raises on None response."""
+        with patch("berdl_notebook_utils.mcp.operations.sample_delta_table") as mock_api:
+            mock_api.sync.return_value = None
+
+            with pytest.raises(Exception, match="no response for sample_table"):
+                mcp_sample_table("db", "table")
+
+    def test_query_table_none_response(self, mock_client):
+        """Test mcp_query_table raises on None response."""
+        with patch("berdl_notebook_utils.mcp.operations.query_delta_table") as mock_api:
+            mock_api.sync.return_value = None
+
+            with pytest.raises(Exception, match="no response for query_table"):
+                mcp_query_table("SELECT 1")
+
+    def test_select_table_none_response(self, mock_client):
+        """Test mcp_select_table raises on None response."""
+        with patch("berdl_notebook_utils.mcp.operations.select_delta_table") as mock_api:
+            mock_api.sync.return_value = None
+
+            with pytest.raises(Exception, match="no response for select_table"):
+                mcp_select_table("db", "table")
+
+
+class TestDatabaseStructureResponseConversion:
+    """Tests for get_database_structure response structure conversion."""
+
+    def test_structure_with_to_dict(self, mock_client):
+        """Test response structure with to_dict method is converted."""
+        mock_response = Mock()
+        mock_structure = Mock()
+        mock_structure.to_dict.return_value = {"db1": ["t1"]}
+        mock_response.structure = mock_structure
+
+        with patch("berdl_notebook_utils.mcp.operations.get_database_structure") as mock_api:
+            mock_api.sync.return_value = mock_response
+
+            result = mcp_get_database_structure()
+
+        assert result == {"db1": ["t1"]}
+
+    def test_structure_without_to_dict_uses_dict(self, mock_client):
+        """Test response structure without to_dict uses dict() conversion."""
+        mock_response = Mock(spec=[])  # No to_dict
+        # Use a real dict-like object without to_dict
+        mock_response.structure = {"db1": ["t1"]}
+
+        with patch("berdl_notebook_utils.mcp.operations.get_database_structure") as mock_api:
+            mock_api.sync.return_value = mock_response
+
+            result = mcp_get_database_structure()
+
+        assert result == {"db1": ["t1"]}
+
+
+class TestSelectTableHavingSpec:
+    """Tests for mcp_select_table having parameter."""
+
+    def test_with_having(self, mock_client):
+        """Test having parameter builds FilterCondition specs."""
+        mock_response = Mock()
+        mock_response.data = []
+        mock_response.pagination = Mock(limit=100, offset=0, total_count=0, has_more=False)
+
+        with patch("berdl_notebook_utils.mcp.operations.select_delta_table") as mock_api:
+            mock_api.sync.return_value = mock_response
+
+            mcp_select_table(
+                "db",
+                "table",
+                group_by=["status"],
+                having=[{"column": "count", "operator": ">", "value": "10"}],
+            )
+
+            call_kwargs = mock_api.sync.call_args[1]
+            having = call_kwargs["body"].having
+            assert len(having) == 1
+            assert having[0].column == "count"
