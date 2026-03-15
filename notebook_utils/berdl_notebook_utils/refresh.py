@@ -15,7 +15,7 @@ from berdl_notebook_utils.berdl_settings import get_settings
 from berdl_notebook_utils.minio_governance.operations import (
     CREDENTIALS_CACHE_FILE,
     POLARIS_CREDENTIALS_CACHE_FILE,
-    get_minio_credentials,
+    rotate_minio_credentials,
     get_polaris_credentials,
 )
 from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
@@ -41,7 +41,7 @@ def refresh_spark_environment() -> dict:
     Steps performed:
         1. Delete MinIO and Polaris credential cache files
         2. Clear the in-memory ``get_settings()`` LRU cache
-        3. Re-fetch MinIO credentials (sets MINIO_ACCESS_KEY/SECRET_KEY env vars)
+        3. Rotate MinIO credentials via MMS (generates new secret key, updates env vars)
         4. Re-fetch Polaris credentials (sets POLARIS_CREDENTIAL and catalog env vars)
         5. Clear settings cache again so downstream code sees fresh env vars
         6. Stop any existing Spark session
@@ -66,14 +66,14 @@ def refresh_spark_environment() -> dict:
     # 2. Clear in-memory settings cache
     get_settings.cache_clear()
 
-    # 3. Re-fetch MinIO credentials
+    # 3. Rotate MinIO credentials (generates new secret key)
     try:
-        minio_creds = get_minio_credentials()
+        minio_creds = rotate_minio_credentials()
         result["minio"] = {"status": "ok", "username": minio_creds.username}
-        logger.info("MinIO credentials refreshed for user: %s", minio_creds.username)
+        logger.info("MinIO credentials rotated for user: %s", minio_creds.username)
     except Exception as exc:
         result["minio"] = {"status": "error", "error": str(exc)}
-        logger.warning("Failed to refresh MinIO credentials: %s", exc)
+        logger.warning("Failed to rotate MinIO credentials: %s", exc)
 
     # 4. Re-fetch Polaris credentials
     try:

@@ -15,7 +15,10 @@ from typing import TypeVar
 from typing import TypedDict
 
 import httpx
-from governance_client.api.credentials import get_credentials_credentials_get
+from governance_client.api.credentials import (
+    get_credentials_credentials_get,
+    rotate_credentials_credentials_rotate_post,
+)
 from governance_client.api.health import health_check_health_get
 from governance_client.api.polaris import provision_polaris_user_polaris_user_provision_username_post
 from governance_client.api.management import (
@@ -252,6 +255,10 @@ def get_minio_credentials() -> CredentialsResponse:
     os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
     os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
 
+    # Clear the cached settings so subsequent get_settings() calls pick up the
+    # new MINIO_ACCESS_KEY / MINIO_SECRET_KEY env vars.
+    get_settings.cache_clear()
+
     return credentials
 
 
@@ -329,6 +336,50 @@ def get_polaris_credentials() -> PolarisCredentials | None:
     os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(result["tenant_catalogs"])
 
     return result
+
+
+def rotate_minio_credentials() -> CredentialsResponse:
+    """
+    Rotate MinIO credentials for the current user and update local caches.
+
+    Calls POST /credentials/rotate to generate new credentials in MinIO,
+    then updates the local cache file and environment variables.
+
+    Uses the same file locking strategy as get_minio_credentials() to prevent
+    concurrent access from corrupting the cache file.
+
+    Returns:
+        CredentialsResponse with username, access_key, and secret_key
+    """
+    client = get_governance_client()
+    api_response = rotate_credentials_credentials_rotate_post.sync(client=client)
+    if not isinstance(api_response, CredentialsResponse):
+        raise RuntimeError("Failed to rotate credentials from API")
+
+    # Update the local credential cache under lock
+    cache_path = _get_credentials_cache_path()
+    lock_path = cache_path.with_suffix(".lock")
+
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            _write_credentials_cache(cache_path, api_response)
+        finally:
+            pass
+
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    # Update environment variables
+    os.environ["MINIO_ACCESS_KEY"] = api_response.access_key
+    os.environ["MINIO_SECRET_KEY"] = api_response.secret_key
+
+    # Clear cached settings so downstream code sees fresh env vars
+    get_settings.cache_clear()
+
+    return api_response
 
 
 def get_my_sql_warehouse() -> UserSqlWarehousePrefixResponse:
