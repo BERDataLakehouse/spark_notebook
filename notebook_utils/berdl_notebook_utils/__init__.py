@@ -56,6 +56,7 @@ from berdl_notebook_utils.agent import (
     AgentSettings,
     get_agent_settings,
 )
+from berdl_notebook_utils.refresh import refresh_spark_environment
 
 __all__ = [
     "BERDLSettings",
@@ -106,6 +107,8 @@ __all__ = [
     "BERDLAgent",
     "AgentSettings",
     "get_agent_settings",
+    # Environment refresh
+    "refresh_spark_environment",
 ]
 
 
@@ -166,6 +169,10 @@ def berdl_notebook_help():
     - create_berdl_agent: Create an AI agent for natural language data lake interactions
     - BERDLAgent: Agent class for advanced configuration
     - AgentSettings: Agent configuration settings
+
+    Environment Refresh:
+    -------------------
+    - refresh_spark_environment: Clear credential caches, re-fetch credentials, and restart Spark
 
     Usage:
     ------

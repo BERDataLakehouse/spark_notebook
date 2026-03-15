@@ -35,6 +35,7 @@ from berdl_notebook_utils.minio_governance.operations import (
     remove_group_member,
     create_tenant_and_assign_users,
     request_tenant_access,
+    rotate_minio_credentials,
     CREDENTIALS_CACHE_FILE,
     CredentialsResponse,
     ErrorResponse,
@@ -195,6 +196,68 @@ class TestGetMinioCredentials:
 
         assert result == mock_creds
         mock_write_cache.assert_called_once()
+
+
+class TestRotateMinioCredentials:
+    """Tests for rotate_minio_credentials function."""
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    @patch("berdl_notebook_utils.minio_governance.operations.os")
+    @patch("berdl_notebook_utils.minio_governance.operations._write_credentials_cache")
+    @patch("berdl_notebook_utils.minio_governance.operations._get_credentials_cache_path")
+    @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    def test_rotates_and_updates_cache(
+        self,
+        mock_get_client,
+        mock_rotate_api,
+        mock_cache_path,
+        mock_write_cache,
+        mock_os,
+        mock_get_settings,
+        tmp_path,
+    ):
+        """Test rotate calls API and updates local cache and env vars."""
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+
+        mock_creds = Mock(spec=CredentialsResponse)
+        mock_creds.access_key = "rotated_key"
+        mock_creds.secret_key = "rotated_secret"
+        mock_creds.username = "testuser"
+        mock_rotate_api.sync.return_value = mock_creds
+
+        mock_cache_path.return_value = tmp_path / ".cache"
+
+        result = rotate_minio_credentials()
+
+        assert result == mock_creds
+        mock_rotate_api.sync.assert_called_once_with(client=mock_client)
+        mock_write_cache.assert_called_once()
+        mock_os.environ.__setitem__.assert_any_call("MINIO_ACCESS_KEY", "rotated_key")
+        mock_os.environ.__setitem__.assert_any_call("MINIO_SECRET_KEY", "rotated_secret")
+        mock_get_settings.cache_clear.assert_called_once()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    def test_raises_on_error_response(self, mock_get_client, mock_rotate_api):
+        """Test raises RuntimeError when API returns an error response."""
+        mock_get_client.return_value = Mock()
+        mock_error = Mock(spec=ErrorResponse)
+        mock_rotate_api.sync.return_value = mock_error
+
+        with pytest.raises(RuntimeError, match="Failed to rotate credentials"):
+            rotate_minio_credentials()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    def test_raises_on_none_response(self, mock_get_client, mock_rotate_api):
+        """Test raises RuntimeError when API returns None."""
+        mock_get_client.return_value = Mock()
+        mock_rotate_api.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="Failed to rotate credentials"):
+            rotate_minio_credentials()
 
 
 class TestGetMySqlWarehouse:

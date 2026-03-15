@@ -144,6 +144,17 @@ services:
       - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
       - KBASE_APPROVED_ROLES=BERDL_USER
       - REDIS_URL=redis://redis:6379
+      # Credential store (PostgreSQL)
+      - MMS_DB_HOST=postgres
+      - MMS_DB_PORT=5432
+      - MMS_DB_NAME=mms
+      - MMS_DB_USER=mms
+      - MMS_DB_PASSWORD=mmspassword
+      - MMS_DB_ENCRYPTION_KEY=change-me-in-prod
+    depends_on:
+      - minio
+      - redis
+      - postgres
 
   datalake-mcp-server:
     # image: ghcr.io/berdatalakehouse/datalake-mcp-server:main
@@ -162,26 +173,18 @@ services:
       - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
       - MINIO_ENDPOINT_URL=minio:9002
+      # MinIO credentials fetched from MMS governance API per request
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
-      # PostgreSQL connection (readonly user created by init script)
-      - POSTGRES_URL=postgres:5432
-      - POSTGRES_DB=hive
-      - POSTGRES_USER=readonly_user
-      - POSTGRES_PASSWORD=readonly_password
       - KBASE_REQUIRED_ROLES=BERDL_USER
       - MFA_EXEMPT_USERS=${CI_KBASE_USERNAME}
-    volumes:
-      # Mount the shared /home directory to access all users' credentials
-      # This allows the MCP server to dynamically read any user's credentials
-      # from /home/{username}/.berdl_minio_credentials
-      # In K8s: mount the parent directory or use a shared volume
-      - users_home:/home:ro
+      - BERDL_REDIS_HOST=redis
+      - BERDL_REDIS_PORT=6379
     depends_on:
       - hive-metastore
       - minio
       - minio-manager-service
-      - postgres
+      - redis
 
   tenant-access-request-service:
     # image: ghcr.io/berdatalakehouse/tenant_access_request_service:main
@@ -269,7 +272,8 @@ services:
       - POSTGRES_DB=hive
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-postgres-readonly.sh:/docker-entrypoint-initdb.d/init-postgres-readonly.sh:ro
+      - ./scripts/init-postgres-readonly.sh:/docker-entrypoint-initdb.d/01-init-postgres-readonly.sh:ro
+      - ./scripts/init-mms-db.sh:/docker-entrypoint-initdb.d/02-init-mms-db.sh:ro
 
   hive-metastore:
     # image: ghcr.io/berdatalakehouse/hive_metastore:main
@@ -335,6 +339,7 @@ services:
 
       echo 'Creating buckets...';
       mc mb --ignore-existing local/cdm-lake;
+      mc mb --ignore-existing local/cdm-spark-job-logs;
 
       echo 'MinIO bucket creation complete.';
       "

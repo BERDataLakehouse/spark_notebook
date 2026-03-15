@@ -118,6 +118,11 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
 )
 
 # ============================================================================
+# Environment Refresh
+# ============================================================================
+from berdl_notebook_utils.refresh import refresh_spark_environment  # noqa: F401
+
+# ============================================================================
 # Help Utilities
 # ============================================================================
 from berdl_notebook_utils import berdl_notebook_help  # noqa: F401
