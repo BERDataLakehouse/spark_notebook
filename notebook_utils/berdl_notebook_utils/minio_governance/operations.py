@@ -214,6 +214,9 @@ def rotate_minio_credentials() -> CredentialsResponse:
     Calls POST /credentials/rotate to generate new credentials in MinIO,
     then updates the local cache file and environment variables.
 
+    Uses the same file locking strategy as get_minio_credentials() to prevent
+    concurrent access from corrupting the cache file.
+
     Returns:
         CredentialsResponse with username, access_key, and secret_key
     """
@@ -222,9 +225,21 @@ def rotate_minio_credentials() -> CredentialsResponse:
     if not isinstance(api_response, CredentialsResponse):
         raise RuntimeError("Failed to rotate credentials from API")
 
-    # Update the local credential cache
+    # Update the local credential cache under lock
     cache_path = _get_credentials_cache_path()
-    _write_credentials_cache(cache_path, api_response)
+    lock_path = cache_path.with_suffix(".lock")
+
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            _write_credentials_cache(cache_path, api_response)
+        finally:
+            pass
+
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
     # Update environment variables
     os.environ["MINIO_ACCESS_KEY"] = api_response.access_key
