@@ -239,7 +239,7 @@ requires-dist = [
     { name = "attrs", specifier = ">=25.4.0" },
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client?rev=0.2.3" },
-    { name = "datalake-mcp-server-client", git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.6" },
+    { name = "datalake-mcp-server-client", git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.8" },
     { name = "hmsclient", specifier = ">=0.1" },
     { name = "httpx", specifier = ">=0.24" },
     { name = "ipython", specifier = ">=9.10.0" },
@@ -250,7 +250,7 @@ requires-dist = [
     { name = "langchain-community", specifier = ">=0.3.31" },
     { name = "langchain-openai", specifier = ">=0.3.35" },
     { name = "minio", specifier = ">=7.0" },
-    { name = "minio-manager-service-client", git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.7" },
+    { name = "minio-manager-service-client", git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.13" },
     { name = "pandas", specifier = ">=3.0.1" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pyspark", extras = ["connect"], specifier = ">=4.0" },
@@ -492,7 +492,7 @@ wheels = [
 [[package]]
 name = "datalake-mcp-server-client"
 version = "0.0.1"
-source = { git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.6#525e40a5fa481bff8b556051612250bd6735a7a5" }
+source = { git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.8#044203a427f3170f094376d6b1d54f5e99bc4643" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
@@ -1089,7 +1089,7 @@ wheels = [
 [[package]]
 name = "minio-manager-service-client"
 version = "0.0.1"
-source = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.7#d60b6ea2f4cf49979eac22b9ee3b884eb24f39d3" }
+source = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git?rev=v0.0.13#e6b64913c66435ed28222fa80920d3d33c21de7f" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
@@ -1359,7 +1359,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
