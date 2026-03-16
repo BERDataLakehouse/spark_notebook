@@ -14,13 +14,13 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
-from berdl_notebook_utils.minio_governance.operations import (
+from ..berdl_settings import BERDLSettings, get_settings
+from ..minio_governance.operations import (
     get_my_groups,
     get_my_sql_warehouse,
     get_namespace_prefix,
 )
-from berdl_notebook_utils.setup_spark_session import (
+from ..setup_spark_session import (
     DRIVER_MEMORY_OVERHEAD,
     EXECUTOR_MEMORY_OVERHEAD,
     convert_memory_format,
