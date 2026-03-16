@@ -10,6 +10,7 @@ from .operations import (
     check_governance_health,
     get_group_sql_warehouse,
     get_minio_credentials,
+    get_polaris_credentials,
     rotate_minio_credentials,
     get_my_accessible_paths,
     get_my_groups,
@@ -21,6 +22,7 @@ from .operations import (
     add_group_member,
     create_tenant_and_assign_users,
     list_groups,
+    list_user_names,
     list_users,
     remove_group_member,
     # Table operations
@@ -32,8 +34,8 @@ from .operations import (
     # Tenant access requests
     list_available_groups,
     request_tenant_access,
-    # Lightweight management queries (direct HTTP)
-    list_user_names,
+    # Migration (admin-only)
+    ensure_polaris_resources,
     regenerate_policies,
 )
 
@@ -42,6 +44,7 @@ __all__ = [
     "check_governance_health",
     "get_group_sql_warehouse",
     "get_minio_credentials",
+    "get_polaris_credentials",
     "rotate_minio_credentials",
     "get_my_accessible_paths",
     "get_my_groups",
@@ -66,4 +69,7 @@ __all__ = [
     # Tenant access requests
     "list_available_groups",
     "request_tenant_access",
+    # Migration (admin-only)
+    "ensure_polaris_resources",
+    "regenerate_policies",
 ]
