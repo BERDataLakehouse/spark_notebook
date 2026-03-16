@@ -141,6 +141,24 @@ class TestCheckGovernanceHealth:
 
         assert result.status == "healthy"
 
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.health_check_health_get")
+    def test_check_governance_health_error_response(self, mock_health_check, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_health_check.sync.return_value = ErrorResponse(message="service down", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Health check failed: service down"):
+            check_governance_health()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.health_check_health_get")
+    def test_check_governance_health_none_response(self, mock_health_check, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_health_check.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            check_governance_health()
+
 
 class TestGetMinioCredentials:
     """Tests for get_minio_credentials function."""
@@ -289,6 +307,28 @@ class TestGetMySqlWarehouse:
 
         assert result.sql_warehouse_prefix == "s3a://bucket/prefix"
 
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get"
+    )
+    def test_get_my_sql_warehouse_error_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = ErrorResponse(message="not found", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get SQL warehouse prefix"):
+            get_my_sql_warehouse()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get"
+    )
+    def test_get_my_sql_warehouse_none_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_sql_warehouse()
+
 
 class TestGetGroupSqlWarehouse:
     """Tests for get_group_sql_warehouse function."""
@@ -306,6 +346,28 @@ class TestGetGroupSqlWarehouse:
         get_group_sql_warehouse("test_group")
 
         mock_get_warehouse.sync.assert_called_once_with(client=mock_client, group_name="test_group")
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get"
+    )
+    def test_get_group_sql_warehouse_error_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = ErrorResponse(message="not a member", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get group SQL warehouse prefix"):
+            get_group_sql_warehouse("test_group")
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get"
+    )
+    def test_get_group_sql_warehouse_none_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_group_sql_warehouse("test_group")
 
 
 class TestGetNamespacePrefix:
@@ -334,6 +396,24 @@ class TestGetNamespacePrefix:
         result = get_namespace_prefix(tenant="team")
 
         assert result.tenant_namespace_prefix == "t_team__"
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_namespace_prefix_workspaces_me_namespace_prefix_get")
+    def test_get_namespace_prefix_error_response(self, mock_get_prefix, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_prefix.sync.return_value = ErrorResponse(message="unauthorized", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get namespace prefix"):
+            get_namespace_prefix()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_namespace_prefix_workspaces_me_namespace_prefix_get")
+    def test_get_namespace_prefix_none_response(self, mock_get_prefix, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_prefix.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_namespace_prefix()
 
 
 class TestGetMyWorkspace:
@@ -367,6 +447,24 @@ class TestGetMyPolicies:
 
         assert result.user_home_policy == "policy"
 
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_policies_workspaces_me_policies_get")
+    def test_get_my_policies_error_response(self, mock_get_policies, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_policies.sync.return_value = ErrorResponse(message="forbidden", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get policies"):
+            get_my_policies()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_policies_workspaces_me_policies_get")
+    def test_get_my_policies_none_response(self, mock_get_policies, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_policies.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_policies()
+
 
 class TestGetMyGroups:
     """Tests for get_my_groups function."""
@@ -382,6 +480,24 @@ class TestGetMyGroups:
         result = get_my_groups()
 
         assert result.groups == ["group1", "group2"]
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_groups_workspaces_me_groups_get")
+    def test_get_my_groups_error_response(self, mock_get_groups, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_groups.sync.return_value = ErrorResponse(message="forbidden", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get groups"):
+            get_my_groups()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_groups_workspaces_me_groups_get")
+    def test_get_my_groups_none_response(self, mock_get_groups, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_groups.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_groups()
 
 
 class TestGetMyAccessiblePaths:
@@ -403,6 +519,28 @@ class TestGetMyAccessiblePaths:
 
         assert result.accessible_paths == ["s3a://bucket/path"]
 
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_accessible_paths_workspaces_me_accessible_paths_get"
+    )
+    def test_get_my_accessible_paths_error_response(self, mock_get_paths, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_paths.sync.return_value = ErrorResponse(message="forbidden", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get accessible paths"):
+            get_my_accessible_paths()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_accessible_paths_workspaces_me_accessible_paths_get"
+    )
+    def test_get_my_accessible_paths_none_response(self, mock_get_paths, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_paths.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_accessible_paths()
+
 
 class TestGetTableAccessInfo:
     """Tests for get_table_access_info function."""
@@ -420,6 +558,28 @@ class TestGetTableAccessInfo:
         result = get_table_access_info("test_db", "test_table")
 
         assert result.is_public is False
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_path_access_info_sharing_get_path_access_info_post")
+    def test_get_table_access_info_error_response(self, mock_get_access, mock_get_client, mock_settings):
+        mock_settings.return_value.USER = "test_user"
+        mock_get_client.return_value = Mock()
+        mock_get_access.sync.return_value = ErrorResponse(message="not found", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get table access info"):
+            get_table_access_info("test_db", "test_table")
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_path_access_info_sharing_get_path_access_info_post")
+    def test_get_table_access_info_none_response(self, mock_get_access, mock_get_client, mock_settings):
+        mock_settings.return_value.USER = "test_user"
+        mock_get_client.return_value = Mock()
+        mock_get_access.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_table_access_info("test_db", "test_table")
 
 
 class TestShareTable:
