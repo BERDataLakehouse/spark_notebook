@@ -6,7 +6,6 @@ import logging
 # Note: __file__ may not be defined when exec'd by traitlets config loader
 sys.path.insert(0, "/etc/jupyter")
 
-from berdl_notebook_utils.berdl_settings import get_settings
 from hybridcontents import HybridContentsManager
 from jupyter_server.services.contents.largefilemanager import LargeFileManager
 from grouped_s3_contents import GroupedS3ContentsManager
@@ -135,27 +134,6 @@ def get_user_governance_paths():
     return sources
 
 
-def provision_polaris():
-    """Provision Polaris credentials at server startup and set env vars.
-
-    Called once at Jupyter Server startup so credentials are available
-    before any notebook kernel opens. Subsequent calls from IPython startup
-    scripts will hit the file cache and return immediately.
-    """
-    try:
-        from berdl_notebook_utils.minio_governance import get_polaris_credentials
-
-        polaris_creds = get_polaris_credentials()
-        if polaris_creds:
-            logger.info(f"\u2705 Polaris credentials provisioned for catalog: {polaris_creds['personal_catalog']}")
-            if polaris_creds["tenant_catalogs"]:
-                logger.info(f"   Tenant catalogs: {', '.join(polaris_creds['tenant_catalogs'])}")
-        else:
-            logger.info("\u2139\ufe0f  Polaris not configured, skipping Polaris credential provisioning")
-    except Exception as e:
-        logger.error(f"Failed to provision Polaris credentials: {e}")
-
-
 def start_spark_connect():
     """Start Spark Connect server at Jupyter Server startup.
 
@@ -169,9 +147,9 @@ def start_spark_connect():
             from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
 
             server_info = start_spark_connect_server()
-            logger.info(f"\u2705 Spark Connect server ready at {server_info['url']}")
+            logger.info(f"Spark Connect server ready at {server_info['url']}")
         except Exception as e:
-            logger.error(f"\u274c Failed to start Spark Connect server: {e}")
+            logger.error(f"Failed to start Spark Connect server: {e}")
 
     t = threading.Thread(target=_start, name="spark-connect-startup", daemon=True)
     t.start()
@@ -187,20 +165,10 @@ username = os.environ.get("NB_USER", "jovyan")
 endpoint_url, access_key, secret_key, use_ssl = get_minio_config()
 governance_paths = get_user_governance_paths()
 
-# 3. Provision Polaris credentials — MUST be before Spark Connect so that
-#    POLARIS_CREDENTIAL env vars are set when generating spark-defaults.conf
-provision_polaris()
-
-# Clear the settings cache so start_spark_connect picks up the new
-# POLARIS_CREDENTIAL/POLARIS_PERSONAL_CATALOG/POLARIS_TENANT_CATALOGS env vars
-# that provision_polaris() just set. Without this, the lru_cache returns the
-# stale settings object captured before Polaris provisioning ran.
-get_settings.cache_clear()
-
-# 4. Start Spark Connect server in background (non-blocking)
+# 3. Start Spark Connect server in background (non-blocking)
 start_spark_connect()
 
-# 5. Configure HybridContentsManager
+# 4. Configure HybridContentsManager
 # - Root ("") -> Local filesystem
 # - "datalake_minio" -> GroupedS3ContentsManager with all S3 paths as subdirectories
 c.HybridContentsManager.manager_classes = {

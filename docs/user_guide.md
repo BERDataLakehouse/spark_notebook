@@ -52,9 +52,8 @@ Log in using your KBase credentials (the same 3rd party identity provider, usern
 
 ### 3. Data Access
 By default, you have **read/write access** to:
-- Your personal Iceberg catalog (`my`) — create namespaces and tables here
-- Any tenant Iceberg catalogs you belong to (e.g., `kbase`) — shared team data
-- Your personal S3 storage (`s3a://cdm-lake/users-sql-warehouse/{username}/`)
+- Your personal SQL warehouse (`s3a://cdm-lake/users-sql-warehouse/{username}/`)
+- Any tenant SQL warehouses that you belong to (e.g., `s3a://cdm-lake/tenant-sql-warehouse/kbase/`)
 
 For questions about data access or permissions, please reach out to the BERDL Platform team.
 
@@ -81,11 +80,9 @@ spark = get_spark_session()
 
 This automatically configures:
 - Spark Connect server connection
-- Apache Iceberg catalogs (personal `my` + tenant catalogs via Polaris)
+- Hive Metastore integration
 - MinIO S3 access
-- Delta Lake support (legacy, for backward compatibility)
-
-> **Note:** BERDL has migrated from Delta Lake to Apache Iceberg. See the [Iceberg Migration Guide](iceberg_migration_guide.md) for details on the new catalog structure and Iceberg-specific features like time travel and schema evolution.
+- Delta Lake support
 
 #### 5.2 Displaying DataFrames
 

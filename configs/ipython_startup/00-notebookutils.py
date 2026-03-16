@@ -102,7 +102,6 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
     create_tenant_and_assign_users,
     get_group_sql_warehouse,
     get_minio_credentials,
-    get_polaris_credentials,
     get_my_accessible_paths,
     get_my_groups,
     get_my_policies,

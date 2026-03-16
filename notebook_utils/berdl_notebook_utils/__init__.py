@@ -170,6 +170,10 @@ def berdl_notebook_help():
     - BERDLAgent: Agent class for advanced configuration
     - AgentSettings: Agent configuration settings
 
+    Environment Refresh:
+    -------------------
+    - refresh_spark_environment: Clear credential caches, re-fetch credentials, and restart Spark
+
     Usage:
     ------
     from berdl_notebook_utils import get_spark_session, display_df

@@ -2,24 +2,25 @@
 Tests for minio_governance/operations.py module.
 """
 
-import json
 import logging
-from pathlib import Path
 from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from governance_client.models.user_names_response import UserNamesResponse
+from governance_client.models import (
+    HealthResponse,
+    NamespacePrefixResponse,
+    PathAccessResponse,
+    UserAccessiblePathsResponse,
+    UserGroupsResponse,
+    UserPoliciesResponse,
+    UserSqlWarehousePrefixResponse,
+)
 
 from berdl_notebook_utils.minio_governance.operations import (
-    _fetch_with_file_cache,
-    _get_polaris_cache_path,
-    _read_cached_polaris_credentials,
-    _write_polaris_credentials_cache,
     _build_table_path,
     check_governance_health,
     get_minio_credentials,
-    get_polaris_credentials,
     get_my_sql_warehouse,
     get_group_sql_warehouse,
     get_namespace_prefix,
@@ -35,13 +36,11 @@ from berdl_notebook_utils.minio_governance.operations import (
     make_table_private,
     list_available_groups,
     list_groups,
-    list_user_names,
     list_users,
     add_group_member,
     remove_group_member,
     create_tenant_and_assign_users,
     request_tenant_access,
-    POLARIS_CREDENTIALS_CACHE_FILE,
     CredentialsResponse,
     ErrorResponse,
 )
@@ -63,59 +62,6 @@ class TestBuildTablePath:
         assert path == "s3a://cdm-lake/users-sql-warehouse/user1/analytics.db/users"
 
 
-class TestFetchWithFileCache:
-    """Tests for _fetch_with_file_cache helper."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    def test_returns_cached_value_on_cache_hit(self, mock_fcntl, tmp_path):
-        """Test returns cached value without calling fetch when cache hits."""
-        cache_path = tmp_path / "creds.json"
-        sentinel = {"key": "cached_value"}
-
-        read_cache = Mock(return_value=sentinel)
-        fetch = Mock()
-        write_cache = Mock()
-
-        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
-
-        assert result == sentinel
-        read_cache.assert_called_once_with(cache_path)
-        fetch.assert_not_called()
-        write_cache.assert_not_called()
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    def test_fetches_and_writes_cache_on_cache_miss(self, mock_fcntl, tmp_path):
-        """Test fetches fresh data and writes cache when cache misses."""
-        cache_path = tmp_path / "creds.json"
-        sentinel = {"key": "fresh_value"}
-
-        read_cache = Mock(return_value=None)
-        fetch = Mock(return_value=sentinel)
-        write_cache = Mock()
-
-        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
-
-        assert result == sentinel
-        read_cache.assert_called_once_with(cache_path)
-        fetch.assert_called_once()
-        write_cache.assert_called_once_with(cache_path, sentinel)
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    def test_returns_none_without_writing_when_fetch_fails(self, mock_fcntl, tmp_path):
-        """Test returns None and does not write cache when fetch returns None."""
-        cache_path = tmp_path / "creds.json"
-
-        read_cache = Mock(return_value=None)
-        fetch = Mock(return_value=None)
-        write_cache = Mock()
-
-        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
-
-        assert result is None
-        fetch.assert_called_once()
-        write_cache.assert_not_called()
-
-
 class TestCheckGovernanceHealth:
     """Tests for check_governance_health function."""
 
@@ -125,11 +71,29 @@ class TestCheckGovernanceHealth:
         """Test health check returns response."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_health_check.sync.return_value = Mock(status="healthy")
+        mock_health_check.sync.return_value = Mock(spec=HealthResponse, status="healthy")
 
         result = check_governance_health()
 
         assert result.status == "healthy"
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.health_check_health_get")
+    def test_check_governance_health_error_response(self, mock_health_check, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_health_check.sync.return_value = ErrorResponse(message="service down", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Health check failed: service down"):
+            check_governance_health()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.health_check_health_get")
+    def test_check_governance_health_none_response(self, mock_health_check, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_health_check.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            check_governance_health()
 
 
 class TestGetMinioCredentials:
@@ -165,6 +129,68 @@ class TestGetMinioCredentials:
             get_minio_credentials()
 
 
+class TestRotateMinioCredentials:
+    """Tests for rotate_minio_credentials function."""
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    @patch("berdl_notebook_utils.minio_governance.operations.os")
+    @patch("berdl_notebook_utils.minio_governance.operations._write_credentials_cache")
+    @patch("berdl_notebook_utils.minio_governance.operations._get_credentials_cache_path")
+    @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    def test_rotates_and_updates_cache(
+        self,
+        mock_get_client,
+        mock_rotate_api,
+        mock_cache_path,
+        mock_write_cache,
+        mock_os,
+        mock_get_settings,
+        tmp_path,
+    ):
+        """Test rotate calls API and updates local cache and env vars."""
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+
+        mock_creds = Mock(spec=CredentialsResponse)
+        mock_creds.access_key = "rotated_key"
+        mock_creds.secret_key = "rotated_secret"
+        mock_creds.username = "testuser"
+        mock_rotate_api.sync.return_value = mock_creds
+
+        mock_cache_path.return_value = tmp_path / ".cache"
+
+        result = rotate_minio_credentials()
+
+        assert result == mock_creds
+        mock_rotate_api.sync.assert_called_once_with(client=mock_client)
+        mock_write_cache.assert_called_once()
+        mock_os.environ.__setitem__.assert_any_call("MINIO_ACCESS_KEY", "rotated_key")
+        mock_os.environ.__setitem__.assert_any_call("MINIO_SECRET_KEY", "rotated_secret")
+        mock_get_settings.cache_clear.assert_called_once()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    def test_raises_on_error_response(self, mock_get_client, mock_rotate_api):
+        """Test raises RuntimeError when API returns an error response."""
+        mock_get_client.return_value = Mock()
+        mock_error = Mock(spec=ErrorResponse)
+        mock_rotate_api.sync.return_value = mock_error
+
+        with pytest.raises(RuntimeError, match="Failed to rotate credentials"):
+            rotate_minio_credentials()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    def test_raises_on_none_response(self, mock_get_client, mock_rotate_api):
+        """Test raises RuntimeError when API returns None."""
+        mock_get_client.return_value = Mock()
+        mock_rotate_api.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="Failed to rotate credentials"):
+            rotate_minio_credentials()
+
+
 class TestGetMySqlWarehouse:
     """Tests for get_my_sql_warehouse function."""
 
@@ -176,11 +202,35 @@ class TestGetMySqlWarehouse:
         """Test get_my_sql_warehouse returns warehouse prefix."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_warehouse.sync.return_value = Mock(sql_warehouse_prefix="s3a://bucket/prefix")
+        mock_get_warehouse.sync.return_value = Mock(
+            spec=UserSqlWarehousePrefixResponse, sql_warehouse_prefix="s3a://bucket/prefix"
+        )
 
         result = get_my_sql_warehouse()
 
         assert result.sql_warehouse_prefix == "s3a://bucket/prefix"
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get"
+    )
+    def test_get_my_sql_warehouse_error_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = ErrorResponse(message="not found", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get SQL warehouse prefix"):
+            get_my_sql_warehouse()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get"
+    )
+    def test_get_my_sql_warehouse_none_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_sql_warehouse()
 
 
 class TestGetGroupSqlWarehouse:
@@ -200,6 +250,28 @@ class TestGetGroupSqlWarehouse:
 
         mock_get_warehouse.sync.assert_called_once_with(client=mock_client, group_name="test_group")
 
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get"
+    )
+    def test_get_group_sql_warehouse_error_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = ErrorResponse(message="not a member", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get group SQL warehouse prefix"):
+            get_group_sql_warehouse("test_group")
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get"
+    )
+    def test_get_group_sql_warehouse_none_response(self, mock_get_warehouse, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_warehouse.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_group_sql_warehouse("test_group")
+
 
 class TestGetNamespacePrefix:
     """Tests for get_namespace_prefix function."""
@@ -210,7 +282,7 @@ class TestGetNamespacePrefix:
         """Test get_namespace_prefix returns user prefix."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_prefix.sync.return_value = Mock(user_namespace_prefix="u_test__")
+        mock_get_prefix.sync.return_value = Mock(spec=NamespacePrefixResponse, user_namespace_prefix="u_test__")
 
         result = get_namespace_prefix()
 
@@ -222,11 +294,29 @@ class TestGetNamespacePrefix:
         """Test get_namespace_prefix returns tenant prefix when specified."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_prefix.sync.return_value = Mock(tenant_namespace_prefix="t_team__")
+        mock_get_prefix.sync.return_value = Mock(spec=NamespacePrefixResponse, tenant_namespace_prefix="t_team__")
 
         result = get_namespace_prefix(tenant="team")
 
         assert result.tenant_namespace_prefix == "t_team__"
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_namespace_prefix_workspaces_me_namespace_prefix_get")
+    def test_get_namespace_prefix_error_response(self, mock_get_prefix, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_prefix.sync.return_value = ErrorResponse(message="unauthorized", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get namespace prefix"):
+            get_namespace_prefix()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_namespace_prefix_workspaces_me_namespace_prefix_get")
+    def test_get_namespace_prefix_none_response(self, mock_get_prefix, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_prefix.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_namespace_prefix()
 
 
 class TestGetMyWorkspace:
@@ -254,11 +344,29 @@ class TestGetMyPolicies:
         """Test get_my_policies returns policy info."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_policies.sync.return_value = Mock(user_home_policy="policy")
+        mock_get_policies.sync.return_value = Mock(spec=UserPoliciesResponse, user_home_policy="policy")
 
         result = get_my_policies()
 
         assert result.user_home_policy == "policy"
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_policies_workspaces_me_policies_get")
+    def test_get_my_policies_error_response(self, mock_get_policies, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_policies.sync.return_value = ErrorResponse(message="forbidden", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get policies"):
+            get_my_policies()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_policies_workspaces_me_policies_get")
+    def test_get_my_policies_none_response(self, mock_get_policies, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_policies.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_policies()
 
 
 class TestGetMyGroups:
@@ -270,11 +378,29 @@ class TestGetMyGroups:
         """Test get_my_groups returns groups info."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_groups.sync.return_value = Mock(groups=["group1", "group2"])
+        mock_get_groups.sync.return_value = Mock(spec=UserGroupsResponse, groups=["group1", "group2"])
 
         result = get_my_groups()
 
         assert result.groups == ["group1", "group2"]
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_groups_workspaces_me_groups_get")
+    def test_get_my_groups_error_response(self, mock_get_groups, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_groups.sync.return_value = ErrorResponse(message="forbidden", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get groups"):
+            get_my_groups()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_groups_workspaces_me_groups_get")
+    def test_get_my_groups_none_response(self, mock_get_groups, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_groups.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_groups()
 
 
 class TestGetMyAccessiblePaths:
@@ -288,11 +414,35 @@ class TestGetMyAccessiblePaths:
         """Test get_my_accessible_paths returns accessible paths."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_paths.sync.return_value = Mock(accessible_paths=["s3a://bucket/path"])
+        mock_get_paths.sync.return_value = Mock(
+            spec=UserAccessiblePathsResponse, accessible_paths=["s3a://bucket/path"]
+        )
 
         result = get_my_accessible_paths()
 
         assert result.accessible_paths == ["s3a://bucket/path"]
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_accessible_paths_workspaces_me_accessible_paths_get"
+    )
+    def test_get_my_accessible_paths_error_response(self, mock_get_paths, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_paths.sync.return_value = ErrorResponse(message="forbidden", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get accessible paths"):
+            get_my_accessible_paths()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.get_my_accessible_paths_workspaces_me_accessible_paths_get"
+    )
+    def test_get_my_accessible_paths_none_response(self, mock_get_paths, mock_get_client):
+        mock_get_client.return_value = Mock()
+        mock_get_paths.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_my_accessible_paths()
 
 
 class TestGetTableAccessInfo:
@@ -306,11 +456,33 @@ class TestGetTableAccessInfo:
         mock_settings.return_value.USER = "test_user"
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_access.sync.return_value = Mock(is_public=False)
+        mock_get_access.sync.return_value = Mock(spec=PathAccessResponse, is_public=False)
 
         result = get_table_access_info("test_db", "test_table")
 
         assert result.is_public is False
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_path_access_info_sharing_get_path_access_info_post")
+    def test_get_table_access_info_error_response(self, mock_get_access, mock_get_client, mock_settings):
+        mock_settings.return_value.USER = "test_user"
+        mock_get_client.return_value = Mock()
+        mock_get_access.sync.return_value = ErrorResponse(message="not found", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to get table access info"):
+            get_table_access_info("test_db", "test_table")
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_path_access_info_sharing_get_path_access_info_post")
+    def test_get_table_access_info_none_response(self, mock_get_access, mock_get_client, mock_settings):
+        mock_settings.return_value.USER = "test_user"
+        mock_get_client.return_value = Mock()
+        mock_get_access.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response from API"):
+            get_table_access_info("test_db", "test_table")
 
 
 class TestShareTable:
@@ -460,45 +632,6 @@ class TestListUsers:
         result = list_users()
 
         assert result.users == ["user1", "user2"]
-
-
-class TestListUserNames:
-    """Tests for list_user_names function."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
-    def test_list_user_names_success(self, mock_list_user_names, mock_get_client):
-        """Test list_user_names returns list of usernames."""
-        mock_client = Mock()
-        mock_get_client.return_value = mock_client
-        mock_list_user_names.return_value = Mock(spec=UserNamesResponse, usernames=["user1", "user2", "user3"])
-
-        result = list_user_names()
-
-        assert result == ["user1", "user2", "user3"]
-        mock_list_user_names.assert_called_once_with(client=mock_client)
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
-    def test_list_user_names_error_response(self, mock_list_user_names, mock_get_client):
-        """Test list_user_names raises on error response."""
-        mock_client = Mock()
-        mock_get_client.return_value = mock_client
-        mock_list_user_names.return_value = Mock(spec=ErrorResponse, message="Forbidden")
-
-        with pytest.raises(RuntimeError, match="Failed to list usernames"):
-            list_user_names()
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
-    def test_list_user_names_none_response(self, mock_list_user_names, mock_get_client):
-        """Test list_user_names raises on None response."""
-        mock_client = Mock()
-        mock_get_client.return_value = mock_client
-        mock_list_user_names.return_value = None
-
-        with pytest.raises(RuntimeError, match="no response from API"):
-            list_user_names()
 
 
 class TestAddGroupMember:
@@ -686,233 +819,6 @@ class TestRequestTenantAccess:
 
 
 # =============================================================================
-# Polaris credential caching tests
-# =============================================================================
-
-
-class TestGetPolarisCachePath:
-    """Tests for _get_polaris_cache_path helper."""
-
-    def test_returns_path_in_tmp(self):
-        """Test returns path in /tmp (ephemeral, not on FUSE-mounted home)."""
-        path = _get_polaris_cache_path()
-
-        assert path == Path("/tmp") / POLARIS_CREDENTIALS_CACHE_FILE
-
-
-class TestReadCachedPolarisCredentials:
-    """Tests for _read_cached_polaris_credentials helper."""
-
-    def test_returns_none_if_file_not_exists(self, tmp_path):
-        """Test returns None if cache file doesn't exist."""
-        result = _read_cached_polaris_credentials(tmp_path / "nonexistent.json")
-
-        assert result is None
-
-    def test_returns_none_on_invalid_json(self, tmp_path):
-        """Test returns None on invalid JSON."""
-        cache_file = tmp_path / "cache.json"
-        cache_file.write_text("not valid json")
-
-        result = _read_cached_polaris_credentials(cache_file)
-
-        assert result is None
-
-    def test_returns_none_on_missing_keys(self, tmp_path):
-        """Test returns None when required keys are missing."""
-        cache_file = tmp_path / "cache.json"
-        cache_file.write_text('{"client_id": "test", "client_secret": "test"}')
-
-        result = _read_cached_polaris_credentials(cache_file)
-
-        assert result is None
-
-    def test_returns_credentials_on_valid_cache(self, tmp_path):
-        """Test returns credentials on valid cache file."""
-        cache_file = tmp_path / "cache.json"
-        data = {
-            "client_id": "test_id",
-            "client_secret": "test_secret",
-            "personal_catalog": "user_test",
-            "tenant_catalogs": ["tenant_kbase"],
-        }
-        cache_file.write_text(json.dumps(data))
-
-        result = _read_cached_polaris_credentials(cache_file)
-
-        assert result is not None
-        assert result["client_id"] == "test_id"
-        assert result["personal_catalog"] == "user_test"
-
-
-class TestWritePolarisCachedCredentials:
-    """Tests for _write_polaris_credentials_cache helper."""
-
-    def test_writes_credentials_to_file(self, tmp_path):
-        """Test writes Polaris credentials to cache file."""
-        cache_file = tmp_path / "cache.json"
-        creds = {
-            "client_id": "test_id",
-            "client_secret": "test_secret",
-            "personal_catalog": "user_test",
-            "tenant_catalogs": [],
-        }
-
-        _write_polaris_credentials_cache(cache_file, creds)
-
-        assert cache_file.exists()
-        content = json.loads(cache_file.read_text())
-        assert content["client_id"] == "test_id"
-
-    def test_handles_os_error(self, tmp_path):
-        """Test handles OSError gracefully."""
-        # Use a path that can't be written to
-        cache_file = tmp_path / "nonexistent_dir" / "cache.json"
-
-        # Should not raise
-        _write_polaris_credentials_cache(cache_file, {"client_id": "test"})
-
-
-# =============================================================================
-# get_polaris_credentials tests
-# =============================================================================
-
-
-class TestGetPolarisCredentials:
-    """Tests for get_polaris_credentials function."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_when_polaris_not_configured(self, mock_settings, mock_fcntl, mock_os):
-        """Test returns None when POLARIS_CATALOG_URI is not set."""
-        mock_settings.return_value.POLARIS_CATALOG_URI = None
-
-        result = get_polaris_credentials()
-
-        assert result is None
-
-    @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._write_polaris_credentials_cache")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_cached_credentials(
-        self, mock_settings, mock_cache_path, mock_read_cache, mock_write_cache, mock_fcntl, mock_os, tmp_path
-    ):
-        """Test returns cached Polaris credentials when available."""
-        mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-
-        cached = {
-            "client_id": "cached_id",
-            "client_secret": "cached_secret",
-            "personal_catalog": "user_test",
-            "tenant_catalogs": ["tenant_kbase"],
-        }
-        mock_read_cache.return_value = cached
-
-        result = get_polaris_credentials()
-
-        assert result["client_id"] == "cached_id"
-        mock_os.environ.__setitem__.assert_any_call("POLARIS_CREDENTIAL", "cached_id:cached_secret")
-        mock_os.environ.__setitem__.assert_any_call("POLARIS_PERSONAL_CATALOG", "user_test")
-
-    @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._write_polaris_credentials_cache")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch(
-        "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
-    )
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_fetches_fresh_credentials(
-        self,
-        mock_settings,
-        mock_get_client,
-        mock_provision,
-        mock_cache_path,
-        mock_read_cache,
-        mock_write_cache,
-        mock_fcntl,
-        mock_os,
-        tmp_path,
-    ):
-        """Test fetches fresh credentials from API when no cache."""
-        mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_settings.return_value.USER = "test_user"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-        mock_read_cache.return_value = None
-
-        mock_api_response = Mock()
-        mock_api_response.to_dict.return_value = {
-            "client_id": "new_id",
-            "client_secret": "new_secret",
-            "personal_catalog": "user_test_user",
-            "tenant_catalogs": ["tenant_team"],
-        }
-        mock_provision.sync.return_value = mock_api_response
-
-        result = get_polaris_credentials()
-
-        assert result["client_id"] == "new_id"
-        assert result["personal_catalog"] == "user_test_user"
-        mock_write_cache.assert_called_once()
-        mock_provision.sync.assert_called_once_with(username="test_user", client=mock_get_client.return_value)
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch(
-        "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
-    )
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_on_error_response(
-        self, mock_settings, mock_get_client, mock_provision, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
-    ):
-        """Test returns None when API returns ErrorResponse."""
-        mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_settings.return_value.USER = "test_user"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-        mock_read_cache.return_value = None
-
-        mock_error = Mock(spec=ErrorResponse)
-        mock_error.message = "Internal server error"
-        mock_provision.sync.return_value = mock_error
-
-        result = get_polaris_credentials()
-
-        assert result is None
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch(
-        "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
-    )
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_on_no_response(
-        self, mock_settings, mock_get_client, mock_provision, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
-    ):
-        """Test returns None when API returns None (unexpected status)."""
-        mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_settings.return_value.USER = "test_user"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-        mock_read_cache.return_value = None
-
-        mock_provision.sync.return_value = None
-
-        result = get_polaris_credentials()
-
-        assert result is None
-
-
-# =============================================================================
 # unshare_table error logging tests
 # =============================================================================
 
@@ -1015,77 +921,3 @@ class TestListAvailableGroupsEdgeCases:
 
         with pytest.raises(RuntimeError, match="Failed to list groups: no response"):
             list_available_groups()
-
-
-# =============================================================================
-# rotate_minio_credentials
-# =============================================================================
-
-
-class TestRotateMinioCredentials:
-    """Tests for rotate_minio_credentials function."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.httpx.post")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_rotate_calls_post_endpoint(self, mock_settings, mock_post):
-        """Test rotate calls POST /credentials/rotate."""
-        mock_settings.return_value = Mock(
-            GOVERNANCE_API_URL="http://governance:8000",
-            KBASE_AUTH_TOKEN="test-token",
-        )
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "username": "testuser",
-            "access_key": "testuser",
-            "secret_key": "new-rotated-secret",
-        }
-        mock_response.raise_for_status = Mock()
-        mock_post.return_value = mock_response
-
-        result = rotate_minio_credentials()
-
-        mock_post.assert_called_once_with(
-            "http://governance:8000/credentials/rotate",
-            headers={"Authorization": "Bearer test-token"},
-            timeout=10.0,
-        )
-        assert result.access_key == "testuser"
-        assert result.secret_key == "new-rotated-secret"
-
-    @patch("berdl_notebook_utils.minio_governance.operations.httpx.post")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    @patch.dict("os.environ", {}, clear=False)
-    def test_rotate_sets_env_vars(self, mock_settings, mock_post):
-        """Test rotate sets MINIO_ACCESS_KEY and MINIO_SECRET_KEY env vars."""
-        import os
-
-        mock_settings.return_value = Mock(
-            GOVERNANCE_API_URL="http://governance:8000",
-            KBASE_AUTH_TOKEN="test-token",
-        )
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "username": "testuser",
-            "access_key": "new-access",
-            "secret_key": "new-secret",
-        }
-        mock_response.raise_for_status = Mock()
-        mock_post.return_value = mock_response
-
-        rotate_minio_credentials()
-
-        assert os.environ["MINIO_ACCESS_KEY"] == "new-access"
-        assert os.environ["MINIO_SECRET_KEY"] == "new-secret"
-
-    @patch("berdl_notebook_utils.minio_governance.operations.httpx.post")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_rotate_api_error_propagates(self, mock_settings, mock_post):
-        """Test that API errors propagate."""
-        mock_settings.return_value = Mock(
-            GOVERNANCE_API_URL="http://governance:8000",
-            KBASE_AUTH_TOKEN="test-token",
-        )
-        mock_post.side_effect = httpx.HTTPStatusError("401", request=Mock(), response=Mock())
-
-        with pytest.raises(httpx.HTTPStatusError):
-            rotate_minio_credentials()

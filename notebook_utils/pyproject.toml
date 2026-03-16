@@ -102,8 +102,8 @@ DATALAKE_MCP_SERVER_URL = "http://localhost:8080"
 [tool.uv.sources]
 cdm-task-service-client = { git = "https://github.com/kbase/cdm-task-service-client", rev = "0.2.3" }
 cdm-spark-manager-client = { git = "https://github.com/kbase/cdm-kube-spark-manager-client.git", rev = "0.0.1" }
-minio-manager-service-client = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git", rev = "v0.0.10" }
-datalake-mcp-server-client = { git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git", rev = "v0.0.7" }
+minio-manager-service-client = { git = "https://github.com/BERDataLakehouse/minio_manager_service_client.git", rev = "v0.0.14" }
+datalake-mcp-server-client = { git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git", rev = "v0.0.8" }
 
 [tool.ruff.lint.per-file-ignores]
 "**/cdm_spark_cluster_manager_api_client/**/*.py" = ["E501"]

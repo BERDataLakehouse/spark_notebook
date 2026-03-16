@@ -9,20 +9,19 @@ import os
 import time
 import warnings
 from pathlib import Path
-from collections.abc import Callable
-from typing import TypeVar
-
 from typing import TypedDict
 
 import httpx
-from governance_client.api.credentials import get_credentials_credentials_get
+from governance_client.api.credentials import (
+    get_credentials_credentials_get,
+    rotate_credentials_credentials_rotate_post,
+)
 from governance_client.api.health import health_check_health_get
-from governance_client.api.polaris import provision_polaris_user_polaris_user_provision_username_post
 from governance_client.api.management import (
     add_group_member_management_groups_group_name_members_username_post,
     create_group_management_groups_group_name_post,
-    ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post,
     list_groups_management_groups_get,
+    list_user_names_management_users_names_get,
     list_users_management_users_get,
     regenerate_all_policies_management_migrate_regenerate_policies_post,
     remove_group_member_management_groups_group_name_members_username_delete,
@@ -30,10 +29,6 @@ from governance_client.api.management import (
 from governance_client.api.management.list_group_names_management_groups_names_get import (
     sync as list_group_names_sync,
 )
-from governance_client.api.management.list_user_names_management_users_names_get import (
-    sync as list_user_names_sync,
-)
-from governance_client.models.user_names_response import UserNamesResponse
 from governance_client.api.sharing import (
     get_path_access_info_sharing_get_path_access_info_post,
     make_path_private_sharing_make_private_post,
@@ -59,19 +54,21 @@ from governance_client.models import (
     PathAccessResponse,
     PathRequest,
     PublicAccessResponse,
+    RegeneratePoliciesResponse,
     ShareRequest,
     ShareResponse,
     UnshareRequest,
     UnshareResponse,
     UserAccessiblePathsResponse,
     UserGroupsResponse,
+    UserNamesResponse,
     UserPoliciesResponse,
     UserSqlWarehousePrefixResponse,
 )
 from governance_client.types import UNSET
 
-from berdl_notebook_utils import get_settings
-from berdl_notebook_utils.clients import get_governance_client
+from .. import get_settings
+from ..clients import get_governance_client
 
 # =============================================================================
 # TYPE DEFINITIONS
@@ -93,72 +90,37 @@ class TenantCreationResult(TypedDict):
 SQL_WAREHOUSE_BUCKET = "cdm-lake"  # TODO: change to berdl-lake
 SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 
-# Credential caching configuration (Polaris only — MinIO uses DB-backed API cache)
-POLARIS_CREDENTIALS_CACHE_FILE = ".berdl_polaris_credentials"
+# Credential caching configuration
+CREDENTIALS_CACHE_FILE = ".berdl_minio_credentials"
 
 
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
-_T = TypeVar("_T")
+
+def _get_credentials_cache_path() -> Path:
+    """Get the path to the credentials cache file in the user's home directory."""
+    return Path.home() / CREDENTIALS_CACHE_FILE
 
 
-def _fetch_with_file_cache(
-    cache_path: Path,
-    read_cache: Callable[[Path], _T | None],
-    fetch: Callable[[], _T | None],
-    write_cache: Callable[[Path, _T], None],
-) -> _T | None:
-    """Fetch credentials using file-based caching with exclusive file locking.
-
-    The lock is released when the file handle is closed (exiting the `with` block).
-    We intentionally do NOT delete the lock file afterward — another process
-    may have already acquired a lock on it between our unlock and unlink.
-    """
-    lock_path = cache_path.with_suffix(".lock")
-    with open(lock_path, "w") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-
-        cached = read_cache(cache_path)
-        if cached is not None:
-            return cached
-
-        result = fetch()
-        if result is not None:
-            write_cache(cache_path, result)
-        return result
-
-
-def _get_polaris_cache_path() -> Path:
-    """Get the path to the Polaris credentials cache file.
-
-    Uses /tmp to keep credentials ephemeral per container session and avoid
-    persisting secrets to the S3 FUSE-mounted home directory.
-    """
-    return Path("/tmp") / POLARIS_CREDENTIALS_CACHE_FILE
-
-
-def _read_cached_polaris_credentials(cache_path: Path) -> "PolarisCredentials | None":
-    """Read Polaris credentials from cache file. Returns None if file doesn't exist or is corrupted."""
+def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
+    """Read credentials from cache file. Returns None if file doesn't exist or is corrupted."""
     try:
         if not cache_path.exists():
             return None
         with open(cache_path, "r") as f:
             data = json.load(f)
-        # Validate required keys are present
-        if all(k in data for k in ("client_id", "client_secret", "personal_catalog", "tenant_catalogs")):
-            return data
-        return None
+        return CredentialsResponse.from_dict(data)
     except (json.JSONDecodeError, TypeError, KeyError, OSError):
         return None
 
 
-def _write_polaris_credentials_cache(cache_path: Path, credentials: "PolarisCredentials") -> None:
-    """Write Polaris credentials to cache file."""
+def _write_credentials_cache(cache_path: Path, credentials: CredentialsResponse) -> None:
+    """Write credentials to cache file."""
     try:
         with open(cache_path, "w") as f:
-            json.dump(credentials, f)
+            json.dump(credentials.to_dict(), f)
     except (OSError, TypeError):
         pass
 
@@ -190,16 +152,15 @@ def check_governance_health() -> HealthResponse:
         HealthResponse with service status
     """
     client = get_governance_client()
-    return health_check_health_get.sync(client=client)
+    response = health_check_health_get.sync(client=client)
 
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Health check failed: {response.message}")
 
-def _fetch_minio_credentials() -> CredentialsResponse | None:
-    """Fetch fresh MinIO credentials from the governance API."""
-    client = get_governance_client()
-    api_response = get_credentials_credentials_get.sync(client=client)
-    if isinstance(api_response, CredentialsResponse):
-        return api_response
-    return None
+    if not isinstance(response, HealthResponse):
+        raise RuntimeError("Health check failed: no response from API")
+
+    return response
 
 
 def get_minio_credentials() -> CredentialsResponse:
@@ -216,119 +177,91 @@ def get_minio_credentials() -> CredentialsResponse:
     Returns:
         CredentialsResponse with username, access_key, and secret_key
     """
-    credentials = _fetch_minio_credentials()
-    if credentials is None:
-        raise RuntimeError("Failed to fetch credentials from API")
+    cache_path = _get_credentials_cache_path()
+    lock_path = cache_path.with_suffix(".lock")
 
+    # Use file locking to prevent concurrent access
+    with open(lock_path, "w") as lock_file:
+        try:
+            # Acquire exclusive lock (blocks until available)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            # Try to load from cache first (double-check after acquiring lock)
+            cached_credentials = _read_cached_credentials(cache_path)
+            if cached_credentials:
+                credentials = cached_credentials
+            else:
+                # No cache or cache corrupted, fetch fresh credentials
+                client = get_governance_client()
+                api_response = get_credentials_credentials_get.sync(client=client)
+                if isinstance(api_response, CredentialsResponse):
+                    credentials = api_response
+                    _write_credentials_cache(cache_path, credentials)
+                else:
+                    raise RuntimeError("Failed to fetch credentials from API")
+        finally:
+            # Lock is automatically released when file is closed
+            pass
+
+    # Clean up lock file if it exists
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    # Set MinIO credentials as environment variables
     os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
     os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
+
+    # Clear the cached settings so subsequent get_settings() calls pick up the
+    # new MINIO_ACCESS_KEY / MINIO_SECRET_KEY env vars.
+    get_settings.cache_clear()
 
     return credentials
 
 
 def rotate_minio_credentials() -> CredentialsResponse:
     """
-    Force-rotate MinIO credentials via POST /credentials/rotate.
+    Rotate MinIO credentials for the current user and update local caches.
 
-    Calls the rotate endpoint on the governance API which rotates the password
-    in MinIO and updates the DB cache. No local file cache needed.
+    Calls POST /credentials/rotate to generate new credentials in MinIO,
+    then updates the local cache file and environment variables.
+
+    Uses the same file locking strategy as get_minio_credentials() to prevent
+    concurrent access from corrupting the cache file.
 
     Returns:
-        CredentialsResponse with fresh username, access_key, and secret_key
+        CredentialsResponse with username, access_key, and secret_key
     """
-    settings = get_settings()
-
-    url = f"{str(settings.GOVERNANCE_API_URL).rstrip('/')}/credentials/rotate"
-    response = httpx.post(
-        url,
-        headers={"Authorization": f"Bearer {settings.KBASE_AUTH_TOKEN}"},
-        timeout=10.0,
-    )
-    response.raise_for_status()
-    data = response.json()
-
-    credentials = CredentialsResponse.from_dict(data)
-
-    os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
-    os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
-
-    return credentials
-
-
-class PolarisCredentials(TypedDict):
-    """Polaris credential provisioning result."""
-
-    client_id: str
-    client_secret: str
-    personal_catalog: str
-    tenant_catalogs: list[str]
-
-
-def _fetch_polaris_credentials() -> PolarisCredentials | None:
-    """Fetch fresh Polaris credentials from the governance API."""
-    settings = get_settings()
-    polaris_logger = logging.getLogger(__name__)
-
     client = get_governance_client()
-    api_response = provision_polaris_user_polaris_user_provision_username_post.sync(
-        username=settings.USER, client=client
-    )
+    api_response = rotate_credentials_credentials_rotate_post.sync(client=client)
+    if not isinstance(api_response, CredentialsResponse):
+        raise RuntimeError("Failed to rotate credentials from API")
 
-    if isinstance(api_response, ErrorResponse):
-        polaris_logger.warning(f"Polaris provisioning failed: {api_response.message}")
-        return None
-    if api_response is None:
-        polaris_logger.warning("Polaris provisioning returned no response")
-        return None
+    # Update the local credential cache under lock
+    cache_path = _get_credentials_cache_path()
+    lock_path = cache_path.with_suffix(".lock")
 
-    data = api_response.to_dict()
-    return {
-        "client_id": data.get("client_id", ""),
-        "client_secret": data.get("client_secret", ""),
-        "personal_catalog": data.get("personal_catalog", ""),
-        "tenant_catalogs": data.get("tenant_catalogs", []),
-    }
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            _write_credentials_cache(cache_path, api_response)
+        finally:
+            pass
 
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
-def get_polaris_credentials() -> PolarisCredentials | None:
-    """
-    Provision a Polaris catalog for the current user and set credentials as environment variables.
+    # Update environment variables
+    os.environ["MINIO_ACCESS_KEY"] = api_response.access_key
+    os.environ["MINIO_SECRET_KEY"] = api_response.secret_key
 
-    Uses file locking and caching to prevent race conditions and avoid unnecessary
-    API calls when credentials are already cached (same pattern as get_minio_credentials).
+    # Clear cached settings so downstream code sees fresh env vars
+    get_settings.cache_clear()
 
-    Calls POST /polaris/user_provision/{username} on the governance API on cache miss.
-    This provisions the user's Polaris environment (catalog, principal, roles, credentials,
-    tenant access) and returns the configuration.
-
-    Sets the following environment variables:
-    - POLARIS_CREDENTIAL: client_id:client_secret for authenticating with Polaris
-    - POLARIS_PERSONAL_CATALOG: Name of the user's personal Polaris catalog
-    - POLARIS_TENANT_CATALOGS: Comma-separated list of tenant catalogs the user has access to
-
-    Returns:
-        PolarisCredentials dict, or None if Polaris is not configured
-    """
-    settings = get_settings()
-
-    if not settings.POLARIS_CATALOG_URI:
-        return None
-
-    result = _fetch_with_file_cache(
-        _get_polaris_cache_path(),
-        _read_cached_polaris_credentials,
-        _fetch_polaris_credentials,
-        _write_polaris_credentials_cache,
-    )
-    if result is None:
-        return None
-
-    # Set as environment variables for Spark catalog configuration
-    os.environ["POLARIS_CREDENTIAL"] = f"{result['client_id']}:{result['client_secret']}"
-    os.environ["POLARIS_PERSONAL_CATALOG"] = result["personal_catalog"]
-    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(result["tenant_catalogs"])
-
-    return result
+    return api_response
 
 
 def get_my_sql_warehouse() -> UserSqlWarehousePrefixResponse:
@@ -339,7 +272,15 @@ def get_my_sql_warehouse() -> UserSqlWarehousePrefixResponse:
         UserSqlWarehousePrefixResponse with username and sql_warehouse_prefix
     """
     client = get_governance_client()
-    return get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get.sync(client=client)
+    response = get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get SQL warehouse prefix: {response.message}")
+
+    if not isinstance(response, UserSqlWarehousePrefixResponse):
+        raise RuntimeError("Failed to get SQL warehouse prefix: no response from API")
+
+    return response
 
 
 def get_group_sql_warehouse(group_name: str):
@@ -353,9 +294,17 @@ def get_group_sql_warehouse(group_name: str):
         GroupSqlWarehousePrefixResponse with group_name and sql_warehouse_prefix
     """
     client = get_governance_client()
-    return get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get.sync(
+    response = get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get.sync(
         client=client, group_name=group_name
     )
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get group SQL warehouse prefix: {response.message}")
+
+    if response is None:
+        raise RuntimeError("Failed to get group SQL warehouse prefix: no response from API")
+
+    return response
 
 
 def get_namespace_prefix(tenant: str | None = None) -> NamespacePrefixResponse:
@@ -381,9 +330,17 @@ def get_namespace_prefix(tenant: str | None = None) -> NamespacePrefixResponse:
     """
 
     client = get_governance_client()
-    return get_namespace_prefix_workspaces_me_namespace_prefix_get.sync(
+    response = get_namespace_prefix_workspaces_me_namespace_prefix_get.sync(
         client=client, tenant=tenant if tenant is not None else UNSET
     )
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get namespace prefix: {response.message}")
+
+    if not isinstance(response, NamespacePrefixResponse):
+        raise RuntimeError("Failed to get namespace prefix: no response from API")
+
+    return response
 
 
 def get_my_workspace():
@@ -405,7 +362,15 @@ def get_my_policies() -> UserPoliciesResponse:
         UserPoliciesResponse with user_home_policy, user_system_policy, and group_policies
     """
     client = get_governance_client()
-    return get_my_policies_workspaces_me_policies_get.sync(client=client)
+    response = get_my_policies_workspaces_me_policies_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get policies: {response.message}")
+
+    if not isinstance(response, UserPoliciesResponse):
+        raise RuntimeError("Failed to get policies: no response from API")
+
+    return response
 
 
 def get_my_groups() -> UserGroupsResponse:
@@ -416,7 +381,15 @@ def get_my_groups() -> UserGroupsResponse:
         UserGroupsResponse with username, groups list, and group_count
     """
     client = get_governance_client()
-    return get_my_groups_workspaces_me_groups_get.sync(client=client)
+    response = get_my_groups_workspaces_me_groups_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get groups: {response.message}")
+
+    if not isinstance(response, UserGroupsResponse):
+        raise RuntimeError("Failed to get groups: no response from API")
+
+    return response
 
 
 def get_my_accessible_paths() -> UserAccessiblePathsResponse:
@@ -432,7 +405,15 @@ def get_my_accessible_paths() -> UserAccessiblePathsResponse:
         UserAccessiblePathsResponse with username, accessible_paths list, and total_paths count
     """
     client = get_governance_client()
-    return get_my_accessible_paths_workspaces_me_accessible_paths_get.sync(client=client)
+    response = get_my_accessible_paths_workspaces_me_accessible_paths_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get accessible paths: {response.message}")
+
+    if not isinstance(response, UserAccessiblePathsResponse):
+        raise RuntimeError("Failed to get accessible paths: no response from API")
+
+    return response
 
 
 def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse:
@@ -448,7 +429,15 @@ def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
-    return get_path_access_info_sharing_get_path_access_info_post.sync(client=client, body=request)
+    response = get_path_access_info_sharing_get_path_access_info_post.sync(client=client, body=request)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get table access info: {response.message}")
+
+    if not isinstance(response, PathAccessResponse):
+        raise RuntimeError("Failed to get table access info: no response from API")
+
+    return response
 
 
 # =============================================================================
@@ -477,13 +466,6 @@ def share_table(
     Example:
         share_table("analytics", "user_metrics", with_users=["alice", "bob"])
     """
-    warnings.warn(
-        "share_table is deprecated and will be removed in a future release. "
-        "Direct path sharing is no longer recommended. Please create a Tenant Workspace "
-        "and request access to the tenant for sharing activities.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -522,13 +504,6 @@ def unshare_table(
     Example:
         unshare_table("analytics", "user_metrics", from_users=["alice"])
     """
-    warnings.warn(
-        "unshare_table is deprecated and will be removed in a future release. "
-        "Direct path sharing is no longer recommended. Please create a Tenant Workspace "
-        "and request access to the tenant for unsharing activities.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     client = get_governance_client()
     # Get current user's username from environment variable
     username = get_settings().USER
@@ -553,6 +528,11 @@ def make_table_public(
     """
     Make a SQL warehouse table publicly accessible.
 
+    .. deprecated::
+        ``make_table_public`` is deprecated and will be removed in a future release.
+        Direct public path sharing is no longer recommended. Please add a namespace
+        under the ``globalusers`` tenant to grant public access.
+
     Args:
         namespace: Database namespace (e.g., "test" or "test.db")
         table_name: Table name (e.g., "test_employees")
@@ -565,8 +545,8 @@ def make_table_public(
     """
     warnings.warn(
         "make_table_public is deprecated and will be removed in a future release. "
-        "Direct public path sharing is no longer recommended. Please create a namespace "
-        "under the `globalusers` tenant for public sharing activities.",
+        "Direct public path sharing is no longer recommended. Please add a namespace "
+        "under the `globalusers` tenant to grant public access.",
         DeprecationWarning,
         stacklevel=2,
     )
@@ -585,6 +565,11 @@ def make_table_private(
 ) -> PublicAccessResponse:
     """
     Remove public access from a SQL warehouse table.
+
+    .. deprecated::
+        ``make_table_private`` is deprecated and will be removed in a future release.
+        Direct public path sharing is no longer recommended. Please remove the namespace
+        under the ``globalusers`` tenant to revoke public access.
 
     Args:
         namespace: Database namespace (e.g., "test" or "test.db")
@@ -703,7 +688,7 @@ def list_user_names() -> list[str]:
         RuntimeError: If the API call fails.
     """
     client = get_governance_client()
-    response = list_user_names_sync(client=client)
+    response = list_user_names_management_users_names_get.sync(client=client)
 
     if isinstance(response, ErrorResponse):
         raise RuntimeError(f"Failed to list usernames: {response.message}")
@@ -971,38 +956,32 @@ def request_tenant_access(
         raise RuntimeError(f"Failed to connect to tenant access service: {e}")
 
 
-# =============================================================================
-# MIGRATION - Admin-only bulk operations for IAM + Polaris migration
-# =============================================================================
-
-
-def regenerate_policies():
+def regenerate_policies() -> RegeneratePoliciesResponse:
     """
-    Force-regenerate all MinIO IAM HOME policies from the current template.
+    Regenerate all IAM policies for all users and groups.
 
-    This admin-only endpoint updates pre-existing policies to include new path
-    statements (e.g., Iceberg paths). Each regeneration is independent — errors
-    do not block others.
+    This is an admin-only endpoint that recalculates and applies MinIO IAM
+    policies for every user and group in the system. Useful after bulk
+    permission changes or to ensure policy consistency.
 
     Returns:
         RegeneratePoliciesResponse with users_updated, groups_updated, errors,
-        or ErrorResponse on failure.
+        performed_by, and timestamp
+
+    Raises:
+        RuntimeError: If the request fails (e.g., insufficient permissions)
+
+    Example:
+        result = regenerate_policies()
+        print(f"Updated {result.users_updated} users, {result.groups_updated} groups")
     """
     client = get_governance_client()
-    return regenerate_all_policies_management_migrate_regenerate_policies_post.sync(client=client)
+    response = regenerate_all_policies_management_migrate_regenerate_policies_post.sync(client=client)
 
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to regenerate policies: {response.message}")
 
-def ensure_polaris_resources():
-    """
-    Ensure Polaris resources exist for all users and groups.
+    if response is None:
+        raise RuntimeError("Failed to regenerate policies: no response from API")
 
-    Creates Polaris principals, personal catalogs, and roles for all users.
-    Creates tenant catalogs for all base groups. Grants correct principal roles
-    based on group memberships. All operations are idempotent.
-
-    Returns:
-        EnsurePolarisResponse with users_provisioned, groups_provisioned, errors,
-        or ErrorResponse on failure.
-    """
-    client = get_governance_client()
-    return ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post.sync(client=client)
+    return response

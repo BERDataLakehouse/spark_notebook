@@ -43,7 +43,7 @@ class BERDLSettings(BaseSettings):
     )
 
     # Hive configuration
-    BERDL_HIVE_METASTORE_URI: AnyUrl | None = Field(default=None, description="Hive metastore URI (thrift://...)")
+    BERDL_HIVE_METASTORE_URI: AnyUrl  # Accepts thrift://
 
     # Profile-specific Spark configuration from JupyterHub
     SPARK_WORKER_COUNT: int = Field(default=1, description="Number of Spark workers from profile")
@@ -72,18 +72,6 @@ class BERDLSettings(BaseSettings):
     # Tenant Access Request Service configuration (optional)
     TENANT_ACCESS_SERVICE_URL: AnyHttpUrl | None = Field(
         default=None, description="Tenant Access Request Service URL for Slack-based approval workflow"
-    )
-
-    # Polaris Iceberg Catalog configuration
-    POLARIS_CATALOG_URI: AnyHttpUrl | None = Field(
-        default=None, description="Polaris REST Catalog endpoint (e.g., http://polaris:8181/api/catalog)"
-    )
-    POLARIS_CREDENTIAL: str | None = Field(default=None, description="Polaris client_id:client_secret credential")
-    POLARIS_PERSONAL_CATALOG: str | None = Field(
-        default=None, description="Polaris personal catalog name (e.g., user_tgu2)"
-    )
-    POLARIS_TENANT_CATALOGS: str | None = Field(
-        default=None, description="Comma-separated Polaris tenant catalog names"
     )
 
 

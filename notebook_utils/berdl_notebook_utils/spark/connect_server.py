@@ -9,7 +9,6 @@ import logging
 import os
 import shutil
 import signal
-import socket
 import subprocess
 import time
 from pathlib import Path
@@ -24,7 +23,6 @@ from ..minio_governance.operations import (
 from ..setup_spark_session import (
     DRIVER_MEMORY_OVERHEAD,
     EXECUTOR_MEMORY_OVERHEAD,
-    _get_catalog_conf,
     convert_memory_format,
 )
 
@@ -120,13 +118,6 @@ class SparkConnectServerConfig:
 
             warehouse_response = get_my_sql_warehouse()
             f.write(f"spark.sql.warehouse.dir={warehouse_response.sql_warehouse_prefix}\n")
-
-            # Add Polaris Iceberg Catalogs
-            catalog_configs = _get_catalog_conf(self.settings)
-            if catalog_configs:
-                f.write("\n# Polaris Catalog Configuration\n")
-                for key, value in catalog_configs.items():
-                    f.write(f"{key}={value}\n")
 
         logger.info(f"Spark configuration written to {self.spark_defaults_path}")
 
@@ -297,6 +288,8 @@ class SparkConnectServerManager:
         Returns:
             True if port is free, False if timeout reached.
         """
+        import socket
+
         port = self.config.spark_connect_port
         start_time = time.time()
 
@@ -326,9 +319,9 @@ class SparkConnectServerManager:
             Dictionary with server information.
         """
         # Check if server is already running
-        server_info = self.get_server_info()
-        if server_info is not None:
+        if self.is_running():
             if not force_restart:
+                server_info = self.get_server_info()
                 logger.info(f"✅ Spark Connect server already running (PID: {server_info['pid']})")
                 logger.info("   Reusing existing server - no need to start a new one")
                 return server_info
@@ -389,9 +382,6 @@ class SparkConnectServerManager:
                 f.write(str(process.pid))
 
             server_info = self.get_server_info()
-            if server_info is None:
-                raise RuntimeError("Failed to get server info after startup")
-
             logger.info(f"✅ Spark Connect server started successfully (PID: {process.pid})")
             logger.info(f"   Connect URL: {server_info['url']}")
             logger.info(f"   Logs: {server_info['log_file']}")
@@ -411,8 +401,8 @@ class SparkConnectServerManager:
         Returns:
             Dictionary with status information.
         """
-        info = self.get_server_info()
-        if info is not None:
+        if self.is_running():
+            info = self.get_server_info()
             return {
                 "status": "running",
                 **info,

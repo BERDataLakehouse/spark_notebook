@@ -5,6 +5,7 @@ Tests for agent/mcp_tools.py - Native MCP tool integration.
 import asyncio
 from typing import Optional
 from unittest.mock import AsyncMock, Mock, patch
+import concurrent.futures
 import pytest
 from pydantic import BaseModel, Field
 
@@ -164,7 +165,7 @@ class TestWrapAsyncTool:
 
         try:
             mock_future = Mock()
-            mock_future.result.side_effect = TimeoutError()
+            mock_future.result.side_effect = concurrent.futures.TimeoutError()
             mock_loop_run = Mock(return_value=mock_future)
 
             with patch("asyncio.run_coroutine_threadsafe", mock_loop_run):
