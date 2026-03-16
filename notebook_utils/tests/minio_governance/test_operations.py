@@ -9,6 +9,16 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
+from governance_client.models import (
+    HealthResponse,
+    NamespacePrefixResponse,
+    PathAccessResponse,
+    UserAccessiblePathsResponse,
+    UserGroupsResponse,
+    UserPoliciesResponse,
+    UserSqlWarehousePrefixResponse,
+)
+
 from berdl_notebook_utils.minio_governance.operations import (
     _get_credentials_cache_path,
     _read_cached_credentials,
@@ -125,7 +135,7 @@ class TestCheckGovernanceHealth:
         """Test health check returns response."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_health_check.sync.return_value = Mock(status="healthy")
+        mock_health_check.sync.return_value = Mock(spec=HealthResponse, status="healthy")
 
         result = check_governance_health()
 
@@ -271,7 +281,9 @@ class TestGetMySqlWarehouse:
         """Test get_my_sql_warehouse returns warehouse prefix."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_warehouse.sync.return_value = Mock(sql_warehouse_prefix="s3a://bucket/prefix")
+        mock_get_warehouse.sync.return_value = Mock(
+            spec=UserSqlWarehousePrefixResponse, sql_warehouse_prefix="s3a://bucket/prefix"
+        )
 
         result = get_my_sql_warehouse()
 
@@ -305,7 +317,7 @@ class TestGetNamespacePrefix:
         """Test get_namespace_prefix returns user prefix."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_prefix.sync.return_value = Mock(user_namespace_prefix="u_test__")
+        mock_get_prefix.sync.return_value = Mock(spec=NamespacePrefixResponse, user_namespace_prefix="u_test__")
 
         result = get_namespace_prefix()
 
@@ -317,7 +329,7 @@ class TestGetNamespacePrefix:
         """Test get_namespace_prefix returns tenant prefix when specified."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_prefix.sync.return_value = Mock(tenant_namespace_prefix="t_team__")
+        mock_get_prefix.sync.return_value = Mock(spec=NamespacePrefixResponse, tenant_namespace_prefix="t_team__")
 
         result = get_namespace_prefix(tenant="team")
 
@@ -349,7 +361,7 @@ class TestGetMyPolicies:
         """Test get_my_policies returns policy info."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_policies.sync.return_value = Mock(user_home_policy="policy")
+        mock_get_policies.sync.return_value = Mock(spec=UserPoliciesResponse, user_home_policy="policy")
 
         result = get_my_policies()
 
@@ -365,7 +377,7 @@ class TestGetMyGroups:
         """Test get_my_groups returns groups info."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_groups.sync.return_value = Mock(groups=["group1", "group2"])
+        mock_get_groups.sync.return_value = Mock(spec=UserGroupsResponse, groups=["group1", "group2"])
 
         result = get_my_groups()
 
@@ -383,7 +395,9 @@ class TestGetMyAccessiblePaths:
         """Test get_my_accessible_paths returns accessible paths."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_paths.sync.return_value = Mock(accessible_paths=["s3a://bucket/path"])
+        mock_get_paths.sync.return_value = Mock(
+            spec=UserAccessiblePathsResponse, accessible_paths=["s3a://bucket/path"]
+        )
 
         result = get_my_accessible_paths()
 
@@ -401,7 +415,7 @@ class TestGetTableAccessInfo:
         mock_settings.return_value.USER = "test_user"
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        mock_get_access.sync.return_value = Mock(is_public=False)
+        mock_get_access.sync.return_value = Mock(spec=PathAccessResponse, is_public=False)
 
         result = get_table_access_info("test_db", "test_table")
 

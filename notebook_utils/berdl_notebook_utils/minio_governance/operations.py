@@ -152,7 +152,15 @@ def check_governance_health() -> HealthResponse:
         HealthResponse with service status
     """
     client = get_governance_client()
-    return health_check_health_get.sync(client=client)
+    response = health_check_health_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Health check failed: {response.message}")
+
+    if not isinstance(response, HealthResponse):
+        raise RuntimeError("Health check failed: no response from API")
+
+    return response
 
 
 def get_minio_credentials() -> CredentialsResponse:
@@ -264,7 +272,15 @@ def get_my_sql_warehouse() -> UserSqlWarehousePrefixResponse:
         UserSqlWarehousePrefixResponse with username and sql_warehouse_prefix
     """
     client = get_governance_client()
-    return get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get.sync(client=client)
+    response = get_my_sql_warehouse_prefix_workspaces_me_sql_warehouse_prefix_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get SQL warehouse prefix: {response.message}")
+
+    if not isinstance(response, UserSqlWarehousePrefixResponse):
+        raise RuntimeError("Failed to get SQL warehouse prefix: no response from API")
+
+    return response
 
 
 def get_group_sql_warehouse(group_name: str):
@@ -278,9 +294,17 @@ def get_group_sql_warehouse(group_name: str):
         GroupSqlWarehousePrefixResponse with group_name and sql_warehouse_prefix
     """
     client = get_governance_client()
-    return get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get.sync(
+    response = get_group_sql_warehouse_prefix_workspaces_me_groups_group_name_sql_warehouse_prefix_get.sync(
         client=client, group_name=group_name
     )
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get group SQL warehouse prefix: {response.message}")
+
+    if response is None:
+        raise RuntimeError("Failed to get group SQL warehouse prefix: no response from API")
+
+    return response
 
 
 def get_namespace_prefix(tenant: str | None = None) -> NamespacePrefixResponse:
@@ -306,9 +330,17 @@ def get_namespace_prefix(tenant: str | None = None) -> NamespacePrefixResponse:
     """
 
     client = get_governance_client()
-    return get_namespace_prefix_workspaces_me_namespace_prefix_get.sync(
+    response = get_namespace_prefix_workspaces_me_namespace_prefix_get.sync(
         client=client, tenant=tenant if tenant is not None else UNSET
     )
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get namespace prefix: {response.message}")
+
+    if not isinstance(response, NamespacePrefixResponse):
+        raise RuntimeError("Failed to get namespace prefix: no response from API")
+
+    return response
 
 
 def get_my_workspace():
@@ -330,7 +362,15 @@ def get_my_policies() -> UserPoliciesResponse:
         UserPoliciesResponse with user_home_policy, user_system_policy, and group_policies
     """
     client = get_governance_client()
-    return get_my_policies_workspaces_me_policies_get.sync(client=client)
+    response = get_my_policies_workspaces_me_policies_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get policies: {response.message}")
+
+    if not isinstance(response, UserPoliciesResponse):
+        raise RuntimeError("Failed to get policies: no response from API")
+
+    return response
 
 
 def get_my_groups() -> UserGroupsResponse:
@@ -341,7 +381,15 @@ def get_my_groups() -> UserGroupsResponse:
         UserGroupsResponse with username, groups list, and group_count
     """
     client = get_governance_client()
-    return get_my_groups_workspaces_me_groups_get.sync(client=client)
+    response = get_my_groups_workspaces_me_groups_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get groups: {response.message}")
+
+    if not isinstance(response, UserGroupsResponse):
+        raise RuntimeError("Failed to get groups: no response from API")
+
+    return response
 
 
 def get_my_accessible_paths() -> UserAccessiblePathsResponse:
@@ -357,7 +405,15 @@ def get_my_accessible_paths() -> UserAccessiblePathsResponse:
         UserAccessiblePathsResponse with username, accessible_paths list, and total_paths count
     """
     client = get_governance_client()
-    return get_my_accessible_paths_workspaces_me_accessible_paths_get.sync(client=client)
+    response = get_my_accessible_paths_workspaces_me_accessible_paths_get.sync(client=client)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get accessible paths: {response.message}")
+
+    if not isinstance(response, UserAccessiblePathsResponse):
+        raise RuntimeError("Failed to get accessible paths: no response from API")
+
+    return response
 
 
 def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse:
@@ -373,7 +429,15 @@ def get_table_access_info(namespace: str, table_name: str) -> PathAccessResponse
 
     table_path = _build_table_path(username, namespace, table_name)
     request = PathRequest(path=table_path)
-    return get_path_access_info_sharing_get_path_access_info_post.sync(client=client, body=request)
+    response = get_path_access_info_sharing_get_path_access_info_post.sync(client=client, body=request)
+
+    if isinstance(response, ErrorResponse):
+        raise RuntimeError(f"Failed to get table access info: {response.message}")
+
+    if not isinstance(response, PathAccessResponse):
+        raise RuntimeError("Failed to get table access info: no response from API")
+
+    return response
 
 
 # =============================================================================
