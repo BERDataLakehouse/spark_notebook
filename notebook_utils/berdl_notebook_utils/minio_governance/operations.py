@@ -167,8 +167,8 @@ def get_minio_credentials() -> CredentialsResponse:
     """
     Get MinIO credentials for the current user and set them as environment variables.
 
-    Uses file locking to prevent race conditions when multiple processes/notebooks
-    try to access credentials simultaneously.
+    Calls GET /credentials on the governance API, which returns DB-cached credentials
+    without rotating. No local file cache needed — the API is the cache.
 
     Sets the following environment variables:
     - MINIO_ACCESS_KEY: User's MinIO access key
