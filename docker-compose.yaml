@@ -105,6 +105,8 @@ services:
     volumes:
       - users_home:/home
       - global_share:/home/${CI_KBASE_USERNAME}/global_share
+      - ../../shared:/home/amkhan/work
+      - ../../kbase_github/data-lakehouse-ingest:/home/amkhan/data-lakehouse-ingest
     depends_on:
       - spark-master
       - minio
@@ -141,7 +143,7 @@ services:
       - MINIO_ROOT_USER=minio
       - MINIO_ROOT_PASSWORD=minio123
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
-      - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
+      - KBASE_ADMIN_ROLES=BERDL_USER
       - KBASE_APPROVED_ROLES=BERDL_USER
       - REDIS_URL=redis://redis:6379
       # Credential store (PostgreSQL)
