@@ -94,7 +94,7 @@ def _create_dynamic_catalog(
         logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
         return
 
-    props_sql = ",\n        ".join(f'"{k}" = \'{v}\'' for k, v in properties.items())
+    props_sql = ",\n        ".join(f"\"{k}\" = '{v}'" for k, v in properties.items())
 
     sql = f"""CREATE CATALOG IF NOT EXISTS "{catalog_name}" USING {connector}
     WITH (
@@ -183,9 +183,6 @@ def get_trino_connection(
     cursor = conn.cursor()
     _create_dynamic_catalog(cursor, catalog_name, connector, properties)
 
-    logger.info(
-        f"Trino session ready: host={trino_host}:{trino_port}, "
-        f"user={username}, catalog={catalog_name}"
-    )
+    logger.info(f"Trino session ready: host={trino_host}:{trino_port}, user={username}, catalog={catalog_name}")
 
     return TrinoSession(connection=conn, catalog=catalog_name)
