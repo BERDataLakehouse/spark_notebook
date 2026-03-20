@@ -1,0 +1,11 @@
+{
+  "tenant_membership": {
+    "amkhan": ["kbase", "ese", "kescience"]
+  },
+  "schema_owner": {
+    "kbase_ke_pangenome_2": { "type": "tenant", "id": "kbase" },
+    "ese_ese_bridge": { "type": "tenant", "id": "ese" },
+    "kescience_ontology_source_1": { "type": "tenant", "id": "kescience" },
+    "u_amkhan__ontology_source_62": { "type": "user", "id": "amkhan" }
+  }
+}

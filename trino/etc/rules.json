@@ -1,0 +1,31 @@
+{
+  "catalogs": [
+    {
+      "user": "amkhan",
+      "catalog": "delta",
+      "allow": "all"
+    },
+    {
+      "user": ".*",
+      "catalog": "delta",
+      "allow": "none"
+    }
+  ],
+  "schemas": [
+    {
+      "user": "amkhan",
+      "catalog": "delta",
+      "schema": "kbase_ke_pangenome_2",
+      "owner": true
+    }
+  ],
+  "tables": [
+    {
+      "user": "amkhan",
+      "catalog": "delta",
+      "schema": "kbase_ke_pangenome_2",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    }
+  ]
+}
