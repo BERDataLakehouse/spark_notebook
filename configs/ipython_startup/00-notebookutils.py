@@ -39,6 +39,7 @@ from berdl_notebook_utils.clients import (  # noqa: F401
 # Spark Session Management
 # ============================================================================
 from berdl_notebook_utils.setup_spark_session import get_spark_session  # noqa: F401
+from berdl_notebook_utils.setup_trino_session import get_trino_connection  # noqa: F401
 
 # ============================================================================
 # Spark Operations

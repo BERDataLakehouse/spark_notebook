@@ -14,6 +14,8 @@ dependencies = [
     # Storage / Hive
     "hmsclient>=0.1",
     "minio>=7.0",
+    # Trino
+    "trino>=0.330",
     # BERDL internal clients
     "cdm-task-service-client",
     "cdm-spark-manager-client",

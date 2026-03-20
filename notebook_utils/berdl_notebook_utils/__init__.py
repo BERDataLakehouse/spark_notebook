@@ -11,6 +11,7 @@ from berdl_notebook_utils.clients import (
     get_hive_metastore_client,
 )
 from berdl_notebook_utils.setup_spark_session import get_spark_session
+from berdl_notebook_utils.setup_trino_session import get_trino_connection
 from berdl_notebook_utils.spark import (
     # Cluster management
     check_api_health,
@@ -67,6 +68,7 @@ __all__ = [
     "get_governance_client",
     "get_spark_cluster_client",
     "get_spark_session",
+    "get_trino_connection",
     "get_hive_metastore_client",
     # Database operations
     "create_namespace_if_not_exists",
@@ -128,6 +130,7 @@ def berdl_notebook_help():
     - get_governance_client: Data Governance API client instance
     - get_spark_cluster_client: Spark Cluster Manager API client instance
     - get_spark_session: Create configured Spark session with Delta Lake and S3 support
+    - get_trino_connection: Create Trino connection with per-user dynamic catalog
     - get_datalake_mcp_client: Datalake MCP Server client instance
 
     Database Operations:
