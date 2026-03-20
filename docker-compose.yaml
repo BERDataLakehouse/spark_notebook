@@ -307,10 +307,11 @@ services:
       - postgres
       - minio
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "9083"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9083'"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 10
+      start_period: 60s
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
@@ -346,9 +347,41 @@ services:
       echo 'MinIO bucket creation complete.';
       "
 
+  trino:
+    image: trinodb/trino:479
+    container_name: trino
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/etc:/etc/trino
+      - trino_data:/data/trino
+    depends_on:
+      minio:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+      opa:
+        condition: service_started
+
+  
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: opa
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./opa:/policy
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--watch"
+      - "/policy"
+
 volumes:
   postgres_data:
   minio_data:
   redis_data:
   global_share:
   users_home:  # Shared volume for all user home directories
+  trino_data:
