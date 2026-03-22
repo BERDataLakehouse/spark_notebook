@@ -31,6 +31,23 @@ logger = logging.getLogger(__name__)
 DEFAULT_TRINO_HOST = "trino"
 DEFAULT_TRINO_PORT = 8080
 
+# Connectors allowed in CREATE CATALOG statements (SQL-injection allowlist).
+#
+# Each user gets a per-user dynamic catalog (e.g. "u_{username}_lake") that points
+# at the shared Hive Metastore but uses the user's own MinIO credentials.
+# The berdl-namespace-isolation access-control plugin then filters visibility:
+#   - Personal namespaces:  schemas matching  u_{username}__*
+#   - Tenant namespaces:    schemas matching  globalusers_*
+#
+# Both delta_lake and hive connectors read metadata from Hive Metastore and
+# data from MinIO/S3, so the same namespace isolation applies to either one.
+# delta_lake is the default (matches Spark's Delta write format); hive is
+# available for querying legacy non-Delta tables (Parquet, ORC, CSV, etc.).
+ALLOWED_CONNECTORS = frozenset({
+    "delta_lake",
+    "hive",
+})
+
 
 class TrinoSession(NamedTuple):
     """Return type for get_trino_connection()."""
@@ -39,13 +56,14 @@ class TrinoSession(NamedTuple):
     catalog: str
 
 
-def _sanitize_catalog_name(username: str) -> str:
+def _sanitize_identifier(value: str) -> str:
     """
-    Convert a username into a valid Trino catalog name.
+    Sanitize a string into a valid Trino identifier component.
 
     Trino catalog names must be lowercase alphanumeric + underscores.
+    Used for both usernames and catalog suffixes.
     """
-    return re.sub(r"[^a-z0-9_]", "_", username.lower())
+    return re.sub(r"[^a-z0-9_]", "_", value.lower())
 
 
 def _build_catalog_properties(
@@ -77,6 +95,24 @@ def _catalog_exists(cursor: trino.dbapi.Cursor, catalog_name: str) -> bool:
     return catalog_name in catalogs
 
 
+def _escape_sql_string(value: str) -> str:
+    """Escape single quotes in a SQL string literal by doubling them."""
+    return value.replace("'", "''")
+
+
+def _validate_connector(connector: str) -> None:
+    """Validate connector name against the allowlist.
+
+    Raises:
+        ValueError: If the connector is not in ALLOWED_CONNECTORS.
+    """
+    if connector not in ALLOWED_CONNECTORS:
+        raise ValueError(
+            f"Connector {connector!r} is not allowed. "
+            f"Must be one of: {', '.join(sorted(ALLOWED_CONNECTORS))}"
+        )
+
+
 def _create_dynamic_catalog(
     cursor: trino.dbapi.Cursor,
     catalog_name: str,
@@ -94,7 +130,11 @@ def _create_dynamic_catalog(
         logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
         return
 
-    props_sql = ",\n        ".join(f"\"{k}\" = '{v}'" for k, v in properties.items())
+    _validate_connector(connector)
+
+    props_sql = ",\n        ".join(
+        f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in properties.items()
+    )
 
     sql = f"""CREATE CATALOG IF NOT EXISTS "{catalog_name}" USING {connector}
     WITH (
@@ -152,17 +192,18 @@ def get_trino_connection(
         get_settings.cache_clear()
         settings = get_settings()
 
-    # Resolve host/port
-    trino_host = host or os.environ.get("TRINO_HOST", DEFAULT_TRINO_HOST)
-    trino_port = port or int(os.environ.get("TRINO_PORT", str(DEFAULT_TRINO_PORT)))
+    # Resolve host/port (use `is not None` so callers can intentionally pass falsy values)
+    trino_host = host if host is not None else os.environ.get("TRINO_HOST", DEFAULT_TRINO_HOST)
+    trino_port = port if port is not None else int(os.environ.get("TRINO_PORT", str(DEFAULT_TRINO_PORT)))
 
     # Fetch user's MinIO credentials (same flow as Spark)
     credentials = get_minio_credentials()
     username = settings.USER
 
     # Build catalog name: u_{username}_{suffix}
-    safe_username = _sanitize_catalog_name(username)
-    catalog_name = f"u_{safe_username}_{catalog_suffix}"
+    safe_username = _sanitize_identifier(username)
+    safe_suffix = _sanitize_identifier(catalog_suffix)
+    catalog_name = f"u_{safe_username}_{safe_suffix}"
 
     logger.info(f"Setting up Trino connection for user={username}, catalog={catalog_name}")
 

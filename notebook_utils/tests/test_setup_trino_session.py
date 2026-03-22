@@ -7,54 +7,57 @@ from governance_client.models import CredentialsResponse
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings
 from berdl_notebook_utils.setup_trino_session import (
+    ALLOWED_CONNECTORS,
     TrinoSession,
     _build_catalog_properties,
     _catalog_exists,
     _create_dynamic_catalog,
-    _sanitize_catalog_name,
+    _escape_sql_string,
+    _sanitize_identifier,
+    _validate_connector,
     get_trino_connection,
 )
 
 
 # ---------------------------------------------------------------------------
-# _sanitize_catalog_name
+# _sanitize_identifier
 # ---------------------------------------------------------------------------
 class TestSanitizeCatalogName:
     def test_simple_username(self):
-        assert _sanitize_catalog_name("alice") == "alice"
+        assert _sanitize_identifier("alice") == "alice"
 
     def test_uppercase_converted(self):
-        assert _sanitize_catalog_name("Alice") == "alice"
+        assert _sanitize_identifier("Alice") == "alice"
 
     def test_mixed_case_and_numbers(self):
-        assert _sanitize_catalog_name("User123") == "user123"
+        assert _sanitize_identifier("User123") == "user123"
 
     def test_hyphens_replaced(self):
-        assert _sanitize_catalog_name("my-user") == "my_user"
+        assert _sanitize_identifier("my-user") == "my_user"
 
     def test_dots_replaced(self):
-        assert _sanitize_catalog_name("my.user") == "my_user"
+        assert _sanitize_identifier("my.user") == "my_user"
 
     def test_at_sign_replaced(self):
-        assert _sanitize_catalog_name("user@domain") == "user_domain"
+        assert _sanitize_identifier("user@domain") == "user_domain"
 
     def test_special_characters_replaced(self):
-        assert _sanitize_catalog_name("u$er!name#1") == "u_er_name_1"
+        assert _sanitize_identifier("u$er!name#1") == "u_er_name_1"
 
     def test_underscores_preserved(self):
-        assert _sanitize_catalog_name("my_user_name") == "my_user_name"
+        assert _sanitize_identifier("my_user_name") == "my_user_name"
 
     def test_already_valid(self):
-        assert _sanitize_catalog_name("abc_123") == "abc_123"
+        assert _sanitize_identifier("abc_123") == "abc_123"
 
     def test_empty_string(self):
-        assert _sanitize_catalog_name("") == ""
+        assert _sanitize_identifier("") == ""
 
     def test_all_special_chars(self):
-        assert _sanitize_catalog_name("@#$%") == "____"
+        assert _sanitize_identifier("@#$%") == "____"
 
     def test_spaces_replaced(self):
-        assert _sanitize_catalog_name("my user") == "my_user"
+        assert _sanitize_identifier("my user") == "my_user"
 
 
 # ---------------------------------------------------------------------------
@@ -406,3 +409,168 @@ class TestTrinoSession:
         session = TrinoSession(connection=conn, catalog="my_cat")
         assert session[0] is conn
         assert session[1] == "my_cat"
+
+
+# ---------------------------------------------------------------------------
+# _escape_sql_string
+# ---------------------------------------------------------------------------
+class TestEscapeSqlString:
+    def test_no_quotes(self):
+        assert _escape_sql_string("hello world") == "hello world"
+
+    def test_single_quote(self):
+        assert _escape_sql_string("it's") == "it''s"
+
+    def test_multiple_quotes(self):
+        assert _escape_sql_string("a'b'c") == "a''b''c"
+
+    def test_empty_string(self):
+        assert _escape_sql_string("") == ""
+
+    def test_consecutive_quotes(self):
+        assert _escape_sql_string("a''b") == "a''''b"
+
+
+# ---------------------------------------------------------------------------
+# _validate_connector
+# ---------------------------------------------------------------------------
+class TestValidateConnector:
+    def test_allowed_connectors_pass(self):
+        for connector in ALLOWED_CONNECTORS:
+            _validate_connector(connector)  # Should not raise
+
+    def test_invalid_connector_raises(self):
+        with pytest.raises(ValueError, match="not allowed"):
+            _validate_connector("malicious; DROP TABLE")
+
+    def test_unknown_connector_raises(self):
+        with pytest.raises(ValueError, match="not allowed"):
+            _validate_connector("postgresql")
+
+    def test_error_message_lists_allowed(self):
+        with pytest.raises(ValueError, match="delta_lake"):
+            _validate_connector("bad")
+
+
+# ---------------------------------------------------------------------------
+# _create_dynamic_catalog — SQL injection / escaping tests
+# ---------------------------------------------------------------------------
+class TestCreateDynamicCatalogSecurity:
+    def test_rejects_invalid_connector(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = []  # catalog not found
+
+        with pytest.raises(ValueError, match="not allowed"):
+            _create_dynamic_catalog(cursor, "my_cat", "evil_connector", {"k": "v"})
+
+    def test_escapes_single_quotes_in_property_values(self):
+        cursor = MagicMock()
+        cursor.fetchall.side_effect = [[], []]  # not found, then create
+
+        _create_dynamic_catalog(
+            cursor, "my_cat", "delta_lake", {"s3.aws-secret-key": "secret'with'quotes"}
+        )
+
+        create_sql = cursor.execute.call_args_list[1][0][0]
+        assert "secret''with''quotes" in create_sql
+        assert "secret'with'quotes" not in create_sql
+
+
+# ---------------------------------------------------------------------------
+# get_trino_connection — catalog_suffix sanitization
+# ---------------------------------------------------------------------------
+class TestGetTrinoConnectionSuffixSanitization:
+    @pytest.fixture()
+    def mock_settings(self):
+        settings = MagicMock(spec=BERDLSettings)
+        settings.USER = "testuser"
+        settings.MINIO_ENDPOINT_URL = "http://minio:9000"
+        settings.MINIO_SECURE = False
+        settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
+        return settings
+
+    @pytest.fixture()
+    def mock_credentials(self):
+        return CredentialsResponse(
+            username="testuser",
+            access_key="test_access_key",
+            secret_key="test_secret_key",
+        )
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    @patch("berdl_notebook_utils.setup_trino_session.trino")
+    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    def test_suffix_with_special_chars_sanitized(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
+    ):
+        mock_get_creds.return_value = mock_credentials
+        mock_trino.dbapi.connect.return_value = MagicMock()
+
+        result = get_trino_connection(catalog_suffix="My-Team.v2", settings=mock_settings)
+
+        assert result.catalog == "u_testuser_my_team_v2"
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    @patch("berdl_notebook_utils.setup_trino_session.trino")
+    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    def test_suffix_uppercase_lowercased(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
+    ):
+        mock_get_creds.return_value = mock_credentials
+        mock_trino.dbapi.connect.return_value = MagicMock()
+
+        result = get_trino_connection(catalog_suffix="RESEARCH", settings=mock_settings)
+
+        assert result.catalog == "u_testuser_research"
+
+
+# ---------------------------------------------------------------------------
+# get_trino_connection — falsy host/port values honored
+# ---------------------------------------------------------------------------
+class TestGetTrinoConnectionFalsyValues:
+    @pytest.fixture()
+    def mock_settings(self):
+        settings = MagicMock(spec=BERDLSettings)
+        settings.USER = "testuser"
+        settings.MINIO_ENDPOINT_URL = "http://minio:9000"
+        settings.MINIO_SECURE = False
+        settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
+        return settings
+
+    @pytest.fixture()
+    def mock_credentials(self):
+        return CredentialsResponse(
+            username="testuser",
+            access_key="test_access_key",
+            secret_key="test_secret_key",
+        )
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    @patch("berdl_notebook_utils.setup_trino_session.trino")
+    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    def test_empty_string_host_is_honored(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials, monkeypatch
+    ):
+        """Empty-string host should NOT fall through to env/default."""
+        mock_get_creds.return_value = mock_credentials
+        mock_trino.dbapi.connect.return_value = MagicMock()
+        monkeypatch.setenv("TRINO_HOST", "env-host")
+
+        get_trino_connection(host="", settings=mock_settings)
+
+        mock_trino.dbapi.connect.assert_called_once_with(host="", port=8080, user="testuser")
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    @patch("berdl_notebook_utils.setup_trino_session.trino")
+    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    def test_port_zero_is_honored(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials, monkeypatch
+    ):
+        """port=0 should NOT fall through to env/default."""
+        mock_get_creds.return_value = mock_credentials
+        mock_trino.dbapi.connect.return_value = MagicMock()
+        monkeypatch.setenv("TRINO_PORT", "9999")
+
+        get_trino_connection(port=0, settings=mock_settings)
+
+        mock_trino.dbapi.connect.assert_called_once_with(host="trino", port=0, user="testuser")
