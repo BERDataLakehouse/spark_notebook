@@ -43,10 +43,12 @@ DEFAULT_TRINO_PORT = 8080
 # data from MinIO/S3, so the same namespace isolation applies to either one.
 # delta_lake is the default (matches Spark's Delta write format); hive is
 # available for querying legacy non-Delta tables (Parquet, ORC, CSV, etc.).
-ALLOWED_CONNECTORS = frozenset({
-    "delta_lake",
-    "hive",
-})
+ALLOWED_CONNECTORS = frozenset(
+    {
+        "delta_lake",
+        "hive",
+    }
+)
 
 
 class TrinoSession(NamedTuple):
@@ -108,8 +110,7 @@ def _validate_connector(connector: str) -> None:
     """
     if connector not in ALLOWED_CONNECTORS:
         raise ValueError(
-            f"Connector {connector!r} is not allowed. "
-            f"Must be one of: {', '.join(sorted(ALLOWED_CONNECTORS))}"
+            f"Connector {connector!r} is not allowed. Must be one of: {', '.join(sorted(ALLOWED_CONNECTORS))}"
         )
 
 
@@ -132,9 +133,7 @@ def _create_dynamic_catalog(
 
     _validate_connector(connector)
 
-    props_sql = ",\n        ".join(
-        f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in properties.items()
-    )
+    props_sql = ",\n        ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in properties.items())
 
     sql = f"""CREATE CATALOG IF NOT EXISTS "{catalog_name}" USING {connector}
     WITH (

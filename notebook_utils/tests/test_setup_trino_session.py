@@ -467,9 +467,7 @@ class TestCreateDynamicCatalogSecurity:
         cursor = MagicMock()
         cursor.fetchall.side_effect = [[], []]  # not found, then create
 
-        _create_dynamic_catalog(
-            cursor, "my_cat", "delta_lake", {"s3.aws-secret-key": "secret'with'quotes"}
-        )
+        _create_dynamic_catalog(cursor, "my_cat", "delta_lake", {"s3.aws-secret-key": "secret'with'quotes"})
 
         create_sql = cursor.execute.call_args_list[1][0][0]
         assert "secret''with''quotes" in create_sql
