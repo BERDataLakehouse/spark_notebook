@@ -201,6 +201,8 @@ class TestGetTrinoConnection:
         settings.MINIO_ENDPOINT_URL = "http://minio:9000"
         settings.MINIO_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
+        settings.TRINO_HOST = "trino"
+        settings.TRINO_PORT = 8080
         return settings
 
     @pytest.fixture()
@@ -258,18 +260,18 @@ class TestGetTrinoConnection:
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
     @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
-    def test_host_from_env_var(
-        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials, monkeypatch
+    def test_host_and_port_from_settings(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
+        mock_settings.TRINO_HOST = "settings-trino-host"
+        mock_settings.TRINO_PORT = 7777
         mock_get_creds.return_value = mock_credentials
         mock_trino.dbapi.connect.return_value = MagicMock()
-        monkeypatch.setenv("TRINO_HOST", "env-trino-host")
-        monkeypatch.setenv("TRINO_PORT", "7777")
 
         get_trino_connection(settings=mock_settings)
 
         mock_trino.dbapi.connect.assert_called_once_with(
-            host="env-trino-host",
+            host="settings-trino-host",
             port=7777,
             user="testuser",
         )
@@ -277,13 +279,13 @@ class TestGetTrinoConnection:
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
     @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
-    def test_explicit_host_overrides_env(
-        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials, monkeypatch
+    def test_explicit_host_overrides_settings(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
+        mock_settings.TRINO_HOST = "settings-host"
+        mock_settings.TRINO_PORT = 1111
         mock_get_creds.return_value = mock_credentials
         mock_trino.dbapi.connect.return_value = MagicMock()
-        monkeypatch.setenv("TRINO_HOST", "env-host")
-        monkeypatch.setenv("TRINO_PORT", "1111")
 
         get_trino_connection(host="explicit-host", port=2222, settings=mock_settings)
 
@@ -358,6 +360,8 @@ class TestGetTrinoConnection:
         settings.MINIO_ENDPOINT_URL = "http://minio:9000"
         settings.MINIO_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
+        settings.TRINO_HOST = "trino"
+        settings.TRINO_PORT = 8080
         mock_get_settings.return_value = settings
         mock_get_creds.return_value = CredentialsResponse(username="autouser", access_key="ak", secret_key="sk")
         mock_trino.dbapi.connect.return_value = MagicMock()
@@ -485,6 +489,8 @@ class TestGetTrinoConnectionSuffixSanitization:
         settings.MINIO_ENDPOINT_URL = "http://minio:9000"
         settings.MINIO_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
+        settings.TRINO_HOST = "trino"
+        settings.TRINO_PORT = 8080
         return settings
 
     @pytest.fixture()
@@ -533,6 +539,8 @@ class TestGetTrinoConnectionFalsyValues:
         settings.MINIO_ENDPOINT_URL = "http://minio:9000"
         settings.MINIO_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
+        settings.TRINO_HOST = "trino"
+        settings.TRINO_PORT = 8080
         return settings
 
     @pytest.fixture()
@@ -547,12 +555,12 @@ class TestGetTrinoConnectionFalsyValues:
     @patch("berdl_notebook_utils.setup_trino_session.trino")
     @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
     def test_empty_string_host_is_honored(
-        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials, monkeypatch
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
-        """Empty-string host should NOT fall through to env/default."""
+        """Empty-string host should NOT fall through to settings default."""
+        mock_settings.TRINO_HOST = "settings-host"
         mock_get_creds.return_value = mock_credentials
         mock_trino.dbapi.connect.return_value = MagicMock()
-        monkeypatch.setenv("TRINO_HOST", "env-host")
 
         get_trino_connection(host="", settings=mock_settings)
 
@@ -561,13 +569,11 @@ class TestGetTrinoConnectionFalsyValues:
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
     @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
-    def test_port_zero_is_honored(
-        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials, monkeypatch
-    ):
-        """port=0 should NOT fall through to env/default."""
+    def test_port_zero_is_honored(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
+        """port=0 should NOT fall through to settings default."""
+        mock_settings.TRINO_PORT = 9999
         mock_get_creds.return_value = mock_credentials
         mock_trino.dbapi.connect.return_value = MagicMock()
-        monkeypatch.setenv("TRINO_PORT", "9999")
 
         get_trino_connection(port=0, settings=mock_settings)
 

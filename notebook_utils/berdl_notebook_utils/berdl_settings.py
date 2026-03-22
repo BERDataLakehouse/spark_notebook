@@ -66,6 +66,10 @@ class BERDLSettings(BaseSettings):
     # Data Governance API configuration
     GOVERNANCE_API_URL: AnyHttpUrl
 
+    # Trino configuration
+    TRINO_HOST: str = Field(default="trino", description="Trino coordinator hostname")
+    TRINO_PORT: int = Field(default=8080, description="Trino coordinator port")
+
     # Datalake MCP Server configuration
     DATALAKE_MCP_SERVER_URL: AnyHttpUrl
 

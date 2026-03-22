@@ -16,7 +16,6 @@ security model as Spark sessions.
 """
 
 import logging
-import os
 import re
 from typing import NamedTuple
 
@@ -27,17 +26,14 @@ from .minio_governance.operations import get_minio_credentials
 
 logger = logging.getLogger(__name__)
 
-# Default Trino connection settings (overridable via env vars / BERDLSettings)
-DEFAULT_TRINO_HOST = "trino"
-DEFAULT_TRINO_PORT = 8080
-
 # Connectors allowed in CREATE CATALOG statements (SQL-injection allowlist).
 #
 # Each user gets a per-user dynamic catalog (e.g. "u_{username}_lake") that points
 # at the shared Hive Metastore but uses the user's own MinIO credentials.
 # The berdl-namespace-isolation access-control plugin then filters visibility:
 #   - Personal namespaces:  schemas matching  u_{username}__*
-#   - Tenant namespaces:    schemas matching  globalusers_*
+#   - Tenant namespaces:    schemas matching  {tenant}_*
+#   - Public namespaces:    schemas matching  globalusers_*
 #
 # Both delta_lake and hive connectors read metadata from Hive Metastore and
 # data from MinIO/S3, so the same namespace isolation applies to either one.
@@ -192,8 +188,8 @@ def get_trino_connection(
         settings = get_settings()
 
     # Resolve host/port (use `is not None` so callers can intentionally pass falsy values)
-    trino_host = host if host is not None else os.environ.get("TRINO_HOST", DEFAULT_TRINO_HOST)
-    trino_port = port if port is not None else int(os.environ.get("TRINO_PORT", str(DEFAULT_TRINO_PORT)))
+    trino_host = host if host is not None else settings.TRINO_HOST
+    trino_port = port if port is not None else settings.TRINO_PORT
 
     # Fetch user's MinIO credentials (same flow as Spark)
     credentials = get_minio_credentials()
