@@ -1,6 +1,6 @@
 """Comprehensive tests for berdl_notebook_utils.setup_trino_session."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from governance_client.models import CredentialsResponse
@@ -356,9 +356,7 @@ class TestGetTrinoConnection:
         settings.MINIO_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         mock_get_settings.return_value = settings
-        mock_get_creds.return_value = CredentialsResponse(
-            username="autouser", access_key="ak", secret_key="sk"
-        )
+        mock_get_creds.return_value = CredentialsResponse(username="autouser", access_key="ak", secret_key="sk")
         mock_trino.dbapi.connect.return_value = MagicMock()
 
         result = get_trino_connection()
