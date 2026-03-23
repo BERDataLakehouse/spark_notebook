@@ -3,15 +3,25 @@ set -x
 
 echo "Running custom pre jupyter stack start.sh steps..."
 
-# Map MinIO credentials to AWS-compatible env vars for boto3/papermill
-# Read from user's credential file if available
-CRED_FILE="/home/${NB_USER}/.berdl_minio_credentials"
-if [ -f "$CRED_FILE" ]; then
-    export AWS_ACCESS_KEY_ID=$(cat "$CRED_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_key',''))")
-    export AWS_SECRET_ACCESS_KEY=$(cat "$CRED_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('secret_key',''))")
-    echo "Loaded AWS credentials from $CRED_FILE"
+# Fetch MinIO credentials from governance API (MMS) and map to AWS-compatible env vars
+GOVERNANCE_URL="${GOVERNANCE_API_URL:-}"
+AUTH_TOKEN="${KBASE_AUTH_TOKEN:-}"
+
+if [ -n "$GOVERNANCE_URL" ] && [ -n "$AUTH_TOKEN" ]; then
+    CRED_JSON=$(curl -sf -m 10 \
+        -H "Authorization: Bearer ${AUTH_TOKEN}" \
+        "${GOVERNANCE_URL%/}/credentials/" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$CRED_JSON" ]; then
+        export AWS_ACCESS_KEY_ID=$(echo "$CRED_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_key',''))")
+        export AWS_SECRET_ACCESS_KEY=$(echo "$CRED_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('secret_key',''))")
+        echo "Loaded AWS credentials from governance API"
+    else
+        echo "WARNING: Failed to fetch credentials from governance API, falling back to env vars"
+        export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-}"
+        export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-}"
+    fi
 else
-    # Fallback to MINIO env vars if set
+    # Fallback to MINIO env vars if governance API URL or auth token not set
     export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-}"
     export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-}"
 fi
