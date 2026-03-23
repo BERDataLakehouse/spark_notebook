@@ -48,7 +48,6 @@ from berdl_notebook_utils.minio_governance.operations import (
     list_groups,
     list_user_names,
     list_users,
-    list_user_names,
     add_group_member,
     remove_group_member,
     create_tenant_and_assign_users,
@@ -60,7 +59,6 @@ from berdl_notebook_utils.minio_governance.operations import (
     CredentialsResponse,
     ErrorResponse,
     GroupManagementResponse,
-    UserNamesResponse,
 )
 
 
@@ -1125,40 +1123,6 @@ class TestListAvailableGroupsNoneResponse:
 
         with pytest.raises(RuntimeError, match="Failed to list groups: no response from API"):
             list_available_groups()
-
-
-class TestListUserNames:
-    """Tests for list_user_names function."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
-    def test_list_user_names_success(self, mock_list_names, mock_get_client):
-        mock_get_client.return_value = Mock()
-        mock_response = Mock(spec=UserNamesResponse)
-        mock_response.usernames = ["alice", "bob", "charlie"]
-        mock_list_names.return_value = mock_response
-
-        result = list_user_names()
-
-        assert result == ["alice", "bob", "charlie"]
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
-    def test_list_user_names_error_response(self, mock_list_names, mock_get_client):
-        mock_get_client.return_value = Mock()
-        mock_list_names.return_value = ErrorResponse(message="forbidden", error_type="error")
-
-        with pytest.raises(RuntimeError, match="Failed to list usernames: forbidden"):
-            list_user_names()
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations.list_user_names_sync")
-    def test_list_user_names_none_response(self, mock_list_names, mock_get_client):
-        mock_get_client.return_value = Mock()
-        mock_list_names.return_value = None
-
-        with pytest.raises(RuntimeError, match="Failed to list usernames: no response from API"):
-            list_user_names()
 
 
 class TestCreateTenantAddMemberErrorAndException:
