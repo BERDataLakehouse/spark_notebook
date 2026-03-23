@@ -573,7 +573,9 @@ class TestGetTrinoConnectionFalsyValues:
         get_trino_connection(host="", settings=mock_settings)
 
         mock_trino.dbapi.connect.assert_called_once_with(
-            host="", port=8080, user="testuser",
+            host="",
+            port=8080,
+            user="testuser",
             extra_credential=[("kbase_auth_token", "fake-kbase-token")],
         )
 
@@ -589,6 +591,8 @@ class TestGetTrinoConnectionFalsyValues:
         get_trino_connection(port=0, settings=mock_settings)
 
         mock_trino.dbapi.connect.assert_called_once_with(
-            host="trino", port=0, user="testuser",
+            host="trino",
+            port=0,
+            user="testuser",
             extra_credential=[("kbase_auth_token", "fake-kbase-token")],
         )
