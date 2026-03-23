@@ -119,9 +119,9 @@ def _create_dynamic_catalog(
     """
     Create a dynamic catalog if it doesn't already exist.
 
-    Skips creation if the catalog is already loaded (e.g. from a static
-    .properties file), since CREATE CATALOG requires system-level privileges
-    that file-based access control may not grant.
+    Skips creation if the catalog is already loaded (e.g. from a previous
+    session or static .properties file).  The access control plugin allows
+    CREATE CATALOG for catalogs matching u_{user}_*.
     """
     if _catalog_exists(cursor, catalog_name):
         logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
