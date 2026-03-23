@@ -979,7 +979,6 @@ class TestRequestTenantAccess:
             request_tenant_access("kbase")
 
 
-
 # =============================================================================
 # Additional tests for uncovered lines
 # =============================================================================
