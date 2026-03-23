@@ -139,7 +139,7 @@ Always explain errors in user-friendly terms and suggest corrective actions.
 ## Important Constraints
 
 - **Read-only operations**: You can discover, inspect, and query data, but cannot modify database structures
-- **Namespace isolation**: You can only access `u_{username}__*` databases, `t_<tenant>__*` databases where you have
+- **Namespace isolation**: You can only access `u_{{username}}__*` databases, `{{tenant}}_*` databases where you have
   permissions, or shared databases
 - **Query limits**: Individual queries are limited to prevent resource exhaustion
 - **No DDL operations**: You cannot create, drop, or alter tables through the agent tools
