@@ -13,7 +13,7 @@ from pyspark.sql import SparkSession
 
 from berdl_notebook_utils.berdl_settings import get_settings
 from berdl_notebook_utils.minio_governance.operations import (
-    CREDENTIALS_CACHE_FILE,
+    _get_credentials_cache_path,
     rotate_minio_credentials,
 )
 from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
@@ -48,11 +48,10 @@ def refresh_spark_environment() -> dict:
         dict with keys ``minio``, ``spark_connect``,
         ``spark_session_stopped`` summarising what happened.
     """
-    home = Path.home()
     result: dict = {}
 
     # 1. Delete credential cache file
-    minio_removed = _remove_cache_file(home / CREDENTIALS_CACHE_FILE)
+    minio_removed = _remove_cache_file(_get_credentials_cache_path())
     logger.info("Cleared credential caches (minio=%s)", minio_removed)
 
     # 2. Clear in-memory settings cache
