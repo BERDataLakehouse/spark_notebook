@@ -3,12 +3,10 @@ Tests for minio_governance/operations.py module.
 """
 
 import logging
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import httpx
 import pytest
-
 from governance_client.models import (
     HealthResponse,
     NamespacePrefixResponse,
@@ -21,7 +19,6 @@ from governance_client.models import (
 
 from berdl_notebook_utils.minio_governance.operations import (
     _build_table_path,
-    _write_credentials_cache,
     check_governance_health,
     get_minio_credentials,
     get_my_sql_warehouse,
@@ -106,31 +103,44 @@ class TestCheckGovernanceHealth:
 class TestGetMinioCredentials:
     """Tests for get_minio_credentials function."""
 
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
     @patch("berdl_notebook_utils.minio_governance.operations.os")
     @patch("berdl_notebook_utils.minio_governance.operations.get_credentials_credentials_get")
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    def test_fetches_credentials_from_api(self, mock_get_client, mock_get_creds, mock_os):
+    def test_fetches_credentials_from_api(self, mock_get_client, mock_get_creds, mock_os, mock_get_settings):
         """Test fetches credentials from API and sets env vars."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
 
         mock_creds = Mock(spec=CredentialsResponse)
-        mock_creds.access_key = "api_key"
-        mock_creds.secret_key = "api_secret"
+        mock_creds.access_key = "new_key"
+        mock_creds.secret_key = "new_secret"
         mock_get_creds.sync.return_value = mock_creds
 
         result = get_minio_credentials()
 
         assert result == mock_creds
-        mock_os.environ.__setitem__.assert_any_call("MINIO_ACCESS_KEY", "api_key")
-        mock_os.environ.__setitem__.assert_any_call("MINIO_SECRET_KEY", "api_secret")
+        mock_get_creds.sync.assert_called_once_with(client=mock_client)
+        mock_os.environ.__setitem__.assert_any_call("MINIO_ACCESS_KEY", "new_key")
+        mock_os.environ.__setitem__.assert_any_call("MINIO_SECRET_KEY", "new_secret")
+        mock_get_settings.cache_clear.assert_called_once()
 
     @patch("berdl_notebook_utils.minio_governance.operations.get_credentials_credentials_get")
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    def test_raises_on_api_failure(self, mock_get_client, mock_get_creds):
+    def test_raises_on_error_response(self, mock_get_client, mock_get_creds):
+        """Test raises RuntimeError when API returns an error response."""
+        mock_get_client.return_value = Mock()
+        mock_get_creds.sync.return_value = ErrorResponse(message="unauthorized", error_type="error")
+
+        with pytest.raises(RuntimeError, match="Failed to fetch credentials from API"):
+            get_minio_credentials()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_credentials_credentials_get")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    def test_raises_on_none_response(self, mock_get_client, mock_get_creds):
         """Test raises RuntimeError when API returns None."""
         mock_get_client.return_value = Mock()
-        mock_get_creds.sync.return_value = Mock(spec=ErrorResponse)
+        mock_get_creds.sync.return_value = None
 
         with pytest.raises(RuntimeError, match="Failed to fetch credentials from API"):
             get_minio_credentials()
@@ -141,21 +151,10 @@ class TestRotateMinioCredentials:
 
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
     @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations._write_credentials_cache")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_credentials_cache_path")
     @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    def test_rotates_and_updates_cache(
-        self,
-        mock_get_client,
-        mock_rotate_api,
-        mock_cache_path,
-        mock_write_cache,
-        mock_os,
-        mock_get_settings,
-        tmp_path,
-    ):
-        """Test rotate calls API and updates local cache and env vars."""
+    def test_rotates_and_updates_env_vars(self, mock_get_client, mock_rotate_api, mock_os, mock_get_settings):
+        """Test rotate calls API and updates env vars."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
 
@@ -165,13 +164,10 @@ class TestRotateMinioCredentials:
         mock_creds.username = "testuser"
         mock_rotate_api.sync.return_value = mock_creds
 
-        mock_cache_path.return_value = tmp_path / ".cache"
-
         result = rotate_minio_credentials()
 
         assert result == mock_creds
         mock_rotate_api.sync.assert_called_once_with(client=mock_client)
-        mock_write_cache.assert_called_once()
         mock_os.environ.__setitem__.assert_any_call("MINIO_ACCESS_KEY", "rotated_key")
         mock_os.environ.__setitem__.assert_any_call("MINIO_SECRET_KEY", "rotated_secret")
         mock_get_settings.cache_clear.assert_called_once()
@@ -792,117 +788,6 @@ class TestRequestTenantAccess:
 # =============================================================================
 
 
-class TestWriteCredentialsCacheErrors:
-    """Tests for _write_credentials_cache error handling (lines 124-125)."""
-
-    def test_silently_handles_os_error(self, tmp_path):
-        """Test swallows OSError when writing fails (e.g. read-only dir)."""
-        # Use a path inside a non-existent directory to trigger OSError
-        bad_path = tmp_path / "nonexistent_dir" / "cache.json"
-        mock_creds = Mock()
-        mock_creds.to_dict.return_value = {"access_key": "key"}
-
-        # Should not raise
-        _write_credentials_cache(bad_path, mock_creds)
-
-    def test_silently_handles_type_error(self, tmp_path):
-        """Test swallows TypeError when serialization fails."""
-        cache_file = tmp_path / "cache.json"
-        mock_creds = Mock()
-        mock_creds.to_dict.return_value = {"bad": object()}  # Not JSON-serializable
-
-        # Should not raise
-        _write_credentials_cache(cache_file, mock_creds)
-
-
-class TestGetMinioCredentialsFreshFetchFailure:
-    """Tests for get_minio_credentials when API returns non-CredentialsResponse (line 201)."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_credentials_credentials_get")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    @patch("berdl_notebook_utils.minio_governance.operations._write_credentials_cache")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_credentials_cache_path")
-    def test_raises_when_api_returns_error(
-        self,
-        mock_cache_path,
-        mock_read_cache,
-        mock_write_cache,
-        mock_get_client,
-        mock_get_creds,
-        mock_fcntl,
-        mock_os,
-        mock_get_settings,
-        tmp_path,
-    ):
-        mock_cache_path.return_value = tmp_path / ".cache"
-        mock_read_cache.return_value = None
-        mock_get_client.return_value = Mock()
-        mock_get_creds.sync.return_value = ErrorResponse(message="unauthorized", error_type="error")
-
-        with pytest.raises(RuntimeError, match="Failed to fetch credentials from API"):
-            get_minio_credentials()
-
-
-class TestGetMinioCredentialsLockCleanupOSError:
-    """Tests for OSError during lock file cleanup (lines 209-210)."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_credentials_cache_path")
-    def test_handles_lock_cleanup_oserror(
-        self,
-        mock_cache_path,
-        mock_read_cache,
-        mock_fcntl,
-        mock_get_settings,
-        tmp_path,
-    ):
-        mock_cache_path.return_value = tmp_path / ".cache"
-        mock_creds = CredentialsResponse(username="u", access_key="ak", secret_key="sk")
-        mock_read_cache.return_value = mock_creds
-
-        # Make lock_path.unlink raise OSError
-        with patch.object(Path, "unlink", side_effect=OSError("permission denied")):
-            result = get_minio_credentials()
-
-        assert result.access_key == "ak"
-
-
-class TestRotateMinioCredentialsLockCleanupOSError:
-    """Tests for OSError during lock file cleanup in rotate (lines 254-255)."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    @patch("berdl_notebook_utils.minio_governance.operations._write_credentials_cache")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_credentials_cache_path")
-    @patch("berdl_notebook_utils.minio_governance.operations.rotate_credentials_credentials_rotate_post")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
-    def test_handles_lock_cleanup_oserror(
-        self,
-        mock_get_client,
-        mock_rotate_api,
-        mock_cache_path,
-        mock_write_cache,
-        mock_get_settings,
-        tmp_path,
-    ):
-        mock_get_client.return_value = Mock()
-        mock_creds = Mock(spec=CredentialsResponse)
-        mock_creds.access_key = "new_key"
-        mock_creds.secret_key = "new_secret"
-        mock_rotate_api.sync.return_value = mock_creds
-        mock_cache_path.return_value = tmp_path / ".cache"
-
-        with patch.object(Path, "unlink", side_effect=OSError("permission denied")):
-            result = rotate_minio_credentials()
-
-        assert result == mock_creds
-
-
 class TestUnshareTableLogsErrors:
     """Tests for unshare_table error logging (lines 517-519)."""
 
@@ -1038,13 +923,14 @@ class TestRequestTenantAccessJustification:
 
         assert result["status"] == "pending"
         assert result["permission"] == "read_write"
+        # Verify justification was in the payload
         call_kwargs = mock_httpx.post.call_args
         payload = call_kwargs[1]["json"]
         assert payload["justification"] == "Need data for project X"
 
 
 class TestRequestTenantAccessConnectionError:
-    """Tests for request_tenant_access RequestError."""
+    """Tests for request_tenant_access RequestError (lines 955-956)."""
 
     @patch("berdl_notebook_utils.minio_governance.operations.httpx")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
@@ -1061,7 +947,7 @@ class TestRequestTenantAccessConnectionError:
 
 
 class TestRegeneratePolicies:
-    """Tests for regenerate_policies function."""
+    """Tests for regenerate_policies function (lines 978-987)."""
 
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch(
