@@ -326,7 +326,7 @@ def get_namespace_prefix(tenant: str | None = None) -> NamespacePrefixResponse:
 
         # Get tenant namespace prefix
         response = get_namespace_prefix(tenant="research_team")
-        tenant_prefix = response.tenant_namespace_prefix  # e.g., "t_research_team__"
+        tenant_prefix = response.tenant_namespace_prefix  # e.g., "research_team_"
     """
 
     client = get_governance_client()

@@ -98,6 +98,10 @@ services:
       # DATALAKE MCP SERVER CONFIGURATION
       - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
 
+      # TRINO CONFIGURATION
+      - TRINO_HOST=trino
+      - TRINO_PORT=8080
+
       # AUTHENTICATION CONFIGURATION
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
       - KBASE_AUTH_TOKEN=${CI_KBASE_AUTH_TOKEN}
@@ -253,6 +257,27 @@ services:
       - SPARK_WORKER_WEBUI_PORT=8081
     depends_on:
       - spark-master
+
+  trino:
+    # image: ghcr.io/berdatalakehouse/trino_access_control:main
+    build:
+      context: ../trino_access_control
+      dockerfile: Dockerfile
+      args:
+        TRINO_VERSION: "479"
+    ports:
+      - "8082:8080"  # Trino Web UI / API
+    volumes:
+      - ./configs/trino/config.properties:/etc/trino/config.properties
+      - ./configs/trino/access-control.properties:/etc/trino/access-control.properties
+    depends_on:
+      - hive-metastore
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/v1/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   redis:
     image: redis:7-alpine
