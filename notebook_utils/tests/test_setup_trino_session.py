@@ -203,6 +203,7 @@ class TestGetTrinoConnection:
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
+        settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
         return settings
 
     @pytest.fixture()
@@ -240,6 +241,7 @@ class TestGetTrinoConnection:
             host="trino",
             port=8080,
             user="testuser",
+            extra_credential=[("kbase_auth_token", "fake-kbase-token")],
         )
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
@@ -255,6 +257,7 @@ class TestGetTrinoConnection:
             host="custom-host",
             port=9999,
             user="testuser",
+            extra_credential=[("kbase_auth_token", "fake-kbase-token")],
         )
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
@@ -274,6 +277,7 @@ class TestGetTrinoConnection:
             host="settings-trino-host",
             port=7777,
             user="testuser",
+            extra_credential=[("kbase_auth_token", "fake-kbase-token")],
         )
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
@@ -293,6 +297,7 @@ class TestGetTrinoConnection:
             host="explicit-host",
             port=2222,
             user="testuser",
+            extra_credential=[("kbase_auth_token", "fake-kbase-token")],
         )
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
@@ -362,6 +367,7 @@ class TestGetTrinoConnection:
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
+        settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
         mock_get_settings.return_value = settings
         mock_get_creds.return_value = CredentialsResponse(username="autouser", access_key="ak", secret_key="sk")
         mock_trino.dbapi.connect.return_value = MagicMock()
@@ -491,6 +497,7 @@ class TestGetTrinoConnectionSuffixSanitization:
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
+        settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
         return settings
 
     @pytest.fixture()
@@ -541,6 +548,7 @@ class TestGetTrinoConnectionFalsyValues:
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
+        settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
         return settings
 
     @pytest.fixture()
@@ -564,7 +572,12 @@ class TestGetTrinoConnectionFalsyValues:
 
         get_trino_connection(host="", settings=mock_settings)
 
-        mock_trino.dbapi.connect.assert_called_once_with(host="", port=8080, user="testuser")
+        mock_trino.dbapi.connect.assert_called_once_with(
+            host="",
+            port=8080,
+            user="testuser",
+            extra_credential=[("kbase_auth_token", "fake-kbase-token")],
+        )
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
@@ -577,4 +590,9 @@ class TestGetTrinoConnectionFalsyValues:
 
         get_trino_connection(port=0, settings=mock_settings)
 
-        mock_trino.dbapi.connect.assert_called_once_with(host="trino", port=0, user="testuser")
+        mock_trino.dbapi.connect.assert_called_once_with(
+            host="trino",
+            port=0,
+            user="testuser",
+            extra_credential=[("kbase_auth_token", "fake-kbase-token")],
+        )
