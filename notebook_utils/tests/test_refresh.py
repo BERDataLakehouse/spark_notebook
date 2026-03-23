@@ -188,8 +188,8 @@ class TestRefreshSparkEnvironment:
 
         refresh_spark_environment()
 
-        # _remove_cache_file called twice (minio + polaris) before rotate_minio_credentials
-        assert mock_remove.call_count == 2
+        # _remove_cache_file called once (polaris only — MinIO uses direct API calls)
+        assert mock_remove.call_count == 1
         # Settings cache cleared before credential fetches
         mock_settings.cache_clear.assert_called()
 

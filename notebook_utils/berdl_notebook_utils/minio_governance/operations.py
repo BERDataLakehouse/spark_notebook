@@ -105,8 +105,7 @@ class TenantCreationResult(TypedDict):
 SQL_WAREHOUSE_BUCKET = "cdm-lake"  # TODO: change to berdl-lake
 SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 
-# Credential caching configuration
-CREDENTIALS_CACHE_FILE = ".berdl_minio_credentials"
+# Credential caching configuration (Polaris only — MinIO uses direct API calls)
 POLARIS_CREDENTIALS_CACHE_FILE = ".berdl_polaris_credentials"
 
 
@@ -143,35 +142,9 @@ def _fetch_with_file_cache(
         return result
 
 
-def _get_credentials_cache_path() -> Path:
-    """Get the path to the MinIO credentials cache file in the user's home directory."""
-    return Path.home() / CREDENTIALS_CACHE_FILE
-
-
 def _get_polaris_cache_path() -> Path:
     """Get the path to the Polaris credentials cache file in the user's home directory."""
     return Path.home() / POLARIS_CREDENTIALS_CACHE_FILE
-
-
-def _read_cached_credentials(cache_path: Path) -> CredentialsResponse | None:
-    """Read MinIO credentials from cache file. Returns None if file doesn't exist or is corrupted."""
-    try:
-        if not cache_path.exists():
-            return None
-        with open(cache_path, "r") as f:
-            data = json.load(f)
-        return CredentialsResponse.from_dict(data)
-    except (json.JSONDecodeError, TypeError, KeyError, OSError):
-        return None
-
-
-def _write_credentials_cache(cache_path: Path, credentials: CredentialsResponse) -> None:
-    """Write MinIO credentials to cache file."""
-    try:
-        with open(cache_path, "w") as f:
-            json.dump(credentials.to_dict(), f)
-    except (OSError, TypeError):
-        pass
 
 
 def _read_cached_polaris_credentials(cache_path: Path) -> "PolarisCredentials | None":
@@ -236,21 +209,12 @@ def check_governance_health() -> HealthResponse:
     return response
 
 
-def _fetch_minio_credentials() -> CredentialsResponse | None:
-    """Fetch fresh MinIO credentials from the governance API."""
-    client = get_governance_client()
-    api_response = get_credentials_credentials_get.sync(client=client)
-    if isinstance(api_response, CredentialsResponse):
-        return api_response
-    return None
-
-
 def get_minio_credentials() -> CredentialsResponse:
     """
     Get MinIO credentials for the current user and set them as environment variables.
 
-    Uses file locking to prevent race conditions when multiple processes/notebooks
-    try to access credentials simultaneously.
+    Fetches credentials from the governance API (MMS). The API caches credentials
+    server-side in PostgreSQL, so repeated calls are fast.
 
     Sets the following environment variables:
     - MINIO_ACCESS_KEY: User's MinIO access key
@@ -259,24 +223,19 @@ def get_minio_credentials() -> CredentialsResponse:
     Returns:
         CredentialsResponse with username, access_key, and secret_key
     """
-    credentials = _fetch_with_file_cache(
-        _get_credentials_cache_path(),
-        _read_cached_credentials,
-        _fetch_minio_credentials,
-        _write_credentials_cache,
-    )
-    if credentials is None:
+    client = get_governance_client()
+    api_response = get_credentials_credentials_get.sync(client=client)
+    if not isinstance(api_response, CredentialsResponse):
         raise RuntimeError("Failed to fetch credentials from API")
 
-    # Set MinIO credentials as environment variables
-    os.environ["MINIO_ACCESS_KEY"] = credentials.access_key
-    os.environ["MINIO_SECRET_KEY"] = credentials.secret_key
+    os.environ["MINIO_ACCESS_KEY"] = api_response.access_key
+    os.environ["MINIO_SECRET_KEY"] = api_response.secret_key
 
     # Clear the cached settings so subsequent get_settings() calls pick up the
     # new MINIO_ACCESS_KEY / MINIO_SECRET_KEY env vars.
     get_settings.cache_clear()
 
-    return credentials
+    return api_response
 
 
 class PolarisCredentials(TypedDict):
@@ -361,13 +320,10 @@ def get_polaris_credentials() -> PolarisCredentials | None:
 
 def rotate_minio_credentials() -> CredentialsResponse:
     """
-    Rotate MinIO credentials for the current user and update local caches.
+    Rotate MinIO credentials for the current user and update environment variables.
 
     Calls POST /credentials/rotate to generate new credentials in MinIO,
-    then updates the local cache file and environment variables.
-
-    Uses the same file locking strategy as get_minio_credentials() to prevent
-    concurrent access from corrupting the cache file.
+    then updates the environment variables.
 
     Returns:
         CredentialsResponse with username, access_key, and secret_key
@@ -377,23 +333,6 @@ def rotate_minio_credentials() -> CredentialsResponse:
     if not isinstance(api_response, CredentialsResponse):
         raise RuntimeError("Failed to rotate credentials from API")
 
-    # Update the local credential cache under lock
-    cache_path = _get_credentials_cache_path()
-    lock_path = cache_path.with_suffix(".lock")
-
-    with open(lock_path, "w") as lock_file:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            _write_credentials_cache(cache_path, api_response)
-        finally:
-            pass
-
-    try:
-        lock_path.unlink(missing_ok=True)
-    except OSError:
-        pass
-
-    # Update environment variables
     os.environ["MINIO_ACCESS_KEY"] = api_response.access_key
     os.environ["MINIO_SECRET_KEY"] = api_response.secret_key
 

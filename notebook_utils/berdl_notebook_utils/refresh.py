@@ -1,9 +1,9 @@
 """
 Refresh credentials and Spark environment.
 
-Provides a single function to clear all credential caches, re-provision
-MinIO and Polaris credentials, restart the Spark Connect server, and stop
-any existing Spark session — ensuring get_spark_session() works afterward.
+Provides a single function to re-provision MinIO and Polaris credentials,
+restart the Spark Connect server, and stop any existing Spark session —
+ensuring get_spark_session() works afterward.
 """
 
 import logging
@@ -13,7 +13,6 @@ from pyspark.sql import SparkSession
 
 from berdl_notebook_utils.berdl_settings import get_settings
 from berdl_notebook_utils.minio_governance.operations import (
-    _get_credentials_cache_path,
     _get_polaris_cache_path,
     rotate_minio_credentials,
     get_polaris_credentials,
@@ -36,10 +35,10 @@ def _remove_cache_file(path: Path) -> bool:
 
 
 def refresh_spark_environment() -> dict:
-    """Clear all credential caches, re-provision credentials, and restart Spark.
+    """Re-provision credentials and restart Spark.
 
     Steps performed:
-        1. Delete MinIO and Polaris credential cache files
+        1. Delete Polaris credential cache file
         2. Clear the in-memory ``get_settings()`` LRU cache
         3. Rotate MinIO credentials via MMS (generates new secret key, updates env vars)
         4. Re-fetch Polaris credentials (sets POLARIS_CREDENTIAL and catalog env vars)
@@ -53,14 +52,9 @@ def refresh_spark_environment() -> dict:
     """
     result: dict = {}
 
-    # 1. Delete credential cache files
-    minio_removed = _remove_cache_file(_get_credentials_cache_path())
+    # 1. Delete Polaris credential cache file (MinIO uses direct API calls, no local cache)
     polaris_removed = _remove_cache_file(_get_polaris_cache_path())
-    logger.info(
-        "Cleared credential caches (minio=%s, polaris=%s)",
-        minio_removed,
-        polaris_removed,
-    )
+    logger.info("Cleared Polaris credential cache (removed=%s)", polaris_removed)
 
     # 2. Clear in-memory settings cache
     get_settings.cache_clear()
