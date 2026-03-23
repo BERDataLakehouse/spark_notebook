@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # at the shared Hive Metastore but uses the user's own MinIO credentials.
 # The berdl-namespace-isolation access-control plugin then filters visibility:
 #   - Personal namespaces:  schemas matching  u_{username}__*
-#   - Tenant namespaces:    schemas matching  {tenant}_*
-#   - Public namespaces:    schemas matching  globalusers_*
+#   - Tenant namespaces:    schemas matching  {tenant}_*  (resolved via governance API,
+#                           includes globalusers and any other tenant groups)
 #
 # Both delta_lake and hive connectors read metadata from Hive Metastore and
 # data from MinIO/S3, so the same namespace isolation applies to either one.
@@ -202,11 +202,14 @@ def get_trino_connection(
 
     logger.info(f"Setting up Trino connection for user={username}, catalog={catalog_name}")
 
-    # Create connection
+    # Create connection.
+    # Pass KBase auth token as an extra credential so the access control plugin
+    # can call the governance API to resolve tenant group memberships.
     conn = trino.dbapi.connect(
         host=trino_host,
         port=trino_port,
         user=username,
+        extra_credential=[("kbase_auth_token", settings.KBASE_AUTH_TOKEN)],
     )
 
     # Create per-user dynamic catalog with user's MinIO credentials
