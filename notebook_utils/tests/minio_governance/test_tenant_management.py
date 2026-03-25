@@ -16,11 +16,13 @@ from governance_client.models import (
 
 from berdl_notebook_utils.minio_governance.tenant_management import (
     add_tenant_member,
+    assign_steward,
     get_my_steward_tenants,
     get_tenant_detail,
     get_tenant_members,
     get_tenant_stewards,
     list_tenants,
+    remove_steward,
     remove_tenant_member,
     update_tenant_metadata,
 )
@@ -303,3 +305,74 @@ class TestUpdateTenantMetadata:
 
         with pytest.raises(RuntimeError, match="no response"):
             update_tenant_metadata("kbase", description="test")
+
+
+# =============================================================================
+# assign_steward
+# =============================================================================
+
+
+class TestAssignSteward:
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.assign_steward_tenants_tenant_name_stewards_username_post")
+    def test_assigns_steward(self, mock_api, mock_client):
+        mock_client.return_value = Mock()
+        steward = Mock(spec=TenantStewardResponse, username="alice")
+        mock_api.sync.return_value = steward
+
+        result = assign_steward("kbase", "alice")
+
+        assert result is steward
+        mock_api.sync.assert_called_once_with(
+            client=mock_client.return_value,
+            tenant_name="kbase",
+            username="alice",
+        )
+
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.assign_steward_tenants_tenant_name_stewards_username_post")
+    def test_raises_on_error(self, mock_api, mock_client):
+        mock_client.return_value = Mock()
+        mock_api.sync.return_value = ErrorResponse(message="already a steward", error_type="conflict")
+
+        with pytest.raises(RuntimeError, match="already a steward"):
+            assign_steward("kbase", "alice")
+
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.assign_steward_tenants_tenant_name_stewards_username_post")
+    def test_raises_on_none(self, mock_api, mock_client):
+        mock_client.return_value = Mock()
+        mock_api.sync.return_value = None
+
+        with pytest.raises(RuntimeError, match="no response"):
+            assign_steward("kbase", "alice")
+
+
+# =============================================================================
+# remove_steward
+# =============================================================================
+
+
+class TestRemoveSteward:
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.remove_steward_tenants_tenant_name_stewards_username_delete")
+    def test_removes_steward(self, mock_api, mock_client):
+        mock_client.return_value = Mock()
+        mock_api.sync.return_value = None  # 204 No Content
+
+        remove_steward("kbase", "alice")
+
+        mock_api.sync.assert_called_once_with(
+            client=mock_client.return_value,
+            tenant_name="kbase",
+            username="alice",
+        )
+
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.remove_steward_tenants_tenant_name_stewards_username_delete")
+    def test_raises_on_error(self, mock_api, mock_client):
+        mock_client.return_value = Mock()
+        mock_api.sync.return_value = ErrorResponse(message="not a steward", error_type="not_found")
+
+        with pytest.raises(RuntimeError, match="not a steward"):
+            remove_steward("kbase", "alice")
