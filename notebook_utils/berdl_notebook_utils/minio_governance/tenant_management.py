@@ -109,7 +109,7 @@ def get_tenant_detail(tenant_name: str) -> TenantDetailResponse:
     """
     Get full tenant detail: metadata, stewards, members with profiles, and storage paths.
 
-    Requires the current user to be a member, steward, or admin.
+    Any authenticated user can view tenant details.
 
     Args:
         tenant_name: Name of the tenant (MinIO group name)
@@ -411,7 +411,10 @@ def _print_tenant(
     # Metadata
     print(f"  Description : {_val(meta.description) or '-'}")
     print(f"  Organization: {_val(meta.organization) or '-'}")
-    print(f"  Created by  : {meta.created_by}  ({meta.created_at:%Y-%m-%d})")
+    created_by = _val(meta.created_by) or "-"
+    created_at = meta.created_at
+    created_str = f"{created_at:%Y-%m-%d}" if created_at not in (UNSET, None) else "-"
+    print(f"  Created by  : {created_by}  ({created_str})")
 
     # Storage
     print("\n  Storage:")
