@@ -46,6 +46,7 @@ from .tenant_management import (
     list_tenants,
     remove_steward,
     remove_tenant_member,
+    show_my_tenants,
     update_tenant_metadata,
 )
 
@@ -79,6 +80,7 @@ __all__ = [
     "list_tenants",
     "remove_steward",
     "remove_tenant_member",
+    "show_my_tenants",
     "update_tenant_metadata",
     # Table operations
     "get_table_access_info",

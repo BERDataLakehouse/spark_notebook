@@ -46,6 +46,7 @@ from berdl_notebook_utils.minio_governance.tenant_management import (
     list_tenants,
     remove_steward,
     remove_tenant_member,
+    show_my_tenants,
     update_tenant_metadata,
 )
 from berdl_notebook_utils.mcp import (
@@ -114,6 +115,7 @@ __all__ = [
     "list_tenants",
     "remove_steward",
     "remove_tenant_member",
+    "show_my_tenants",
     "update_tenant_metadata",
     # MCP Client
     "get_datalake_mcp_client",
@@ -191,6 +193,7 @@ def berdl_notebook_help():
     - assign_steward: Assign a user as steward of a tenant (admin only)
     - remove_steward: Remove steward assignment from a tenant (admin only)
     - update_tenant_metadata: Update tenant display name, description, org
+    - show_my_tenants: Display all your tenants (admins see all tenants)
 
     MCP Server Operations (via Global Datalake MCP Server):
     -------------------------------------------------------

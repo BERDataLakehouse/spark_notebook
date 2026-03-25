@@ -382,3 +382,119 @@ def remove_steward(tenant_name: str, username: str) -> None:
         )
 
     logger.info(f"Removed {username} as steward of tenant {tenant_name}")
+
+
+def _val(field):
+    """Return field value if set, otherwise None."""
+    return field if field not in (UNSET, None) else None
+
+
+def _print_tenant(t: TenantSummaryResponse, detail: TenantDetailResponse, show_databases: bool, all_databases: list[str] | None) -> None:
+    """Print formatted detail for a single tenant."""
+    meta = detail.metadata
+    paths = detail.storage_paths
+
+    # Header
+    name = _val(meta.display_name) or t.tenant_name
+    roles = []
+    if t.is_steward:
+        roles.append("steward")
+    elif t.is_member:
+        roles.append("member")
+    role_str = ", ".join(roles) if roles else "---"
+    print(f"{'=' * 60}")
+    print(f"  {name}  ({t.tenant_name})  [{role_str}]")
+    print(f"{'=' * 60}")
+
+    # Metadata
+    print(f"  Description : {_val(meta.description) or '-'}")
+    print(f"  Organization: {_val(meta.organization) or '-'}")
+    print(f"  Created by  : {meta.created_by}  ({meta.created_at:%Y-%m-%d})")
+
+    # Storage
+    print(f"\n  Storage:")
+    print(f"    General warehouse : {paths.general_warehouse}")
+    print(f"    SQL warehouse     : {paths.sql_warehouse}")
+    print(f"    Namespace prefix  : {paths.namespace_prefix}")
+
+    # Stewards
+    print(f"\n  Stewards ({len(detail.stewards)}):")
+    if detail.stewards:
+        for s in detail.stewards:
+            sname = _val(s.display_name) or s.username
+            email = _val(s.email) or "-"
+            print(f"    - {sname} ({s.username}) <{email}>")
+    else:
+        print("    (none)")
+
+    # Members
+    print(f"\n  Members ({detail.member_count}):")
+    for m in detail.members:
+        mname = _val(m.display_name) or m.username
+        steward_tag = " [steward]" if m.is_steward else ""
+        print(f"    - {mname} ({m.username}) - {m.access_level.value}{steward_tag}")
+
+    # Databases & tables
+    if show_databases and all_databases is not None:
+        from ..hive_metastore import get_tables as hms_get_tables
+
+        prefix = paths.namespace_prefix
+        tenant_dbs = sorted(db for db in all_databases if db.startswith(prefix))
+        print(f"\n  Databases ({len(tenant_dbs)}):")
+        if tenant_dbs:
+            for db in tenant_dbs:
+                try:
+                    tables = hms_get_tables(db)
+                    if tables:
+                        print(f"    {db}/ ({len(tables)} tables)")
+                        for tbl in sorted(tables):
+                            print(f"      - {tbl}")
+                    else:
+                        print(f"    {db}/ (empty)")
+                except Exception as e:
+                    print(f"    {db}/ (error: {e})")
+        else:
+            print(f"    (no databases matching '{prefix}*')")
+
+    print()
+
+
+def show_my_tenants(show_databases: bool = False) -> None:
+    """
+    Display tenants for the current user.
+
+    Admins see all tenants, grouped into "My tenants" and "Other tenants".
+    Regular users see only tenants they belong to.
+
+    Args:
+        show_databases: If True, also list databases and tables matching
+                        each tenant's namespace prefix (requires HMS access).
+
+    Example:
+        show_my_tenants()                    # without databases
+        show_my_tenants(show_databases=True) # with databases and tables
+    """
+    tenants = list_tenants()
+    my_tenants = [t for t in tenants if t.is_member or t.is_steward]
+    other_tenants = [t for t in tenants if not t.is_member and not t.is_steward]
+
+    all_databases = None
+    if show_databases:
+        from ..hive_metastore import get_databases as hms_get_databases
+
+        all_databases = hms_get_databases()
+
+    if my_tenants:
+        print(f"My tenants ({len(my_tenants)}):\n")
+        for t in my_tenants:
+            detail = get_tenant_detail(t.tenant_name)
+            _print_tenant(t, detail, show_databases, all_databases)
+
+    if other_tenants:
+        print(f"\nOther tenants ({len(other_tenants)}):\n")
+        for t in other_tenants:
+            detail = get_tenant_detail(t.tenant_name)
+            _print_tenant(t, detail, show_databases, all_databases)
+
+    if not tenants:
+        print("No tenants found.")

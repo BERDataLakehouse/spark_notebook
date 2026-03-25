@@ -126,6 +126,7 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
     list_tenants,
     remove_steward,
     remove_tenant_member,
+    show_my_tenants,
     update_tenant_metadata,
 )
 
