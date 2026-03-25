@@ -36,6 +36,18 @@ from .operations import (
     list_user_names,
     regenerate_policies,
 )
+from .tenant_management import (
+    add_tenant_member,
+    assign_steward,
+    get_my_steward_tenants,
+    get_tenant_detail,
+    get_tenant_members,
+    get_tenant_stewards,
+    list_tenants,
+    remove_steward,
+    remove_tenant_member,
+    update_tenant_metadata,
+)
 
 __all__ = [
     # Workspace/user info
@@ -49,7 +61,7 @@ __all__ = [
     "get_my_sql_warehouse",
     "get_my_workspace",
     "get_namespace_prefix",
-    # Management operations
+    # Management operations (admin-only, via /management API)
     "add_group_member",
     "create_tenant_and_assign_users",
     "list_groups",
@@ -57,6 +69,17 @@ __all__ = [
     "list_users",
     "regenerate_policies",
     "remove_group_member",
+    # Tenant management (steward or admin, via /tenants API)
+    "add_tenant_member",
+    "assign_steward",
+    "get_my_steward_tenants",
+    "get_tenant_detail",
+    "get_tenant_members",
+    "get_tenant_stewards",
+    "list_tenants",
+    "remove_steward",
+    "remove_tenant_member",
+    "update_tenant_metadata",
     # Table operations
     "get_table_access_info",
     "make_table_private",

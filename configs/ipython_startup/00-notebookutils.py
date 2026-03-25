@@ -116,6 +116,17 @@ from berdl_notebook_utils.minio_governance import (  # noqa: F401
     request_tenant_access,
     share_table,
     unshare_table,
+    # Tenant management (steward or admin)
+    add_tenant_member,
+    assign_steward,
+    get_my_steward_tenants,
+    get_tenant_detail,
+    get_tenant_members,
+    get_tenant_stewards,
+    list_tenants,
+    remove_steward,
+    remove_tenant_member,
+    update_tenant_metadata,
 )
 
 # ============================================================================
