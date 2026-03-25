@@ -389,7 +389,9 @@ def _val(field):
     return field if field not in (UNSET, None) else None
 
 
-def _print_tenant(t: TenantSummaryResponse, detail: TenantDetailResponse, show_databases: bool, all_databases: list[str] | None) -> None:
+def _print_tenant(
+    t: TenantSummaryResponse, detail: TenantDetailResponse, show_databases: bool, all_databases: list[str] | None
+) -> None:
     """Print formatted detail for a single tenant."""
     meta = detail.metadata
     paths = detail.storage_paths
@@ -412,7 +414,7 @@ def _print_tenant(t: TenantSummaryResponse, detail: TenantDetailResponse, show_d
     print(f"  Created by  : {meta.created_by}  ({meta.created_at:%Y-%m-%d})")
 
     # Storage
-    print(f"\n  Storage:")
+    print("\n  Storage:")
     print(f"    General warehouse : {paths.general_warehouse}")
     print(f"    SQL warehouse     : {paths.sql_warehouse}")
     print(f"    Namespace prefix  : {paths.namespace_prefix}")
