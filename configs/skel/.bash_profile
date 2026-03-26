@@ -12,7 +12,12 @@ PS1='\[\e[0;32m\]\u@\h \[\e[0;36m\]\w\[\e[0m\]$ '
 alias ls='ls --color=auto'
 alias grep='grep --color=auto'
 
-cat <<'EOF'
+# Only print the banner for interactive shells, and send it to stderr
+# to avoid contaminating stdout in scripted/automated contexts.
+case "$-" in
+    *i*)
+        cat >&2 <<'EOF'
+
                         Notice to Users
 This is a Federal computer system and is the property of the United States
 Government. It is for authorized use only. Users (authorized or unauthorized)
@@ -30,3 +35,5 @@ this system you indicate your awareness of and consent to these terms and
 conditions of use. LOG OFF IMMEDIATELY if you do not agree to the conditions
 stated in this warning.
 EOF
+        ;;
+esac
