@@ -293,6 +293,19 @@ class TestUpdateTenantMetadata:
 
     @patch(f"{MODULE}.get_governance_client")
     @patch(f"{MODULE}.update_tenant_metadata_tenants_tenant_name_patch")
+    def test_updates_website(self, mock_api, mock_client):
+        mock_client.return_value = Mock()
+        updated = Mock(spec=TenantMetadataResponse, website="https://www.kbase.us")
+        mock_api.sync.return_value = updated
+
+        result = update_tenant_metadata("kbase", website="https://www.kbase.us")
+
+        assert result is updated
+        body = mock_api.sync.call_args.kwargs["body"]
+        assert body.website == "https://www.kbase.us"
+
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.update_tenant_metadata_tenants_tenant_name_patch")
     def test_raises_on_error(self, mock_api, mock_client):
         mock_client.return_value = Mock()
         mock_api.sync.return_value = ErrorResponse(message="forbidden", error_type="auth")
@@ -423,6 +436,7 @@ def _make_detail(tenant_name="kbase", display_name="KBase Team", created_by="adm
         tenant_name=tenant_name,
         display_name=display_name,
         description="A research group",
+        website="https://www.kbase.us",
         organization="DOE",
         created_by=created_by,
         created_at=ts,
@@ -479,6 +493,7 @@ class TestPrintTenant:
         assert "read_write" in out
         assert "Bob Jones" in out
         assert "read_only" in out
+        assert "https://www.kbase.us" in out
 
     def test_steward_role_shown(self, capsys):
         summary = _make_summary(is_steward=True, is_member=True)

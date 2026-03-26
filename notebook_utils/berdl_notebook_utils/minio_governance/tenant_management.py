@@ -272,6 +272,7 @@ def update_tenant_metadata(
     tenant_name: str,
     display_name: str | None = None,
     description: str | None = None,
+    website: str | None = None,
     organization: str | None = None,
 ) -> TenantMetadataResponse:
     """
@@ -283,6 +284,7 @@ def update_tenant_metadata(
         tenant_name: Name of the tenant
         display_name: Human-readable name for the tenant
         description: Purpose or description of the tenant
+        website: URL for the tenant's website or project page
         organization: Organization the tenant belongs to
 
     Returns:
@@ -292,6 +294,7 @@ def update_tenant_metadata(
         updated = update_tenant_metadata(
             "kbase",
             description="KBase genomics data team",
+            website="https://www.kbase.us",
             organization="DOE KBase"
         )
         print(f"Updated: {updated.display_name}")
@@ -299,6 +302,7 @@ def update_tenant_metadata(
     body = TenantMetadataUpdate(
         display_name=display_name if display_name is not None else UNSET,
         description=description if description is not None else UNSET,
+        website=website if website is not None else UNSET,
         organization=organization if organization is not None else UNSET,
     )
 
@@ -410,6 +414,7 @@ def _print_tenant(
 
     # Metadata
     print(f"  Description : {_val(meta.description) or '-'}")
+    print(f"  Website     : {_val(meta.website) or '-'}")
     print(f"  Organization: {_val(meta.organization) or '-'}")
     created_by = _val(meta.created_by) or "-"
     created_at = meta.created_at
