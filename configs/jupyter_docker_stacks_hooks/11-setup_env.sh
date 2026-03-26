@@ -57,9 +57,8 @@ install "$SOURCE_SCRIPTS_DIR"/*.py "$IPYTHON_STARTUP_DIR"/
 
 # --- Finalization ---
 
-# Recursively set ownership for the entire home directory to the notebook user.
-# This is a critical final step to ensure the user has the correct permissions.
-# TODO: We may want to consider using a more specific directory after each step if this is too broad and too slow
-chown -R "$NB_USER":users "$HOME_DIRECTORY"
+# Skip recursive chown on the FUSE-mounted home directory — s3fs uid/gid options
+# handle ownership at mount time. Chowning the FUSE mount would trigger slow HEAD
+# requests for every object in S3.
 
 # DELETE JOVYAN USER
