@@ -36,6 +36,19 @@ from berdl_notebook_utils.spark import (
     get_table_schema,
     get_db_structure,
 )
+from berdl_notebook_utils.minio_governance.tenant_management import (
+    add_tenant_member,
+    assign_steward,
+    get_my_steward_tenants,
+    get_tenant_detail,
+    get_tenant_members,
+    get_tenant_stewards,
+    list_tenants,
+    remove_steward,
+    remove_tenant_member,
+    show_my_tenants,
+    update_tenant_metadata,
+)
 from berdl_notebook_utils.mcp import (
     # MCP Client
     get_datalake_mcp_client,
@@ -92,6 +105,18 @@ __all__ = [
     "get_tables",
     "get_table_schema",
     "get_db_structure",
+    # Tenant management (steward or admin)
+    "add_tenant_member",
+    "assign_steward",
+    "get_my_steward_tenants",
+    "get_tenant_detail",
+    "get_tenant_members",
+    "get_tenant_stewards",
+    "list_tenants",
+    "remove_steward",
+    "remove_tenant_member",
+    "show_my_tenants",
+    "update_tenant_metadata",
     # MCP Client
     "get_datalake_mcp_client",
     # MCP Database operations
@@ -155,6 +180,20 @@ def berdl_notebook_help():
     - get_cluster_status: Get current cluster status
     - create_cluster: Create new Spark cluster
     - delete_cluster: Delete Spark cluster
+
+    Tenant Management (steward or admin, via /tenants API):
+    ---------------------------------------------------
+    - list_tenants: List all tenants with summary info
+    - get_my_steward_tenants: List tenants where you are a steward
+    - get_tenant_detail: Get full tenant detail (metadata, members, stewards)
+    - get_tenant_members: List tenant members with profiles
+    - get_tenant_stewards: List tenant stewards with profiles
+    - add_tenant_member: Add a user to a tenant
+    - remove_tenant_member: Remove a user from a tenant
+    - assign_steward: Assign a user as steward of a tenant (admin only)
+    - remove_steward: Remove steward assignment from a tenant (admin only)
+    - update_tenant_metadata: Update tenant display name, description, org
+    - show_my_tenants: Display all your tenants (admins see all tenants)
 
     MCP Server Operations (via Global Datalake MCP Server):
     -------------------------------------------------------
