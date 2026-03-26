@@ -17,7 +17,6 @@ alias grep='grep --color=auto'
 case "$-" in
     *i*)
         cat >&2 <<'EOF'
-
                         Notice to Users
 This is a Federal computer system and is the property of the United States
 Government. It is for authorized use only. Users (authorized or unauthorized)
