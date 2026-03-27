@@ -49,7 +49,13 @@ def patch_genericmanager():
 
 
 def patch_s3fs_init():
-    """makes initialization lenient for prefix-restricted policies"""
+    """Skip .s3keep creation during init for prefix-restricted policies.
+
+    The genericmanager.py patch already handles directories without .s3keep
+    (by falling back to DUMMY_CREATED_DATE), so the init-time mkdir is
+    unnecessary. Removing it entirely prevents 403 errors that fill MinIO
+    logs when users have read-only access to group/tenant prefixes.
+    """
     if not os.path.exists(S3_FS_FILE):
         print(f"Error: Target file {S3_FS_FILE} not found.")
         return False
@@ -71,11 +77,10 @@ def patch_s3fs_init():
             original_line = mkdir_match.group(0)
             indent = mkdir_match.group(1)
 
-            # Wrap in try/except with correct indentation
-            new_block = f"""{indent}try:
-{indent}    self.mkdir("")
-{indent}except (ClientError, PermissionError) as ex:
-{indent}    self.log.warning(f"Could not create .s3keep marker: {{ex}}")  # BERDL patch"""
+            # Skip mkdir entirely — .s3keep markers are created by MMS
+            # during provisioning, and the genericmanager patch handles
+            # directories that lack them.  # BERDL patch
+            new_block = f"{indent}pass  # BERDL patch: skip .s3keep creation to avoid 403 on read-only prefixes"
 
             new_content = content.replace(original_line, new_block, 1)
 
