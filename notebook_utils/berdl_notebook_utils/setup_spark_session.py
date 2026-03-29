@@ -165,6 +165,60 @@ def _get_spark_defaults_conf() -> dict[str, str]:
     }
 
 
+def _get_catalog_conf(settings: BERDLSettings) -> dict[str, str]:
+    """Get Iceberg catalog configuration for Polaris REST catalog."""
+    config = {}
+
+    if not settings.POLARIS_CATALOG_URI:
+        return config
+
+    polaris_uri = str(settings.POLARIS_CATALOG_URI).rstrip("/")
+
+    # S3/MinIO properties for Iceberg's S3FileIO (used by executors to read/write data files).
+    # Iceberg does NOT use Spark's spark.hadoop.fs.s3a.* — it has its own AWS SDK S3 client.
+    s3_endpoint = settings.MINIO_ENDPOINT_URL
+    if not s3_endpoint.startswith("http"):
+        s3_endpoint = f"http://{s3_endpoint}"
+    s3_props = {
+        "s3.endpoint": s3_endpoint,
+        "s3.access-key-id": settings.MINIO_ACCESS_KEY,
+        "s3.secret-access-key": settings.MINIO_SECRET_KEY,
+        "s3.path-style-access": "true",
+        "s3.region": "us-east-1",
+    }
+
+    def _catalog_props(prefix: str, warehouse: str) -> dict[str, str]:
+        props = {
+            f"{prefix}": "org.apache.iceberg.spark.SparkCatalog",
+            f"{prefix}.type": "rest",
+            f"{prefix}.uri": polaris_uri,
+            f"{prefix}.credential": settings.POLARIS_CREDENTIAL or "",
+            f"{prefix}.warehouse": warehouse,
+            f"{prefix}.scope": "PRINCIPAL_ROLE:ALL",
+            f"{prefix}.token-refresh-enabled": "false",
+            f"{prefix}.client.region": "us-east-1",
+        }
+        # Add S3 properties scoped to this catalog
+        for k, v in s3_props.items():
+            props[f"{prefix}.{k}"] = v
+        return props
+
+    # 1. Add Personal Catalog (if configured)
+    if settings.POLARIS_PERSONAL_CATALOG:
+        config.update(_catalog_props("spark.sql.catalog.my", settings.POLARIS_PERSONAL_CATALOG))
+
+    # 2. Add Tenant Catalogs (if configured)
+    if settings.POLARIS_TENANT_CATALOGS:
+        for tenant_catalog in settings.POLARIS_TENANT_CATALOGS.split(","):
+            tenant_catalog = tenant_catalog.strip()
+            if not tenant_catalog:
+                continue
+            catalog_alias = tenant_catalog[7:] if tenant_catalog.startswith("tenant_") else tenant_catalog
+            config.update(_catalog_props(f"spark.sql.catalog.{catalog_alias}", tenant_catalog))
+
+    return config
+
+
 def _get_delta_conf() -> dict[str, str]:
     return {
         "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
@@ -245,6 +299,18 @@ IMMUTABLE_CONFIGS = {
 }
 
 
+def _is_immutable_config(key: str) -> bool:
+    """Check if a Spark config key is immutable in Spark Connect mode."""
+    if key in IMMUTABLE_CONFIGS:
+        return True
+    # Iceberg catalog configs (spark.sql.catalog.<name>.*) are all static/immutable
+    # because catalogs must be registered at server startup. The catalog names are
+    # dynamic (personal "my" + tenant aliases), so we match by prefix.
+    if key.startswith("spark.sql.catalog.") and key != "spark.sql.catalog.spark_catalog":
+        return True
+    return False
+
+
 def _filter_immutable_spark_connect_configs(config: dict[str, str]) -> dict[str, str]:
     """
     Filter out configurations that cannot be modified in Spark Connect mode.
@@ -259,7 +325,7 @@ def _filter_immutable_spark_connect_configs(config: dict[str, str]) -> dict[str,
         Filtered configuration dictionary with only mutable configs
 
     """
-    return {k: v for k, v in config.items() if k not in IMMUTABLE_CONFIGS}
+    return {k: v for k, v in config.items() if not _is_immutable_config(k)}
 
 
 def _set_scheduler_pool(spark: SparkSession, scheduler_pool: str) -> None:
@@ -312,6 +378,9 @@ def generate_spark_conf(
 
         if use_hive:
             config.update(_get_hive_conf(settings))
+
+        # Always add Polaris catalogs if they are configured
+        config.update(_get_catalog_conf(settings))
 
         if use_spark_connect:
             # Spark Connect: filter out immutable configs that cannot be modified from the client
@@ -391,5 +460,24 @@ def get_spark_session(
     if not local and not use_spark_connect:
         spark.sparkContext.setLogLevel("DEBUG")
         _set_scheduler_pool(spark, scheduler_pool)
+
+    # Warm up Polaris REST catalogs so they appear in SHOW CATALOGS immediately.
+    # Spark lazily initializes REST catalog plugins — they only show up in
+    # CatalogManager._catalogs (and therefore SHOW CATALOGS) after first access.
+    if use_spark_connect and not local:
+        _settings = settings or get_settings()
+        _catalog_aliases: list[str] = []
+        if _settings.POLARIS_PERSONAL_CATALOG:
+            _catalog_aliases.append("my")
+        if _settings.POLARIS_TENANT_CATALOGS:
+            for _raw in _settings.POLARIS_TENANT_CATALOGS.split(","):
+                _raw = _raw.strip()
+                if _raw:
+                    _catalog_aliases.append(_raw.removeprefix("tenant_"))
+        for _alias in _catalog_aliases:
+            try:
+                spark.sql(f"SHOW NAMESPACES IN {_alias}").collect()
+            except Exception:
+                pass  # catalog may not have any namespaces yet; access is enough to register it
 
     return spark

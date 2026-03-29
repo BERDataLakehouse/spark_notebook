@@ -82,7 +82,7 @@ def list_databases(dummy_input: str = "") -> str:
         JSON-formatted list of database names or error message
     """
     try:
-        databases = mcp_ops.mcp_list_databases(use_hms=True)
+        databases = mcp_ops.mcp_list_databases()
         if not databases:
             return "No databases found. You may need to create a database first."
         return _format_result(databases)
@@ -102,7 +102,7 @@ def list_tables(database: str) -> str:
         JSON-formatted list of table names or error message
     """
     try:
-        tables = mcp_ops.mcp_list_tables(database=database, use_hms=True)
+        tables = mcp_ops.mcp_list_tables(database=database)
         if not tables:
             return f"No tables found in database '{database}'. The database may be empty."
         return _format_result(tables)
@@ -143,7 +143,7 @@ def get_database_structure(input_str: str = "false") -> str:
     try:
         # Parse boolean input
         with_schema = input_str.lower() in ("true", "1", "yes")
-        structure = mcp_ops.mcp_get_database_structure(with_schema=with_schema, use_hms=True)
+        structure = mcp_ops.mcp_get_database_structure(with_schema=with_schema)
         return _format_result(structure)
     except Exception as e:
         logger.error(f"Error getting database structure: {e}")

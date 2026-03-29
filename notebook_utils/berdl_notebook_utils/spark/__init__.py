@@ -4,7 +4,7 @@ Spark utilities for BERDL notebook environments.
 This package provides comprehensive Spark utilities organized into focused modules:
 - database: Catalog and namespace management utilities
 - dataframe: DataFrame operations and display functions
-- data_store: Hive metastore and database information utilities
+- data_store: Iceberg catalog browsing utilities
 - connect_server: Spark Connect server management
 
 All functions are imported at the package level for convenient access.

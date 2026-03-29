@@ -68,7 +68,9 @@
 # - MinIO: minio/minio123
 # - PostgreSQL: hive/hivepassword
 services:
-  spark-notebook:
+  # Service names use the pattern: spark-notebook-{CI_KBASE_USERNAME}
+  # Update these keys if you change the usernames in .env
+  spark-notebook-tgu2:
     # image: ghcr.io/berdatalakehouse/spark_notebook:main
     # platform: linux/amd64
     build:
@@ -85,7 +87,7 @@ services:
       - CDM_TASK_SERVICE_URL=http://localhost:8080
       - SPARK_CLUSTER_MANAGER_API_URL=http://localhost:8000
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - BERDL_POD_IP=spark-notebook
+      - BERDL_POD_IP=spark-notebook-${CI_KBASE_USERNAME}
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
 
       # MINIO CONFIGURATION
@@ -97,6 +99,9 @@ services:
 
       # DATALAKE MCP SERVER CONFIGURATION
       - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
+
+      # POLARIS CONFIGURATION (per-user credentials provisioned dynamically by 01-credentials.py)
+      - POLARIS_CATALOG_URI=http://polaris:8181/api/catalog
 
       # TRINO CONFIGURATION
       - TRINO_HOST=trino
@@ -148,6 +153,9 @@ services:
       - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
       - KBASE_APPROVED_ROLES=BERDL_USER
       - REDIS_URL=redis://redis:6379
+      # Polaris admin credentials (only the governance service needs root access)
+      - POLARIS_CATALOG_URI=http://polaris:8181/api/catalog
+      - POLARIS_CREDENTIAL=root:s3cr3t
       # Credential store (PostgreSQL)
       - MMS_DB_HOST=postgres
       - MMS_DB_PORT=5432
@@ -182,8 +190,16 @@ services:
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
       - KBASE_REQUIRED_ROLES=BERDL_USER
       - MFA_EXEMPT_USERS=${CI_KBASE_USERNAME}
+      # POLARIS CONFIGURATION (per-user credentials provisioned dynamically)
+      - POLARIS_CATALOG_URI=http://polaris:8181/api/catalog
       - BERDL_REDIS_HOST=redis
       - BERDL_REDIS_PORT=6379
+    volumes:
+      # Mount the shared /home directory to access all users' credentials
+      # This allows the MCP server to dynamically read any user's credentials
+      # from /home/{username}/.berdl_minio_credentials
+      # In K8s: mount the parent directory or use a shared volume
+      - users_home:/home:ro
     depends_on:
       - hive-metastore
       - minio
@@ -298,7 +314,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-readonly.sh:/docker-entrypoint-initdb.d/01-init-postgres-readonly.sh:ro
-      - ./scripts/init-mms-db.sh:/docker-entrypoint-initdb.d/02-init-mms-db.sh:ro
+      - ./scripts/init-polaris-db.sh:/docker-entrypoint-initdb.d/02-init-polaris-db.sh:ro
+      - ./scripts/init-mms-db.sh:/docker-entrypoint-initdb.d/03-init-mms-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive"]
+      interval: 5s
+      timeout: 2s
+      retries: 15
 
   hive-metastore:
     # image: ghcr.io/berdatalakehouse/hive_metastore:main
@@ -368,6 +390,70 @@ services:
 
       echo 'MinIO bucket creation complete.';
       "
+
+  polaris-bootstrap:
+    image: apache/polaris-admin-tool:latest
+    environment:
+      - POLARIS_PERSISTENCE_TYPE=relational-jdbc
+      - QUARKUS_DATASOURCE_DB_KIND=postgresql
+      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://postgres:5432/polaris
+      - QUARKUS_DATASOURCE_USERNAME=hive
+      - QUARKUS_DATASOURCE_PASSWORD=hivepassword
+    # Bootstrap exits 3 if already bootstrapped (expected with persistent storage).
+    # Treat exit 3 as success so docker compose doesn't fail on subsequent runs.
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        java -jar /deployments/polaris-admin-tool.jar bootstrap --realm=POLARIS --credential=POLARIS,root,s3cr3t
+        rc=$$?
+        if [ $$rc -eq 3 ]; then
+          echo "Already bootstrapped — skipping (OK)"
+          exit 0
+        fi
+        exit $$rc
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  polaris:
+    image: apache/polaris:latest
+    ports:
+      - "8181:8181"
+    environment:
+      # Persistence — PostgreSQL instead of in-memory
+      - POLARIS_PERSISTENCE_TYPE=relational-jdbc
+      - QUARKUS_DATASOURCE_DB_KIND=postgresql
+      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://postgres:5432/polaris
+      - QUARKUS_DATASOURCE_USERNAME=hive
+      - QUARKUS_DATASOURCE_PASSWORD=hivepassword
+      # Realm configuration
+      - POLARIS_REALM_NAME=default-realm
+      # MinIO credentials for Polaris's own S3 access (metadata files).
+      # Polaris reads endpointInternal + pathStyleAccess from each catalog's storageConfigInfo.
+      # STS is disabled per-catalog via stsUnavailable:true (not the global SKIP_CREDENTIAL flag).
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8182/q/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      polaris-bootstrap:
+        condition: service_completed_successfully
+
+  polaris-ui:
+    image: ghcr.io/binarycat0/apache-polaris-ui:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side env vars used by the Next.js API routes for proxying auth
+      - POLARIS_MANAGEMENT_API_URL=http://polaris:8181/api/management/v1
+      - POLARIS_CATALOG_API_URL=http://polaris:8181/api/catalog/v1
+    depends_on:
+      polaris:
+        condition: service_started
 
 volumes:
   postgres_data:
