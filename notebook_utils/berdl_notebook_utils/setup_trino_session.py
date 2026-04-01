@@ -8,7 +8,7 @@ configures per-user S3 access for Spark.
 Architecture:
     1. Fetch user's MinIO credentials from governance API
     2. Create a per-user dynamic catalog via CREATE CATALOG
-    3. Return a trino.dbapi connection + catalog name
+    3. Return a trino.dbapi Connection configured to use the per-user catalog as the default
 
 The user's catalog (e.g., "u_tgu") has their own MinIO credentials,
 so S3 access is scoped to what the governance API grants them — same
