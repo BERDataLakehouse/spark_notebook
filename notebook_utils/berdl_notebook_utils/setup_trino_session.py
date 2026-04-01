@@ -8,16 +8,15 @@ configures per-user S3 access for Spark.
 Architecture:
     1. Fetch user's MinIO credentials from governance API
     2. Create a per-user dynamic catalog via CREATE CATALOG
-    3. Return a trino.dbapi connection + catalog name
+    3. Return a trino.dbapi Connection configured to use the per-user catalog as the default
 
-The user's catalog (e.g., "u_tgu_lake") has their own MinIO credentials,
+The user's catalog (e.g., "u_tgu") has their own MinIO credentials,
 so S3 access is scoped to what the governance API grants them — same
 security model as Spark sessions.
 """
 
 import logging
 import re
-from typing import NamedTuple
 
 import trino
 
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Connectors allowed in CREATE CATALOG statements (SQL-injection allowlist).
 #
-# Each user gets a per-user dynamic catalog (e.g. "u_{username}_lake") that points
+# Each user gets a per-user dynamic catalog (e.g. "u_{username}") that points
 # at the shared Hive Metastore but uses the user's own MinIO credentials.
 # The berdl-namespace-isolation access-control plugin then filters visibility:
 #   - Personal namespaces:  schemas matching  u_{username}__*
@@ -47,19 +46,15 @@ ALLOWED_CONNECTORS = frozenset(
 )
 
 
-class TrinoSession(NamedTuple):
-    """Return type for get_trino_connection()."""
-
-    connection: trino.dbapi.Connection
-    catalog: str
-
-
 def _sanitize_identifier(value: str) -> str:
     """
     Sanitize a string into a valid Trino identifier component.
 
     Trino catalog names must be lowercase alphanumeric + underscores.
-    Used for both usernames and catalog suffixes.
+
+    IMPORTANT: This logic must match ``sanitizeIdentifier()`` in the Trino
+    access control plugin (BerdlSystemAccessControl.java) so that catalog
+    names built here align with the ownership prefixes checked there.
     """
     return re.sub(r"[^a-z0-9_]", "_", value.lower())
 
@@ -121,7 +116,7 @@ def _create_dynamic_catalog(
 
     Skips creation if the catalog is already loaded (e.g. from a previous
     session or static .properties file).  The access control plugin allows
-    CREATE CATALOG for catalogs matching u_{user}_*.
+    CREATE CATALOG for catalogs matching u_{user}*.
     """
     if _catalog_exists(cursor, catalog_name):
         logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
@@ -145,10 +140,9 @@ def _create_dynamic_catalog(
 def get_trino_connection(
     host: str | None = None,
     port: int | None = None,
-    catalog_suffix: str = "lake",
     connector: str = "delta_lake",
     settings: BERDLSettings | None = None,
-) -> TrinoSession:
+) -> trino.dbapi.Connection:
     """
     Create a Trino connection with a per-user dynamic catalog.
 
@@ -156,32 +150,29 @@ def get_trino_connection(
     injected into a dynamic catalog, giving each user isolated S3 access
     — the same model as get_spark_session().
 
+    The connection's default catalog is set automatically, so queries
+    use ``schema.table`` format — same as Spark.
+
     Args:
         host: Trino coordinator hostname. Defaults to TRINO_HOST env var or "trino".
         port: Trino coordinator port. Defaults to TRINO_PORT env var or 8080.
-        catalog_suffix: Suffix for the catalog name. The full name is
-                        "u_{username}_{suffix}" (e.g., "u_tgu_lake").
         connector: Trino connector to use. Defaults to "delta_lake".
                    Use "hive" if you need Hive connector instead.
         settings: BERDLSettings instance. If None, reads from environment.
 
     Returns:
-        TrinoSession(connection, catalog) — a named tuple with:
-            - connection: trino.dbapi.Connection ready for queries
-            - catalog: str catalog name to use in queries
+        trino.dbapi.Connection with the default catalog set to the user's
+        dynamic catalog.
 
     Example:
-        >>> conn, catalog = get_trino_connection()
+        >>> conn = get_trino_connection()
         >>> cursor = conn.cursor()
-        >>> cursor.execute(f"SHOW SCHEMAS FROM {catalog}")
-        >>> print(cursor.fetchall())
-
-        >>> # Query a table
-        >>> cursor.execute(f"SELECT * FROM {catalog}.my_schema.my_table LIMIT 10")
+        >>> cursor.execute("SELECT * FROM my_schema.my_table LIMIT 10")
         >>> df = cursor.fetch_pandas_all()
 
-        >>> # With tenant warehouse
-        >>> conn, catalog = get_trino_connection(catalog_suffix="research_team")
+        >>> # SHOW SCHEMAS also works without catalog prefix
+        >>> cursor.execute("SHOW SCHEMAS")
+        >>> print(cursor.fetchall())
     """
     if settings is None:
         get_settings.cache_clear()
@@ -195,10 +186,9 @@ def get_trino_connection(
     credentials = get_minio_credentials()
     username = settings.USER
 
-    # Build catalog name: u_{username}_{suffix}
+    # Build catalog name: u_{username}
     safe_username = _sanitize_identifier(username)
-    safe_suffix = _sanitize_identifier(catalog_suffix)
-    catalog_name = f"u_{safe_username}_{safe_suffix}"
+    catalog_name = f"u_{safe_username}"
 
     logger.info(f"Setting up Trino connection for user={username}, catalog={catalog_name}")
 
@@ -222,6 +212,10 @@ def get_trino_connection(
     cursor = conn.cursor()
     _create_dynamic_catalog(cursor, catalog_name, connector, properties)
 
+    # Set the default catalog on the connection so users can write
+    # schema.table queries without a catalog prefix — same UX as Spark.
+    conn._client_session.catalog = catalog_name
+
     logger.info(f"Trino session ready: host={trino_host}:{trino_port}, user={username}, catalog={catalog_name}")
 
-    return TrinoSession(connection=conn, catalog=catalog_name)
+    return conn
