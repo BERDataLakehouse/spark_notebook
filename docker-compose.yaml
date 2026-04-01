@@ -259,6 +259,8 @@ services:
       - spark-master
 
   trino:
+    # Trino coordinator — handles query planning, scheduling, and client connections.
+    # Workers register with the coordinator via discovery.uri.
     # image: ghcr.io/berdatalakehouse/trino_access_control:main
     build:
       context: ../trino_access_control
@@ -270,9 +272,32 @@ services:
     volumes:
       - ./configs/trino/config.properties:/etc/trino/config.properties
       - ./configs/trino/access-control.properties:/etc/trino/access-control.properties
+      - ./configs/trino/resource-groups.properties:/etc/trino/resource-groups.properties
+      - ./configs/trino/resource-groups.json:/etc/trino/resource-groups.json
     depends_on:
       - hive-metastore
       - minio
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/v1/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    stop_grace_period: 150s
+
+  trino-worker:
+    # Trino worker — executes query fragments assigned by the coordinator.
+    # Scale with: docker compose up -d --scale trino-worker=N
+    # image: ghcr.io/berdatalakehouse/trino_access_control:main
+    build:
+      context: ../trino_access_control
+      dockerfile: Dockerfile
+      args:
+        TRINO_VERSION: "479"
+    volumes:
+      - ./configs/trino/worker-config.properties:/etc/trino/config.properties
+    depends_on:
+      trino:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/v1/info"]
       interval: 30s
