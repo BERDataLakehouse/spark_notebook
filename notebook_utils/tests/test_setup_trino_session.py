@@ -8,7 +8,6 @@ from governance_client.models import CredentialsResponse
 from berdl_notebook_utils.berdl_settings import BERDLSettings
 from berdl_notebook_utils.setup_trino_session import (
     ALLOWED_CONNECTORS,
-    TrinoSession,
     _build_catalog_properties,
     _catalog_exists,
     _create_dynamic_catalog,
@@ -217,16 +216,29 @@ class TestGetTrinoConnection:
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
     @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
-    def test_returns_trino_session(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
+    def test_returns_connection(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
         mock_get_creds.return_value = mock_credentials
         mock_conn = MagicMock()
         mock_trino.dbapi.connect.return_value = mock_conn
 
         result = get_trino_connection(settings=mock_settings)
 
-        assert isinstance(result, TrinoSession)
-        assert result.connection is mock_conn
-        assert result.catalog == "u_testuser_lake"
+        assert result is mock_conn
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    @patch("berdl_notebook_utils.setup_trino_session.trino")
+    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    def test_sets_default_catalog_on_connection(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
+    ):
+        """Connection's default catalog is set so queries use schema.table without prefix."""
+        mock_get_creds.return_value = mock_credentials
+        mock_conn = MagicMock()
+        mock_trino.dbapi.connect.return_value = mock_conn
+
+        get_trino_connection(settings=mock_settings)
+
+        assert mock_conn._client_session.catalog == "u_testuser"
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
@@ -303,17 +315,6 @@ class TestGetTrinoConnection:
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
     @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
-    def test_custom_catalog_suffix(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
-        mock_get_creds.return_value = mock_credentials
-        mock_trino.dbapi.connect.return_value = MagicMock()
-
-        result = get_trino_connection(catalog_suffix="research_team", settings=mock_settings)
-
-        assert result.catalog == "u_testuser_research_team"
-
-    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
-    @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
     def test_custom_connector(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
         mock_get_creds.return_value = mock_credentials
         mock_conn = MagicMock()
@@ -353,7 +354,7 @@ class TestGetTrinoConnection:
 
         result = get_trino_connection(settings=mock_settings)
 
-        assert result.catalog == "u_my_user_name_lake"
+        assert result._client_session.catalog == "u_my_user_name"
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
@@ -376,7 +377,7 @@ class TestGetTrinoConnection:
 
         mock_get_settings.cache_clear.assert_called_once()
         mock_get_settings.assert_called_once()
-        assert result.catalog == "u_autouser_lake"
+        assert result._client_session.catalog == "u_autouser"
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
@@ -395,30 +396,6 @@ class TestGetTrinoConnection:
         mock_conn.cursor.assert_called_once()
         mock_create_cat.assert_called_once()
         assert mock_create_cat.call_args[0][0] is mock_cursor
-
-
-# ---------------------------------------------------------------------------
-# TrinoSession named tuple
-# ---------------------------------------------------------------------------
-class TestTrinoSession:
-    def test_is_named_tuple(self):
-        conn = MagicMock()
-        session = TrinoSession(connection=conn, catalog="my_cat")
-        assert session.connection is conn
-        assert session.catalog == "my_cat"
-
-    def test_unpacking(self):
-        conn = MagicMock()
-        session = TrinoSession(connection=conn, catalog="my_cat")
-        unpacked_conn, unpacked_cat = session
-        assert unpacked_conn is conn
-        assert unpacked_cat == "my_cat"
-
-    def test_indexing(self):
-        conn = MagicMock()
-        session = TrinoSession(connection=conn, catalog="my_cat")
-        assert session[0] is conn
-        assert session[1] == "my_cat"
 
 
 # ---------------------------------------------------------------------------
@@ -482,57 +459,6 @@ class TestCreateDynamicCatalogSecurity:
         create_sql = cursor.execute.call_args_list[1][0][0]
         assert "secret''with''quotes" in create_sql
         assert "secret'with'quotes" not in create_sql
-
-
-# ---------------------------------------------------------------------------
-# get_trino_connection — catalog_suffix sanitization
-# ---------------------------------------------------------------------------
-class TestGetTrinoConnectionSuffixSanitization:
-    @pytest.fixture()
-    def mock_settings(self):
-        settings = MagicMock(spec=BERDLSettings)
-        settings.USER = "testuser"
-        settings.MINIO_ENDPOINT_URL = "http://minio:9000"
-        settings.MINIO_SECURE = False
-        settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
-        settings.TRINO_HOST = "trino"
-        settings.TRINO_PORT = 8080
-        settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
-        return settings
-
-    @pytest.fixture()
-    def mock_credentials(self):
-        return CredentialsResponse(
-            username="testuser",
-            access_key="test_access_key",
-            secret_key="test_secret_key",
-        )
-
-    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
-    @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
-    def test_suffix_with_special_chars_sanitized(
-        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
-    ):
-        mock_get_creds.return_value = mock_credentials
-        mock_trino.dbapi.connect.return_value = MagicMock()
-
-        result = get_trino_connection(catalog_suffix="My-Team.v2", settings=mock_settings)
-
-        assert result.catalog == "u_testuser_my_team_v2"
-
-    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
-    @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
-    def test_suffix_uppercase_lowercased(
-        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
-    ):
-        mock_get_creds.return_value = mock_credentials
-        mock_trino.dbapi.connect.return_value = MagicMock()
-
-        result = get_trino_connection(catalog_suffix="RESEARCH", settings=mock_settings)
-
-        assert result.catalog == "u_testuser_research"
 
 
 # ---------------------------------------------------------------------------
