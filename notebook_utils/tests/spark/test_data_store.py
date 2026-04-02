@@ -175,6 +175,71 @@ class TestGetDatabases:
         assert "u_test__db1" in result
 
 
+class TestGetDatabasesByTenant:
+    """Tests for get_databases with tenant parameter."""
+
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
+    def test_get_databases_single_tenant(self, mock_hms, mock_prefix):
+        """Test get_databases with tenant filters to that tenant's prefix only."""
+        mock_hms.get_databases.return_value = [
+            "u_test__db1",
+            "globalusers_shared",
+            "globalusers_analytics",
+            "teamx_project",
+        ]
+        mock_prefix.return_value = Mock(tenant_namespace_prefix="globalusers_")
+
+        result = get_databases(use_hms=True, tenant="globalusers", return_json=False)
+
+        assert result == ["globalusers_analytics", "globalusers_shared"]
+        mock_prefix.assert_called_once_with(tenant="globalusers")
+
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
+    def test_get_databases_tenant_no_matches(self, mock_hms, mock_prefix):
+        """Test get_databases with tenant that has no matching databases."""
+        mock_hms.get_databases.return_value = ["u_test__db1", "globalusers_shared"]
+        mock_prefix.return_value = Mock(tenant_namespace_prefix="teamx_")
+
+        result = get_databases(use_hms=True, tenant="teamx", return_json=False)
+
+        assert result == []
+
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
+    def test_get_databases_tenant_returns_json(self, mock_hms, mock_prefix):
+        """Test get_databases with tenant returns JSON when return_json=True."""
+        mock_hms.get_databases.return_value = ["globalusers_db1"]
+        mock_prefix.return_value = Mock(tenant_namespace_prefix="globalusers_")
+
+        result = get_databases(use_hms=True, tenant="globalusers", return_json=True)
+
+        assert json.loads(result) == ["globalusers_db1"]
+
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
+    def test_get_databases_tenant_error_raises(self, mock_hms, mock_prefix):
+        """Test get_databases with tenant raises on API error."""
+        mock_hms.get_databases.return_value = ["db1"]
+        mock_prefix.side_effect = Exception("API error")
+
+        with pytest.raises(Exception, match="Could not filter databases for tenant 'badteam'"):
+            get_databases(use_hms=True, tenant="badteam", return_json=False)
+
+    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
+    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
+    def test_get_databases_tenant_invalid_prefix_raises(self, mock_hms, mock_prefix):
+        """Test get_databases raises when tenant returns Unset/None prefix."""
+        from governance_client.types import UNSET
+
+        mock_hms.get_databases.return_value = ["db1"]
+        mock_prefix.return_value = Mock(tenant_namespace_prefix=UNSET)
+
+        with pytest.raises(Exception, match="Could not filter databases for tenant"):
+            get_databases(use_hms=True, tenant="badteam", return_json=False)
+
+
 class TestGetTables:
     """Tests for get_tables function."""
 
