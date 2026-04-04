@@ -149,8 +149,10 @@ __all__ = [
     "mcp_sample_table",
     "mcp_query_table",
     "mcp_select_table",
-    # Agent — not included here to avoid ImportError when langchain is
-    # incompatible. Use: from berdl_notebook_utils.agent import create_berdl_agent
+    # Agent exports are intentionally omitted from __all__ to avoid eager
+    # imports when langchain is incompatible, but they remain available via
+    # lazy top-level access through __getattr__. Use:
+    # from berdl_notebook_utils import create_berdl_agent
     # Environment refresh
     "refresh_spark_environment",
 ]
