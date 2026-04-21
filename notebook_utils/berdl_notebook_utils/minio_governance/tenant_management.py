@@ -109,7 +109,8 @@ def get_tenant_detail(tenant_name: str) -> TenantDetailResponse:
     """
     Get full tenant detail: metadata, stewards, members with profiles, and storage paths.
 
-    Any authenticated user can view tenant details.
+    Any authenticated user can view tenant metadata, stewards, and storage paths.
+    The member list is only included for members, stewards, and admins.
 
     Args:
         tenant_name: Name of the tenant (MinIO group name)
