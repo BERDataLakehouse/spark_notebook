@@ -77,10 +77,18 @@ spark.eventLog.compression.codec=zstd
 
 # Hive metastore
 spark.sql.catalogImplementation=hive
-spark.sql.hive.metastore.version=4.0.0
-spark.sql.hive.metastore.jars=path
-spark.sql.hive.metastore.jars.path=/usr/local/spark/jars/*
-# hive.metastore.uris will be set dynamically from BERDL_HIVE_METASTORE_URI
+# Disabled: forcing metastore.version=4.0.0 selects Spark's Shim_v4_0, which
+# reflectively calls Hive.alterTable(String, Table, EnvironmentContext, boolean) —
+# a 4-arg overload that only exists in Hive 4.x. The jars under
+# /usr/local/spark/jars/ are Hive 2.3.10 (what Spark 4.0 ships with), so the
+# lookup throws NoSuchMethodException on any Delta saveAsTable / overwriteSchema
+# path that triggers UpdateCatalog. Letting Spark fall back to its built-in
+# Hive 2.3 client + Shim_v2_3 works fine against the Hive 4.0 metastore over
+# Thrift (the wire protocol is backward compatible).
+# spark.sql.hive.metastore.version=4.0.0
+# spark.sql.hive.metastore.jars=path
+# spark.sql.hive.metastore.jars.path=/usr/local/spark/jars/*
+# spark.hadoop.hive.metastore.uris will be set dynamically from BERDL_HIVE_METASTORE_URI
 
 # MinIO S3 configuration - will be set dynamically by startup script
 # spark.hadoop.fs.s3a.endpoint will be set from MINIO_ENDPOINT_URL
