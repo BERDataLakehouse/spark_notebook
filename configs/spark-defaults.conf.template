@@ -88,7 +88,7 @@ spark.sql.catalogImplementation=hive
 # spark.sql.hive.metastore.version=4.0.0
 # spark.sql.hive.metastore.jars=path
 # spark.sql.hive.metastore.jars.path=/usr/local/spark/jars/*
-# hive.metastore.uris will be set dynamically from BERDL_HIVE_METASTORE_URI
+# spark.hadoop.hive.metastore.uris will be set dynamically from BERDL_HIVE_METASTORE_URI
 
 # MinIO S3 configuration - will be set dynamically by startup script
 # spark.hadoop.fs.s3a.endpoint will be set from MINIO_ENDPOINT_URL
