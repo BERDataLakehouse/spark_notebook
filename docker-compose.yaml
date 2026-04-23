@@ -88,7 +88,6 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - BERDL_POD_IP=spark-notebook
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
-      - SPARK_EVENT_LOG_ENABLED=true
 
       # MINIO CONFIGURATION
       - MINIO_ENDPOINT_URL=ceph:8080
@@ -111,7 +110,6 @@ services:
     volumes:
       - users_home:/home
       - global_share:/home/${CI_KBASE_USERNAME}/global_share
-      - ./test_notebooks:/home/${CI_KBASE_USERNAME}/work
     depends_on:
       spark-master:
         condition: service_started
