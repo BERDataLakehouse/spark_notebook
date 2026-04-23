@@ -387,11 +387,6 @@ def get_spark_session(
     if override:
         config.update(override)
 
-    active_settings = settings
-    if active_settings is None and not local:
-        get_settings.cache_clear()
-        active_settings = get_settings()
-
     spark_conf = SparkConf().setAll(list(config.items()))
     spark = SparkSession.builder.config(conf=spark_conf).getOrCreate()
 
