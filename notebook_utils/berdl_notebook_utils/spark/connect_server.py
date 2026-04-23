@@ -26,7 +26,6 @@ from ..setup_spark_session import (
     EVENT_LOG_PREFIX,
     EXECUTOR_MEMORY_OVERHEAD,
     convert_memory_format,
-    ensure_event_log_prefix_exists,
 )
 
 logger = logging.getLogger(__name__)
@@ -338,7 +337,6 @@ class SparkConnectServerManager:
         # Prepare environment
         self.config.create_directories()
         self.config.generate_spark_config()
-        ensure_event_log_prefix_exists(self.config.settings)
 
         # Verify start script exists
         start_script = Path(self.config.spark_home) / "sbin" / "start-connect-server.sh"

@@ -546,13 +546,10 @@ class TestSparkConnectServerManagerStop:
 class TestSparkConnectServerManagerForceRestart:
     """Tests for force_restart functionality."""
 
-    @patch("berdl_notebook_utils.spark.connect_server.ensure_event_log_prefix_exists")
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.stop")
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.is_running")
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
-    def test_start_force_restart_calls_stop(
-        self, mock_config_class, mock_is_running, mock_stop, mock_ensure_event_log_prefix_exists, tmp_path
-    ):
+    def test_start_force_restart_calls_stop(self, mock_config_class, mock_is_running, mock_stop, tmp_path):
         """Test start with force_restart=True calls stop first."""
         mock_config = Mock()
         mock_config.username = "test_user"
@@ -576,15 +573,11 @@ class TestSparkConnectServerManagerForceRestart:
                 pass  # Expected - start script doesn't exist
 
         mock_stop.assert_called_once()
-        mock_ensure_event_log_prefix_exists.assert_called_once_with(mock_config.settings)
 
-    @patch("berdl_notebook_utils.spark.connect_server.ensure_event_log_prefix_exists")
     @patch("berdl_notebook_utils.spark.connect_server.time")
     @patch("berdl_notebook_utils.spark.connect_server.subprocess.Popen")
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
-    def test_start_new_server_success(
-        self, mock_config_class, mock_popen, mock_time, mock_ensure_event_log_prefix_exists, tmp_path
-    ):
+    def test_start_new_server_success(self, mock_config_class, mock_popen, mock_time, tmp_path):
         """Test starting a new Spark Connect server successfully."""
         mock_config = Mock()
         mock_config.username = "test_user"
@@ -630,15 +623,11 @@ class TestSparkConnectServerManagerForceRestart:
         assert result["port"] == 15002
         mock_config.create_directories.assert_called_once()
         mock_config.generate_spark_config.assert_called_once()
-        mock_ensure_event_log_prefix_exists.assert_called_once_with(mock_config.settings)
 
-    @patch("berdl_notebook_utils.spark.connect_server.ensure_event_log_prefix_exists")
     @patch("berdl_notebook_utils.spark.connect_server.time")
     @patch("berdl_notebook_utils.spark.connect_server.subprocess.Popen")
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
-    def test_start_new_server_fails(
-        self, mock_config_class, mock_popen, mock_time, mock_ensure_event_log_prefix_exists, tmp_path
-    ):
+    def test_start_new_server_fails(self, mock_config_class, mock_popen, mock_time, tmp_path):
         """Test start raises RuntimeError when server fails to start."""
         mock_config = Mock()
         mock_config.username = "test_user"
@@ -668,5 +657,3 @@ class TestSparkConnectServerManagerForceRestart:
         with patch.object(manager, "get_server_info", return_value=None):
             with pytest.raises(RuntimeError, match="Spark Connect server failed to start"):
                 manager.start()
-
-        mock_ensure_event_log_prefix_exists.assert_called_once_with(mock_config.settings)

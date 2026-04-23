@@ -9,12 +9,8 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 
 import warnings
 from datetime import datetime
-from io import BytesIO
 from typing import Any
-from urllib.parse import urlparse
 
-from minio import Minio
-from minio.error import S3Error
 from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
 
@@ -225,64 +221,6 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     return config
 
 
-def _get_s3_client(settings: BERDLSettings) -> Minio:
-    """Create an S3 client using the current user's object-store credentials."""
-    endpoint = settings.MINIO_ENDPOINT_URL
-    secure = settings.MINIO_SECURE
-
-    if endpoint.startswith(("http://", "https://")):
-        parsed = urlparse(endpoint)
-        endpoint = parsed.netloc
-        secure = parsed.scheme == "https"
-
-    return Minio(
-        endpoint=endpoint,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
-        secure=secure,
-    )
-
-
-def _parse_s3a_path(path: str) -> tuple[str, str]:
-    """Split an s3a:// path into bucket and object key."""
-    if not path.startswith("s3a://"):
-        raise ValueError(f"Expected s3a:// path, got: {path}")
-
-    bucket, _, key = path[6:].partition("/")
-    if not bucket or not key:
-        raise ValueError(f"Invalid s3a path: {path}")
-
-    return bucket, key.rstrip("/")
-
-
-def ensure_event_log_prefix_exists(settings: BERDLSettings | None = None) -> None:
-    """
-    Ensure the user's Spark event-log prefix exists as marker objects.
-
-    Ceph RGW can return 403 for HEAD/stat requests on a missing prefix marker even when
-    the user is allowed to write beneath that prefix. Spark checks the base event-log path
-    with getFileStatus() before starting, so we proactively create the exact key and the
-    trailing-slash marker that Spark/Hadoop may probe.
-    """
-    if settings is None:
-        settings = get_settings()
-
-    bucket, key = _parse_s3a_path(f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/{settings.USER}/")
-    client = _get_s3_client(settings)
-    marker = f"{key}/"
-
-    try:
-        client.stat_object(bucket, marker)
-    except S3Error:
-        client.put_object(
-            bucket,
-            marker,
-            data=BytesIO(b""),
-            length=0,
-            content_type="application/x-directory",
-        )
-
-
 IMMUTABLE_CONFIGS = {
     # Cluster-level settings (must be set at master startup)
     "spark.decommission.enabled",
@@ -453,9 +391,6 @@ def get_spark_session(
     if active_settings is None and not local:
         get_settings.cache_clear()
         active_settings = get_settings()
-
-    if not local and use_s3:
-        ensure_event_log_prefix_exists(active_settings)
 
     spark_conf = SparkConf().setAll(list(config.items()))
     spark = SparkSession.builder.config(conf=spark_conf).getOrCreate()
