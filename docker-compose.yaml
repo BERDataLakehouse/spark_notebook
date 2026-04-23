@@ -65,8 +65,9 @@
 #
 # DEFAULT CREDENTIALS:
 # --------------------
-# - MinIO: minio/minio123
-# - PostgreSQL: hive/hivepassword
+# - Ceph S3/IAM: test_access_key / test_access_secret
+# - Ceph Dashboard: admin / admin
+# - PostgreSQL: hive / hivepassword
 services:
   spark-notebook:
     # image: ghcr.io/berdatalakehouse/spark_notebook:main
@@ -87,9 +88,10 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - BERDL_POD_IP=spark-notebook
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
+      - SPARK_EVENT_LOG_ENABLED=false
 
       # MINIO CONFIGURATION
-      - MINIO_ENDPOINT_URL=minio:9002
+      - MINIO_ENDPOINT_URL=ceph:8080
 
       # DATA GOVERNANCE CONFIGURATION
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
@@ -109,11 +111,30 @@ services:
     volumes:
       - users_home:/home
       - global_share:/home/${CI_KBASE_USERNAME}/global_share
+      - ./test_notebooks:/home/${CI_KBASE_USERNAME}/work
     depends_on:
-      - spark-master
-      - minio
-      - postgres
-      - hive-metastore
+      spark-master:
+        condition: service_started
+      ceph-create-buckets:
+        condition: service_completed_successfully
+      minio-manager-service:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/api')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
     command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
   spark-connect-proxy:
@@ -141,12 +162,12 @@ services:
     ports:
       - "8003:8000"
     environment:
-      - MINIO_ENDPOINT=http://minio:9002
-      - MINIO_ROOT_USER=minio
-      - MINIO_ROOT_PASSWORD=minio123
+      - MINIO_ENDPOINT=http://ceph:8080
+      - MINIO_ROOT_USER=test_access_key
+      - MINIO_ROOT_PASSWORD=test_access_secret
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
       - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
-      - KBASE_APPROVED_ROLES=BERDL_USER
+      - KBASE_REQUIRED_ROLES=BERDL_USER
       - REDIS_URL=redis://redis:6379
       # Credential store (PostgreSQL)
       - MMS_DB_HOST=postgres
@@ -155,10 +176,25 @@ services:
       - MMS_DB_USER=mms
       - MMS_DB_PASSWORD=mmspassword
       - MMS_DB_ENCRYPTION_KEY=change-me-in-prod
+      - MMS_IAM_PATH_PREFIX=/data_governance_service
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - minio
-      - redis
-      - postgres
+      ceph:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   datalake-mcp-server:
     # image: ghcr.io/berdatalakehouse/datalake-mcp-server:main
@@ -176,7 +212,7 @@ services:
       # For docker-compose local dev, we default to the primary notebook
       - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
-      - MINIO_ENDPOINT_URL=minio:9002
+      - MINIO_ENDPOINT_URL=ceph:8080
       # MinIO credentials fetched from MMS governance API per request
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
@@ -184,11 +220,26 @@ services:
       - MFA_EXEMPT_USERS=${CI_KBASE_USERNAME}
       - BERDL_REDIS_HOST=redis
       - BERDL_REDIS_PORT=6379
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/apis/mcp/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - hive-metastore
-      - minio
-      - minio-manager-service
-      - redis
+      hive-metastore:
+        condition: service_healthy
+      ceph-create-buckets:
+        condition: service_completed_successfully
+      minio-manager-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   tenant-access-request-service:
     # image: ghcr.io/berdatalakehouse/tenant_access_request_service:main
@@ -217,7 +268,8 @@ services:
       # Logging
       - LOG_LEVEL=DEBUG
     depends_on:
-      - minio-manager-service
+      minio-manager-service:
+        condition: service_healthy
 
   spark-master:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
@@ -236,6 +288,11 @@ services:
       - SPARK_MASTER_HOST=0.0.0.0
       - SPARK_MASTER_PORT=7077
       - SPARK_MASTER_WEBUI_PORT=8080
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/7077'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   spark-worker:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
@@ -255,6 +312,11 @@ services:
       - SPARK_WORKER_MEMORY=5g
       - SPARK_WORKER_PORT=8081
       - SPARK_WORKER_WEBUI_PORT=8081
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/8082'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     depends_on:
       - spark-master
 
@@ -275,8 +337,10 @@ services:
       - ./configs/trino/resource-groups.properties:/etc/trino/resource-groups.properties
       - ./configs/trino/resource-groups.json:/etc/trino/resource-groups.json
     depends_on:
-      - hive-metastore
-      - minio
+      hive-metastore:
+        condition: service_healthy
+      ceph-create-buckets:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/v1/info"]
       interval: 30s
@@ -309,6 +373,11 @@ services:
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     volumes:
       - redis_data:/data
 
@@ -320,6 +389,11 @@ services:
       - POSTGRES_USER=hive
       - POSTGRES_PASSWORD=hivepassword
       - POSTGRES_DB=hive
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-readonly.sh:/docker-entrypoint-initdb.d/01-init-postgres-readonly.sh:ro
@@ -345,58 +419,58 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
 
-      # MinIO S3 configuration
-      - S3_ENDPOINT=http://minio:9002
-      - S3_ACCESS_KEY=minio
-      - S3_SECRET_KEY=minio123
+      # Ceph S3 configuration
+      - S3_ENDPOINT=http://ceph:8080
+      - S3_ACCESS_KEY=test_access_key
+      - S3_SECRET_KEY=test_access_secret
 
       - DELTALAKE_WAREHOUSE_DIR=s3a://cdm-lake/users-sql-warehouse
     depends_on:
-      - postgres
-      - minio
+      postgres:
+        condition: service_healthy
+      ceph-create-buckets:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "9083"]
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/9083'"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
+  ceph:
+    image: ghcr.io/kbasetest/ceph-rgw-test-image:0.1.3
     ports:
-      - "9002:9002"  # MinIO API
-      - "9003:9003"  # MinIO Console
+      - "9150:8080"  # Ceph RadosGW API
+      - "8446:8443"  # Ceph Dashboard
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
+      RGW_PORT: "8080"
+      RGW_ACCESS_KEY: test_access_key
+      RGW_SECRET_KEY: test_access_secret
     healthcheck:
-      test: timeout 5s bash -c ':> /dev/tcp/127.0.0.1/9002' || exit 1
-      interval: 1s
-      timeout: 10s
-      retries: 5
-    command: server --address 0.0.0.0:9002 --console-address 0.0.0.0:9003 /data
-    volumes:
-      - minio_data:/data
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
 
-  minio-create-buckets:
+  ceph-create-buckets:
     image: minio/mc
     depends_on:
-      minio:
+      ceph:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      echo 'Configuring MinIO...';
-      mc alias set local http://minio:9002 minio minio123;
+      echo 'Configuring Ceph...';
+      mc alias set local http://ceph:8080 test_access_key test_access_secret;
 
       echo 'Creating buckets...';
       mc mb --ignore-existing local/cdm-lake;
       mc mb --ignore-existing local/cdm-spark-job-logs;
 
-      echo 'MinIO bucket creation complete.';
+      echo 'Ceph bucket creation complete.';
       "
 
 volumes:
   postgres_data:
-  minio_data:
   redis_data:
   global_share:
   users_home:  # Shared volume for all user home directories

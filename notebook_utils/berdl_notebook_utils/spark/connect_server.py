@@ -22,13 +22,17 @@ from ..minio_governance.operations import (
 )
 from ..setup_spark_session import (
     DRIVER_MEMORY_OVERHEAD,
+    EVENT_LOG_BUCKET,
+    EVENT_LOG_PREFIX,
     EXECUTOR_MEMORY_OVERHEAD,
+    _spark_event_log_enabled,
     convert_memory_format,
+    ensure_event_log_prefix_exists,
 )
 
 logger = logging.getLogger(__name__)
 
-EVENT_LOG_DIR = "s3a://cdm-spark-job-logs/spark-job-logs/"
+EVENT_LOG_DIR = f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/"
 
 
 class SparkConnectServerConfig:
@@ -50,7 +54,7 @@ class SparkConnectServerConfig:
         self.spark_home = settings.SPARK_HOME
         self.user_spark_dir = Path.home() / ".spark"
         self.user_conf_dir = self.user_spark_dir / "conf"
-        self.spark_event_log_dir = EVENT_LOG_DIR + self.username
+        self.spark_event_log_dir = EVENT_LOG_DIR + self.username + "/"
         self.connect_server_log_dir = self.user_spark_dir / "connect-server-logs"
 
         # Configuration files
@@ -90,8 +94,11 @@ class SparkConnectServerConfig:
             f.write("\n# Dynamic user-specific configurations\n")
             f.write(f"# Generated for user: {self.username}\n\n")
 
-            # Spark event log directory (for Spark History Server)
-            f.write(f"spark.eventLog.dir={self.spark_event_log_dir}\n")
+            if _spark_event_log_enabled(self.settings):
+                f.write(f"spark.eventLog.enabled=true\n")
+                f.write(f"spark.eventLog.dir={self.spark_event_log_dir}\n")
+            else:
+                f.write("spark.eventLog.enabled=false\n")
 
             # Hive metastore URI
             f.write(f"spark.hadoop.hive.metastore.uris={self.settings.BERDL_HIVE_METASTORE_URI}\n")
@@ -335,6 +342,8 @@ class SparkConnectServerManager:
         # Prepare environment
         self.config.create_directories()
         self.config.generate_spark_config()
+        if _spark_event_log_enabled(self.config.settings):
+            ensure_event_log_prefix_exists(self.config.settings)
 
         # Verify start script exists
         start_script = Path(self.config.spark_home) / "sbin" / "start-connect-server.sh"
@@ -373,8 +382,8 @@ class SparkConnectServerManager:
                 start_new_session=True,  # Detach from parent process
             )
 
-        # Wait and verify startup
-        time.sleep(2)
+        # Wait briefly to catch JVM startup failures after the wrapper script exits.
+        time.sleep(5)
 
         if process.poll() is None:
             # Server started successfully

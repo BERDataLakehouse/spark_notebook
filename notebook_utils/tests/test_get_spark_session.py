@@ -1,8 +1,10 @@
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
+from minio.error import S3Error
 from pyspark.sql import Row, SparkSession
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings
@@ -15,6 +17,7 @@ from berdl_notebook_utils.setup_spark_session import (
     _get_hive_conf,
     _get_s3_conf,
     _get_spark_defaults_conf,
+    ensure_event_log_prefix_exists,
     generate_spark_conf,
     get_spark_session,
 )
@@ -256,6 +259,8 @@ def test_get_spark_session_spark_connect(
     )
     monkeypatch.setattr("pyspark.conf.SparkConf.setAll", lambda _, c: c)
     monkeypatch.setattr("pyspark.sql.session.SparkSession.builder", FakeBuilder())
+    ensure_mock = Mock()
+    monkeypatch.setattr("berdl_notebook_utils.setup_spark_session.ensure_event_log_prefix_exists", ensure_mock)
 
     spark = get_spark_session(
         local=local,
@@ -278,6 +283,32 @@ def test_get_spark_session_spark_connect(
         # if spark connect is on or this is a local session, none of this will have been set
         assert spark.sparkContext.n_calls == 0
         assert spark.sparkContext.pool is None
+
+    if local:
+        ensure_mock.assert_not_called()
+    else:
+        ensure_mock.assert_called_once()
+
+
+def test_ensure_event_log_prefix_exists_creates_missing_markers() -> None:
+    settings = BERDLSettings()
+    mock_client = Mock()
+    mock_client.stat_object.side_effect = S3Error(
+        "AccessDenied", "forbidden", "resource", "request", "host", None, None, None
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("berdl_notebook_utils.setup_spark_session._get_s3_client", lambda _: mock_client)
+        ensure_event_log_prefix_exists(settings)
+
+    stat_calls = [call.args for call in mock_client.stat_object.call_args_list]
+    assert stat_calls == [
+        ("cdm-spark-job-logs", f"spark-job-logs/{settings.USER}/"),
+    ]
+    put_calls = [call.args[:2] for call in mock_client.put_object.call_args_list]
+    assert put_calls == [
+        ("cdm-spark-job-logs", f"spark-job-logs/{settings.USER}/"),
+    ]
 
 
 try:

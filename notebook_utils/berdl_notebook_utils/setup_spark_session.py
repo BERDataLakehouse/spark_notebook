@@ -7,10 +7,15 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 # This file must be loaded AFTER the 02-get_minio_client.py file
 """
 
+import os
 import warnings
 from datetime import datetime
+from io import BytesIO
 from typing import Any
+from urllib.parse import urlparse
 
+from minio import Minio
+from minio.error import S3Error
 from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
 
@@ -37,6 +42,8 @@ SPARK_POOLS = [SPARK_DEFAULT_POOL, "highPriority"]
 # Memory overhead percentages for Spark components
 EXECUTOR_MEMORY_OVERHEAD = 0.1  # 10% overhead for executors (accounts for JVM + system overhead)
 DRIVER_MEMORY_OVERHEAD = 0.05  # 5% overhead for driver (typically less memory pressure)
+EVENT_LOG_BUCKET = "cdm-spark-job-logs"
+EVENT_LOG_PREFIX = "spark-job-logs"
 
 # =============================================================================
 # PRIVATE HELPER FUNCTIONS
@@ -204,9 +211,9 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     # Use tenant SQL warehouse if a tenant name is supplied; otherwise, use the user's warehouse.
     warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
 
-    event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
+    event_log_enabled = _spark_event_log_enabled(settings)
 
-    return {
+    config = {
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
         "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
@@ -214,9 +221,79 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_response.sql_warehouse_prefix,
-        "spark.eventLog.enabled": "true",
-        "spark.eventLog.dir": event_log_dir,
+        "spark.eventLog.enabled": str(event_log_enabled).lower(),
     }
+
+    if event_log_enabled:
+        config["spark.eventLog.dir"] = f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/{settings.USER}/"
+
+    return config
+
+
+def _spark_event_log_enabled(settings: BERDLSettings | None = None) -> bool:
+    """Return whether Spark event logging is enabled, with env fallback for local stacks."""
+    if settings is not None and hasattr(settings, "SPARK_EVENT_LOG_ENABLED"):
+        return bool(settings.SPARK_EVENT_LOG_ENABLED)
+
+    return os.getenv("SPARK_EVENT_LOG_ENABLED", "true").strip().lower() not in {"0", "false", "no"}
+
+
+def _get_s3_client(settings: BERDLSettings) -> Minio:
+    """Create an S3 client using the current user's object-store credentials."""
+    endpoint = settings.MINIO_ENDPOINT_URL
+    secure = settings.MINIO_SECURE
+
+    if endpoint.startswith(("http://", "https://")):
+        parsed = urlparse(endpoint)
+        endpoint = parsed.netloc
+        secure = parsed.scheme == "https"
+
+    return Minio(
+        endpoint=endpoint,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=secure,
+    )
+
+
+def _parse_s3a_path(path: str) -> tuple[str, str]:
+    """Split an s3a:// path into bucket and object key."""
+    if not path.startswith("s3a://"):
+        raise ValueError(f"Expected s3a:// path, got: {path}")
+
+    bucket, _, key = path[6:].partition("/")
+    if not bucket or not key:
+        raise ValueError(f"Invalid s3a path: {path}")
+
+    return bucket, key.rstrip("/")
+
+
+def ensure_event_log_prefix_exists(settings: BERDLSettings | None = None) -> None:
+    """
+    Ensure the user's Spark event-log prefix exists as marker objects.
+
+    Ceph RGW can return 403 for HEAD/stat requests on a missing prefix marker even when
+    the user is allowed to write beneath that prefix. Spark checks the base event-log path
+    with getFileStatus() before starting, so we proactively create the exact key and the
+    trailing-slash marker that Spark/Hadoop may probe.
+    """
+    if settings is None:
+        settings = get_settings()
+
+    bucket, key = _parse_s3a_path(f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/{settings.USER}/")
+    client = _get_s3_client(settings)
+    marker = f"{key}/"
+
+    try:
+        client.stat_object(bucket, marker)
+    except S3Error:
+        client.put_object(
+            bucket,
+            marker,
+            data=BytesIO(b""),
+            length=0,
+            content_type="application/x-directory",
+        )
 
 
 IMMUTABLE_CONFIGS = {
@@ -384,6 +461,14 @@ def get_spark_session(
     )
     if override:
         config.update(override)
+
+    active_settings = settings
+    if active_settings is None and not local:
+        get_settings.cache_clear()
+        active_settings = get_settings()
+
+    if not local and use_s3 and _spark_event_log_enabled(active_settings):
+        ensure_event_log_prefix_exists(active_settings)
 
     spark_conf = SparkConf().setAll(list(config.items()))
     spark = SparkSession.builder.config(conf=spark_conf).getOrCreate()
