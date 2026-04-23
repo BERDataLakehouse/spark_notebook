@@ -175,7 +175,6 @@ services:
       - MMS_DB_PASSWORD=mmspassword
       - MMS_DB_ENCRYPTION_KEY=change-me-in-prod
       - MMS_IAM_PATH_PREFIX=/data_governance_service
-      - CDM_ALLOW_BUCKET_WIDE_LIST_FOR_DEFAULT_BUCKET=true
     healthcheck:
       test:
         [
