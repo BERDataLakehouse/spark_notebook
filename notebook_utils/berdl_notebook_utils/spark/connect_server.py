@@ -95,7 +95,7 @@ class SparkConnectServerConfig:
             f.write(f"# Generated for user: {self.username}\n\n")
 
             if _spark_event_log_enabled(self.settings):
-                f.write(f"spark.eventLog.enabled=true\n")
+                f.write("spark.eventLog.enabled=true\n")
                 f.write(f"spark.eventLog.dir={self.spark_event_log_dir}\n")
             else:
                 f.write("spark.eventLog.enabled=false\n")

@@ -88,7 +88,7 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - BERDL_POD_IP=spark-notebook
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
-      - SPARK_EVENT_LOG_ENABLED=false
+      - SPARK_EVENT_LOG_ENABLED=true
 
       # MINIO CONFIGURATION
       - MINIO_ENDPOINT_URL=ceph:8080
