@@ -308,10 +308,10 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_CORES=4
       - SPARK_WORKER_MEMORY=5g
-      - SPARK_WORKER_PORT=8081
+      - SPARK_WORKER_PORT=7078
       - SPARK_WORKER_WEBUI_PORT=8081
     healthcheck:
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/8082'"]
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/8081'"]
       interval: 30s
       timeout: 10s
       retries: 5
