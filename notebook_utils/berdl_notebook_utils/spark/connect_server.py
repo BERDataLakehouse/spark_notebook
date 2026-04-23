@@ -92,7 +92,7 @@ class SparkConnectServerConfig:
             f.write("\n# Dynamic user-specific configurations\n")
             f.write(f"# Generated for user: {self.username}\n\n")
 
-            f.write("spark.eventLog.enabled=true\n")
+            # Spark event log directory (for Spark History Server)
             f.write(f"spark.eventLog.dir={self.spark_event_log_dir}\n")
 
             # Hive metastore URI
@@ -375,6 +375,7 @@ class SparkConnectServerManager:
                 start_new_session=True,  # Detach from parent process
             )
 
+        # Wait and verify startup
         time.sleep(2)
 
         if process.poll() is None:
