@@ -7,7 +7,6 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 # This file must be loaded AFTER the 02-get_minio_client.py file
 """
 
-import os
 import warnings
 from datetime import datetime
 from io import BytesIO
@@ -211,8 +210,6 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     # Use tenant SQL warehouse if a tenant name is supplied; otherwise, use the user's warehouse.
     warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
 
-    event_log_enabled = _spark_event_log_enabled(settings)
-
     config = {
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
@@ -221,21 +218,11 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_response.sql_warehouse_prefix,
-        "spark.eventLog.enabled": str(event_log_enabled).lower(),
+        "spark.eventLog.enabled": "true",
+        "spark.eventLog.dir": f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/{settings.USER}/",
     }
 
-    if event_log_enabled:
-        config["spark.eventLog.dir"] = f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/{settings.USER}/"
-
     return config
-
-
-def _spark_event_log_enabled(settings: BERDLSettings | None = None) -> bool:
-    """Return whether Spark event logging is enabled, with env fallback for local stacks."""
-    if settings is not None and hasattr(settings, "SPARK_EVENT_LOG_ENABLED"):
-        return bool(settings.SPARK_EVENT_LOG_ENABLED)
-
-    return os.getenv("SPARK_EVENT_LOG_ENABLED", "true").strip().lower() not in {"0", "false", "no"}
 
 
 def _get_s3_client(settings: BERDLSettings) -> Minio:
@@ -467,7 +454,7 @@ def get_spark_session(
         get_settings.cache_clear()
         active_settings = get_settings()
 
-    if not local and use_s3 and _spark_event_log_enabled(active_settings):
+    if not local and use_s3:
         ensure_event_log_prefix_exists(active_settings)
 
     spark_conf = SparkConf().setAll(list(config.items()))

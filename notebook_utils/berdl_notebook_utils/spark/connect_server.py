@@ -25,7 +25,6 @@ from ..setup_spark_session import (
     EVENT_LOG_BUCKET,
     EVENT_LOG_PREFIX,
     EXECUTOR_MEMORY_OVERHEAD,
-    _spark_event_log_enabled,
     convert_memory_format,
     ensure_event_log_prefix_exists,
 )
@@ -94,11 +93,8 @@ class SparkConnectServerConfig:
             f.write("\n# Dynamic user-specific configurations\n")
             f.write(f"# Generated for user: {self.username}\n\n")
 
-            if _spark_event_log_enabled(self.settings):
-                f.write("spark.eventLog.enabled=true\n")
-                f.write(f"spark.eventLog.dir={self.spark_event_log_dir}\n")
-            else:
-                f.write("spark.eventLog.enabled=false\n")
+            f.write("spark.eventLog.enabled=true\n")
+            f.write(f"spark.eventLog.dir={self.spark_event_log_dir}\n")
 
             # Hive metastore URI
             f.write(f"spark.hadoop.hive.metastore.uris={self.settings.BERDL_HIVE_METASTORE_URI}\n")
@@ -342,8 +338,7 @@ class SparkConnectServerManager:
         # Prepare environment
         self.config.create_directories()
         self.config.generate_spark_config()
-        if _spark_event_log_enabled(self.config.settings):
-            ensure_event_log_prefix_exists(self.config.settings)
+        ensure_event_log_prefix_exists(self.config.settings)
 
         # Verify start script exists
         start_script = Path(self.config.spark_home) / "sbin" / "start-connect-server.sh"
@@ -382,8 +377,7 @@ class SparkConnectServerManager:
                 start_new_session=True,  # Detach from parent process
             )
 
-        # Wait briefly to catch JVM startup failures after the wrapper script exits.
-        time.sleep(5)
+        time.sleep(2)
 
         if process.poll() is None:
             # Server started successfully

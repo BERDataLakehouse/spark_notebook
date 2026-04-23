@@ -59,7 +59,6 @@ class BERDLSettings(BaseSettings):
         pattern=r"^\d+[kmgKMGT]i?[bB]?$",
         description="Memory for Spark master from profile",
     )
-    SPARK_EVENT_LOG_ENABLED: bool = Field(default=True, description="Enable Spark event logging")
 
     # Spark Cluster Manager API configuration
     SPARK_CLUSTER_MANAGER_API_URL: AnyHttpUrl
