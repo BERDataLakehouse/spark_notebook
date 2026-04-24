@@ -1,10 +1,8 @@
 """In-process TTL caches for read-heavy governance calls.
 
 The extension's tenants landing page hits list_tenants() and get_my_groups()
-on every load, which scales with tenant count. These caches match the 300s
-TTL used elsewhere in the monorepo (trino_access_control plugin,
-minio_manager_service/kbase_profile_client) so staleness windows are
-consistent across the platform.
+on every load, which scales with tenant count. These caches use a 1-hour
+TTL to reduce repeated read traffic while keeping staleness bounded.
 
 Mutations in this package call invalidate_all() after success so changes
 made in the same notebook process are reflected on the next read.
