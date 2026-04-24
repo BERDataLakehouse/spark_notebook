@@ -2,6 +2,8 @@
 
 import os
 
+import pytest
+
 
 TEST_ENVIRONMENT = {
     "USER": "fake_user",
@@ -22,6 +24,16 @@ TEST_ENVIRONMENT = {
 
 for key, value in TEST_ENVIRONMENT.items():
     os.environ.setdefault(key, value)
+
+
+@pytest.fixture(autouse=True)
+def _clear_governance_caches():
+    """Clear in-process governance caches between tests to avoid test pollution."""
+    from berdl_notebook_utils.minio_governance._cache import invalidate_all
+
+    invalidate_all()
+    yield
+    invalidate_all()
 
 
 class WarehouseResponse:

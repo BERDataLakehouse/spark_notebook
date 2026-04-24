@@ -206,6 +206,7 @@ version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "attrs" },
+    { name = "cacheout" },
     { name = "cdm-spark-manager-client" },
     { name = "cdm-task-service-client" },
     { name = "datalake-mcp-server-client" },
@@ -238,6 +239,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "attrs", specifier = ">=25.4.0" },
+    { name = "cacheout", specifier = "==0.16.0" },
     { name = "cdm-spark-manager-client", git = "https://github.com/kbase/cdm-kube-spark-manager-client.git?rev=0.0.1" },
     { name = "cdm-task-service-client", git = "https://github.com/kbase/cdm-task-service-client?rev=0.2.3" },
     { name = "datalake-mcp-server-client", git = "https://github.com/BERDataLakehouse/datalake-mcp-server-client.git?rev=v0.0.9" },
@@ -265,6 +267,15 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.1.0" },
     { name = "pytest-env", specifier = ">=1.2.0" },
     { name = "ruff", specifier = "==0.14.4" },
+]
+
+[[package]]
+name = "cacheout"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d1/60/ed4c4b27b2131a0b2cc461789be2cf06866644ca462cb34a5d8fca114c15/cacheout-0.16.0.tar.gz", hash = "sha256:ee264897cbaa089ae5f406da11952697d99fa7f3583cfab69fe8a00ff8e1952d", size = 42050, upload-time = "2023-12-22T17:44:33.29Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/14/a89bb55107b8a9b586c8878f47d0b7750c3688c209f05f915e70de74880d/cacheout-0.16.0-py3-none-any.whl", hash = "sha256:1a52d9aa8b1e9720d8453b061348f15795578231f9ec4ad376fec49e717d0ed8", size = 21837, upload-time = "2023-12-22T17:44:31.556Z" },
 ]
 
 [[package]]

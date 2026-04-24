@@ -66,6 +66,7 @@ from governance_client.types import UNSET
 
 from .. import get_settings
 from ..clients import get_governance_client
+from ._cache import groups_cache, invalidate_all
 
 # =============================================================================
 # TYPE DEFINITIONS
@@ -86,6 +87,8 @@ class TenantCreationResult(TypedDict):
 # Default BERDL storage configuration
 SQL_WAREHOUSE_BUCKET = "cdm-lake"  # TODO: change to berdl-lake
 SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
+
+_GROUPS_CACHE_KEY = "me"
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -292,13 +295,25 @@ def get_my_policies() -> UserPoliciesResponse:
     return response
 
 
-def get_my_groups() -> UserGroupsResponse:
+def get_my_groups(force_refresh: bool = False) -> UserGroupsResponse:
     """
     Get list of groups the current user belongs to.
+
+    Results are cached in-process for 3600s. Mutations in this package that
+    can change the current user's group membership (add/remove_tenant_member,
+    add/remove_group_member, create_tenant_and_assign_users) bust the cache.
+
+    Args:
+        force_refresh: If True, bypass the cache and hit the governance API.
 
     Returns:
         UserGroupsResponse with username, groups list, and group_count
     """
+    if not force_refresh:
+        cached = groups_cache.get(_GROUPS_CACHE_KEY)
+        if cached is not None:
+            return cached
+
     client = get_governance_client()
     response = get_my_groups_workspaces_me_groups_get.sync(client=client)
 
@@ -308,6 +323,7 @@ def get_my_groups() -> UserGroupsResponse:
     if not isinstance(response, UserGroupsResponse):
         raise RuntimeError("Failed to get groups: no response from API")
 
+    groups_cache.set(_GROUPS_CACHE_KEY, response)
     return response
 
 
@@ -660,6 +676,7 @@ def add_group_member(
             username=username,
         )
         results.append((username, response))
+    invalidate_all()
     return results
 
 
@@ -705,6 +722,7 @@ def remove_group_member(
             username=username,
         )
         results.append((username, response))
+    invalidate_all()
     return results
 
 
@@ -775,6 +793,7 @@ def create_tenant_and_assign_users(
                 result["add_members"].append((username, error_response))
                 # Continue with other users even if one fails
 
+    invalidate_all()
     return result
 
 
