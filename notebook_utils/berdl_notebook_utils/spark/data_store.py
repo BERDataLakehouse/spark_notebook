@@ -67,8 +67,13 @@ def _ttl_cache(ttl_seconds: int = _CACHE_TTL_SECONDS) -> Callable:
 
 @_ttl_cache()
 def _cached_get_my_groups():
-    """Cached wrapper for get_my_groups()."""
-    return get_my_groups()
+    """Cached wrapper for get_my_groups().
+
+    Uses force_refresh=True to bypass the library-level 1-hour cache so
+    that this wrapper's own 300s TTL controls freshness for data-store
+    callers (namespace viewers, database listings, etc.).
+    """
+    return get_my_groups(force_refresh=True)
 
 
 @_ttl_cache()

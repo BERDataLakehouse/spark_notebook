@@ -69,6 +69,36 @@ class TestListTenants:
         with pytest.raises(RuntimeError, match="no response"):
             list_tenants()
 
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.list_tenants_tenants_get")
+    def test_cache_hit_skips_api(self, mock_api, mock_client):
+        """Second call returns cached result without hitting the API again."""
+        mock_client.return_value = Mock()
+        summary = Mock(spec=TenantSummaryResponse)
+        mock_api.sync.return_value = [summary]
+
+        result1 = list_tenants()
+        result2 = list_tenants()
+
+        assert result1 == result2 == [summary]
+        mock_api.sync.assert_called_once()
+
+    @patch(f"{MODULE}.get_governance_client")
+    @patch(f"{MODULE}.list_tenants_tenants_get")
+    def test_force_refresh_bypasses_cache(self, mock_api, mock_client):
+        """force_refresh=True always hits the API."""
+        mock_client.return_value = Mock()
+        first = Mock(spec=TenantSummaryResponse)
+        second = Mock(spec=TenantSummaryResponse)
+        mock_api.sync.side_effect = [[first], [second]]
+
+        result1 = list_tenants()
+        result2 = list_tenants(force_refresh=True)
+
+        assert result1 == [first]
+        assert result2 == [second]
+        assert mock_api.sync.call_count == 2
+
 
 # =============================================================================
 # get_my_steward_tenants

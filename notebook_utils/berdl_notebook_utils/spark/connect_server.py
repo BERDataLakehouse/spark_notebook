@@ -144,7 +144,7 @@ class SparkConnectServerConfig:
 
         # Writable tenant prefixes — exclude read-only groups (ending in "ro")
         try:
-            groups_response = get_my_groups()
+            groups_response = get_my_groups(force_refresh=True)
             for group in groups_response.groups:
                 if not group.endswith("ro"):
                     # Tenant prefix format: "{group}_" (matches generate_group_governance_prefix)
