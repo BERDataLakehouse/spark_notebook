@@ -13,10 +13,12 @@ logger = logging.getLogger("berdl.startup")
 # Initialize S3-compatible client
 try:
     s3 = get_s3_client()  # noqa: F821
+    minio = s3
     logger.info("✅ S3 client initialized")
 except Exception as e:
     logger.error(f"❌ Failed to initialize S3 client: {e}")
     s3 = None
+    minio = None
 
 # Initialize governance client (required for most operations)
 try:

@@ -182,6 +182,7 @@ uv pip install --python .venv/bin/python -e /path/to/minio_manager_service_clien
 
 ```python
 from berdl_notebook_utils.clients import (
+    get_minio_client,           # Backward-compatible S3 client alias
     get_s3_client,              # S3-compatible client
     get_task_service_client,    # CDM Task Service client
     get_governance_client,      # Data Governance client

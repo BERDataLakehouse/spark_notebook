@@ -47,6 +47,17 @@ def get_s3_client(settings: BERDLSettings | None = None) -> Minio:
     )
 
 
+def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
+    """Backward-compatible alias for ``get_s3_client()``."""
+    if settings is None:
+        return get_s3_client()
+    return get_s3_client(settings)
+
+
+get_minio_client.cache_clear = get_s3_client.cache_clear
+get_minio_client.cache_info = get_s3_client.cache_info
+
+
 @kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_governance_client(

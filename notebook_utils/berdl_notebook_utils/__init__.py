@@ -5,6 +5,7 @@ from berdl_notebook_utils.berdl_settings import (
 )
 from berdl_notebook_utils.clients import (
     get_governance_client,
+    get_minio_client,
     get_s3_client,
     get_spark_cluster_client,
     get_task_service_client,
@@ -96,6 +97,7 @@ __all__ = [
     "BERDLSettings",
     "get_settings",
     "validate_environment",
+    "get_minio_client",
     "get_s3_client",
     "get_task_service_client",
     "get_governance_client",
@@ -169,6 +171,7 @@ def berdl_notebook_help():
 
     Client Functions:
     -----------------
+    - get_minio_client: Backward-compatible S3 client alias
     - get_s3_client: S3-compatible client instance
     - get_task_service_client: CDM Task Service client instance
     - get_governance_client: Data Governance API client instance

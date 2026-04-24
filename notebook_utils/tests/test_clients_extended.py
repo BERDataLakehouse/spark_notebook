@@ -8,6 +8,7 @@ import pytest
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings
 from berdl_notebook_utils.clients import (
+    get_minio_client,
     get_task_service_client,
     get_s3_client,
     get_governance_client,
@@ -20,6 +21,7 @@ from berdl_notebook_utils.clients import (
 def clear_caches():
     """Clear LRU caches before each test."""
     get_task_service_client.cache_clear()
+    get_minio_client.cache_clear()
     get_s3_client.cache_clear()
     get_governance_client.cache_clear()
     get_spark_cluster_client.cache_clear()
@@ -64,6 +66,18 @@ class TestGetS3Client:
             client2 = get_s3_client()
 
             # Should only be called once due to caching
+            assert mock_minio.call_count == 1
+            assert client1 is client2
+
+    def test_get_minio_client_aliases_get_s3_client(self):
+        """Test backward-compatible alias shares the same cached client."""
+        with patch("berdl_notebook_utils.clients.Minio") as mock_minio:
+            mock_client = Mock()
+            mock_minio.return_value = mock_client
+
+            client1 = get_s3_client()
+            client2 = get_minio_client()
+
             assert mock_minio.call_count == 1
             assert client1 is client2
 
