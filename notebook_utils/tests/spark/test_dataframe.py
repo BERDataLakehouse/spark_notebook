@@ -150,7 +150,7 @@ class TestDetectCsvDelimiter:
 class TestReadCsv:
     """Tests for read_csv function."""
 
-    @patch("berdl_notebook_utils.spark.dataframe.get_minio_client")
+    @patch("berdl_notebook_utils.spark.dataframe.get_s3_client")
     def test_read_csv_with_auto_detect(self, mock_get_client):
         """Test read_csv with automatic delimiter detection."""
         mock_spark = Mock()

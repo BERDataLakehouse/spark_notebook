@@ -9,7 +9,7 @@ import pytest
 from berdl_notebook_utils.berdl_settings import BERDLSettings
 from berdl_notebook_utils.clients import (
     get_task_service_client,
-    get_minio_client,
+    get_s3_client,
     get_governance_client,
     get_spark_cluster_client,
     get_hive_metastore_client,
@@ -20,21 +20,21 @@ from berdl_notebook_utils.clients import (
 def clear_caches():
     """Clear LRU caches before each test."""
     get_task_service_client.cache_clear()
-    get_minio_client.cache_clear()
+    get_s3_client.cache_clear()
     get_governance_client.cache_clear()
     get_spark_cluster_client.cache_clear()
     get_hive_metastore_client.cache_clear()
     yield
 
 
-class TestGetMinioClient:
-    """Tests for get_minio_client function."""
+class TestGetS3Client:
+    """Tests for get_s3_client function."""
 
-    def test_get_minio_client_creates_client(self):
-        """Test that get_minio_client creates a Minio client with correct settings."""
+    def test_get_s3_client_creates_client(self):
+        """Test that get_s3_client creates a Minio client with correct settings."""
         with patch("berdl_notebook_utils.clients.Minio") as mock_minio:
             mock_minio.return_value = Mock()
-            get_minio_client()
+            get_s3_client()
 
             mock_minio.assert_called_once()
             call_kwargs = mock_minio.call_args[1]
@@ -43,25 +43,25 @@ class TestGetMinioClient:
             assert "secret_key" in call_kwargs
             assert "secure" in call_kwargs
 
-    def test_get_minio_client_strips_protocol(self):
+    def test_get_s3_client_strips_protocol(self):
         """Test that http/https prefixes are stripped from endpoint."""
         with patch("berdl_notebook_utils.clients.Minio") as mock_minio:
             mock_minio.return_value = Mock()
-            get_minio_client()
+            get_s3_client()
 
             call_kwargs = mock_minio.call_args[1]
             # Endpoint should not contain http:// or https://
             assert not call_kwargs["endpoint"].startswith("http://")
             assert not call_kwargs["endpoint"].startswith("https://")
 
-    def test_get_minio_client_caches_result(self):
+    def test_get_s3_client_caches_result(self):
         """Test that the client is cached on subsequent calls."""
         with patch("berdl_notebook_utils.clients.Minio") as mock_minio:
             mock_client = Mock()
             mock_minio.return_value = mock_client
 
-            client1 = get_minio_client()
-            client2 = get_minio_client()
+            client1 = get_s3_client()
+            client2 = get_s3_client()
 
             # Should only be called once due to caching
             assert mock_minio.call_count == 1

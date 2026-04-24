@@ -2,9 +2,9 @@
 Spark utilities for CDM JupyterHub.
 
 This module provides utilities for creating and configuring Spark sessions
-with support for Delta Lake, MinIO S3 storage, and fair scheduling.
+with support for Delta Lake, S3-compatible storage, and fair scheduling.
 
-# This file must be loaded AFTER the 02-get_minio_client.py file
+# This file must be loaded AFTER the client initialization startup script.
 """
 
 import warnings

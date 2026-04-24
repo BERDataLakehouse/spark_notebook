@@ -26,12 +26,15 @@ def get_task_service_client(settings: BERDLSettings | None = None) -> CTSClient:
 
 
 @lru_cache(maxsize=1)
-def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
+def get_s3_client(settings: BERDLSettings | None = None) -> Minio:
     """
-    * Get an instance of the Minio client.
-    * Note: Your minio credentials are refreshed on each restart of the jupyter notebook.
-    * That means any running jobs with these credentials will fail when the credentials change
-    See: Governance API
+    Get an S3-compatible client for BERDL object storage.
+
+    The backing service may be MinIO or Ceph RGW. The returned client is the
+    MinIO Python SDK because it works with both S3-compatible backends.
+
+    Note: credentials are refreshed on each notebook restart. Long-running jobs
+    that keep old credentials may fail after rotation.
     """
     if settings is None:
         settings = get_settings()
