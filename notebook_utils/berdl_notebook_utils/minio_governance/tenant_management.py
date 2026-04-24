@@ -70,7 +70,7 @@ def list_tenants(force_refresh: bool = False) -> list[TenantSummaryResponse]:
     Returns a list of tenants with member count, and whether the current user
     is a member or steward of each tenant.
 
-    Results are cached in-process for 300s. Any tenant mutation in this
+    Results are cached in-process for 3600s. Any tenant mutation in this
     package (add/remove member, assign/remove steward, update metadata,
     create_tenant_and_assign_users, add/remove_group_member) busts the cache.
 
