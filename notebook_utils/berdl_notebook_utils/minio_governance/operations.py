@@ -299,7 +299,7 @@ def get_my_groups(force_refresh: bool = False) -> UserGroupsResponse:
     """
     Get list of groups the current user belongs to.
 
-    Results are cached in-process for 300s. Mutations in this package that
+    Results are cached in-process for 3600s. Mutations in this package that
     can change the current user's group membership (add/remove_tenant_member,
     add/remove_group_member, create_tenant_and_assign_users) bust the cache.
 
