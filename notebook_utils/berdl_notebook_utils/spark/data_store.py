@@ -14,6 +14,7 @@ from pyspark.sql import SparkSession
 
 from .. import hive_metastore
 from ..minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
+from ..minio_governance._cache import invalidate_all as _invalidate_governance_cache
 from ..setup_spark_session import get_spark_session
 
 # =============================================================================
@@ -90,6 +91,7 @@ def _cached_get_my_accessible_paths():
 
 def clear_governance_cache() -> None:
     """Clear all governance API caches. Call this when user permissions change."""
+    _invalidate_governance_cache()
     getattr(_cached_get_my_groups, "clear_cache", lambda: None)()
     getattr(_cached_get_namespace_prefix, "clear_cache", lambda: None)()
     getattr(_cached_get_my_accessible_paths, "clear_cache", lambda: None)()
