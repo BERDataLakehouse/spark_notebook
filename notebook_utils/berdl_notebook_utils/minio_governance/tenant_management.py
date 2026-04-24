@@ -34,8 +34,11 @@ from governance_client.models import (
 from governance_client.types import UNSET
 
 from ..clients import get_governance_client
+from ._cache import invalidate_all, tenants_cache
 
 logger = logging.getLogger(__name__)
+
+_TENANTS_CACHE_KEY = "all"
 
 
 def _error_message(response: ErrorResponse) -> str:
@@ -60,12 +63,19 @@ _PERMISSION_MAP = {
 }
 
 
-def list_tenants() -> list[TenantSummaryResponse]:
+def list_tenants(force_refresh: bool = False) -> list[TenantSummaryResponse]:
     """
     List all tenants with summary info.
 
     Returns a list of tenants with member count, and whether the current user
     is a member or steward of each tenant.
+
+    Results are cached in-process for 3600s. Any tenant mutation in this
+    package (add/remove member, assign/remove steward, update metadata,
+    create_tenant_and_assign_users, add/remove_group_member) busts the cache.
+
+    Args:
+        force_refresh: If True, bypass the cache and hit the governance API.
 
     Returns:
         List of TenantSummaryResponse objects
@@ -75,6 +85,11 @@ def list_tenants() -> list[TenantSummaryResponse]:
         for t in tenants:
             print(f"{t.tenant_name} - {t.member_count} members")
     """
+    if not force_refresh:
+        cached = tenants_cache.get(_TENANTS_CACHE_KEY)
+        if cached is not None:
+            return cached
+
     client = get_governance_client()
     response = list_tenants_tenants_get.sync(client=client)
 
@@ -84,6 +99,7 @@ def list_tenants() -> list[TenantSummaryResponse]:
     if not isinstance(response, list):
         raise RuntimeError("Failed to list tenants: no response from API")
 
+    tenants_cache.set(_TENANTS_CACHE_KEY, response)
     return response
 
 
@@ -237,6 +253,7 @@ def add_tenant_member(
     if not isinstance(response, TenantMemberResponse):
         raise RuntimeError(f"Failed to add member {username!r}: no response from API")
 
+    invalidate_all()
     logger.info(f"Added {username} to tenant {tenant_name} with {permission} access")
     return response
 
@@ -266,6 +283,7 @@ def remove_tenant_member(tenant_name: str, username: str) -> None:
             f"Failed to remove member {username!r} from tenant {tenant_name!r}: {_error_message(response)}"
         )
 
+    invalidate_all()
     logger.info(f"Removed {username} from tenant {tenant_name}")
 
 
@@ -320,6 +338,7 @@ def update_tenant_metadata(
     if not isinstance(response, TenantMetadataResponse):
         raise RuntimeError("Failed to update tenant metadata: no response from API")
 
+    invalidate_all()
     logger.info(f"Updated metadata for tenant {tenant_name}")
     return response
 
@@ -357,6 +376,7 @@ def assign_steward(tenant_name: str, username: str) -> TenantStewardResponse:
     if not isinstance(response, TenantStewardResponse):
         raise RuntimeError(f"Failed to assign steward {username!r}: no response from API")
 
+    invalidate_all()
     logger.info(f"Assigned {username} as steward of tenant {tenant_name}")
     return response
 
@@ -386,6 +406,7 @@ def remove_steward(tenant_name: str, username: str) -> None:
             f"Failed to remove steward {username!r} from tenant {tenant_name!r}: {_error_message(response)}"
         )
 
+    invalidate_all()
     logger.info(f"Removed {username} as steward of tenant {tenant_name}")
 
 

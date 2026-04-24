@@ -14,6 +14,7 @@ from pyspark.sql import SparkSession
 
 from .. import hive_metastore
 from ..minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
+from ..minio_governance._cache import invalidate_all as _invalidate_governance_cache
 from ..setup_spark_session import get_spark_session
 
 # =============================================================================
@@ -67,8 +68,13 @@ def _ttl_cache(ttl_seconds: int = _CACHE_TTL_SECONDS) -> Callable:
 
 @_ttl_cache()
 def _cached_get_my_groups():
-    """Cached wrapper for get_my_groups()."""
-    return get_my_groups()
+    """Cached wrapper for get_my_groups().
+
+    Uses force_refresh=True to bypass the library-level 1-hour cache so
+    that this wrapper's own 300s TTL controls freshness for data-store
+    callers (namespace viewers, database listings, etc.).
+    """
+    return get_my_groups(force_refresh=True)
 
 
 @_ttl_cache()
@@ -85,6 +91,7 @@ def _cached_get_my_accessible_paths():
 
 def clear_governance_cache() -> None:
     """Clear all governance API caches. Call this when user permissions change."""
+    _invalidate_governance_cache()
     getattr(_cached_get_my_groups, "clear_cache", lambda: None)()
     getattr(_cached_get_namespace_prefix, "clear_cache", lambda: None)()
     getattr(_cached_get_my_accessible_paths, "clear_cache", lambda: None)()

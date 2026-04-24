@@ -9,6 +9,7 @@ dependencies = [
     "httpx>=0.24",
     "pydantic-settings>=2.0",
     "attrs>=25.4.0",
+    "cacheout==0.16.0",
     # Spark
     "pyspark[connect]>=4.0",
     # Storage / Hive
