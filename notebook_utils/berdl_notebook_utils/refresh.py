@@ -1,19 +1,17 @@
 """
 Refresh credentials and Spark environment.
 
-Provides a single function to re-provision MinIO and Polaris credentials,
-restart the Spark Connect server, and stop any existing Spark session —
-ensuring get_spark_session() works afterward.
+Provides a single function to rotate MinIO credentials, re-fetch MMS-backed
+Polaris credentials, restart the Spark Connect server, and stop any existing
+Spark session — ensuring get_spark_session() works afterward.
 """
 
 import logging
-from pathlib import Path
 
 from pyspark.sql import SparkSession
 
 from berdl_notebook_utils.berdl_settings import get_settings
 from berdl_notebook_utils.minio_governance.operations import (
-    _get_polaris_cache_path,
     rotate_minio_credentials,
     get_polaris_credentials,
 )
@@ -22,29 +20,16 @@ from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
 logger = logging.getLogger("berdl.refresh")
 
 
-def _remove_cache_file(path: Path) -> bool:
-    """Remove a cache file. Returns True if the main file existed."""
-    existed = False
-    try:
-        if path.exists():
-            path.unlink()
-            existed = True
-    except OSError:
-        pass
-    return existed
-
-
 def refresh_spark_environment() -> dict:
     """Re-provision credentials and restart Spark.
 
     Steps performed:
-        1. Delete Polaris credential cache file
-        2. Clear the in-memory ``get_settings()`` LRU cache
-        3. Rotate MinIO credentials via MMS (generates new secret key, updates env vars)
-        4. Re-fetch Polaris credentials (sets POLARIS_CREDENTIAL and catalog env vars)
-        5. Clear settings cache again so downstream code sees fresh env vars
-        6. Stop any existing Spark session
-        7. Restart the Spark Connect server with regenerated spark-defaults.conf
+        1. Clear the in-memory ``get_settings()`` LRU cache
+        2. Rotate MinIO credentials via MMS (generates new secret key, updates env vars)
+        3. Re-fetch MMS-backed Polaris credentials (sets POLARIS_CREDENTIAL and catalog env vars)
+        4. Clear settings cache again so downstream code sees fresh env vars
+        5. Stop any existing Spark session
+        6. Restart the Spark Connect server with regenerated spark-defaults.conf
 
     Returns:
         dict with keys ``minio``, ``polaris``, ``spark_connect``,
@@ -52,14 +37,10 @@ def refresh_spark_environment() -> dict:
     """
     result: dict = {}
 
-    # 1. Delete Polaris credential cache file (MinIO uses direct API calls, no local cache)
-    polaris_removed = _remove_cache_file(_get_polaris_cache_path())
-    logger.info("Cleared Polaris credential cache (removed=%s)", polaris_removed)
-
-    # 2. Clear in-memory settings cache
+    # 1. Clear in-memory settings cache
     get_settings.cache_clear()
 
-    # 3. Rotate MinIO credentials (generates new secret key)
+    # 2. Rotate MinIO credentials (generates new secret key)
     try:
         minio_creds = rotate_minio_credentials()
         result["minio"] = {"status": "ok", "username": minio_creds.username}
@@ -68,7 +49,7 @@ def refresh_spark_environment() -> dict:
         result["minio"] = {"status": "error", "error": str(exc)}
         logger.warning("Failed to rotate MinIO credentials: %s", exc)
 
-    # 4. Re-fetch Polaris credentials
+    # 3. Re-fetch MMS-backed Polaris credentials
     try:
         polaris_creds = get_polaris_credentials()
         if polaris_creds:
@@ -85,10 +66,10 @@ def refresh_spark_environment() -> dict:
         result["polaris"] = {"status": "error", "error": str(exc)}
         logger.warning("Failed to refresh Polaris credentials: %s", exc)
 
-    # 5. Clear settings cache again so get_settings() picks up new env vars
+    # 4. Clear settings cache again so get_settings() picks up new env vars
     get_settings.cache_clear()
 
-    # 6. Stop existing Spark session
+    # 5. Stop existing Spark session
     existing = SparkSession.getActiveSession()
     if existing:
         existing.stop()
@@ -97,7 +78,7 @@ def refresh_spark_environment() -> dict:
     else:
         result["spark_session_stopped"] = False
 
-    # 7. Restart Spark Connect server with fresh config
+    # 6. Restart Spark Connect server with fresh config
     try:
         sc_result = start_spark_connect_server(force_restart=True)
         result["spark_connect"] = sc_result

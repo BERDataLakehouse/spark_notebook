@@ -233,7 +233,7 @@ def berdl_notebook_help():
 
     Environment Refresh:
     -------------------
-    - refresh_spark_environment: Clear credential caches, re-fetch credentials, and restart Spark
+    - refresh_spark_environment: Re-fetch credentials and restart Spark
 
     Usage:
     ------

@@ -2,9 +2,7 @@
 Tests for minio_governance/operations.py module.
 """
 
-import json
 import logging
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import httpx
@@ -20,10 +18,6 @@ from governance_client.models import (
 )
 
 from berdl_notebook_utils.minio_governance.operations import (
-    _fetch_with_file_cache,
-    _get_polaris_cache_path,
-    _read_cached_polaris_credentials,
-    _write_polaris_credentials_cache,
     _build_table_path,
     check_governance_health,
     get_minio_credentials,
@@ -49,8 +43,8 @@ from berdl_notebook_utils.minio_governance.operations import (
     create_tenant_and_assign_users,
     request_tenant_access,
     rotate_minio_credentials,
+    rotate_polaris_credentials,
     regenerate_policies,
-    POLARIS_CREDENTIALS_CACHE_FILE,
     CredentialsResponse,
     ErrorResponse,
     GroupManagementResponse,
@@ -1042,153 +1036,12 @@ class TestRemoveGroupMemberReadOnly:
         assert calls[0][1]["group_name"] == "kbasero"
 
 
-# ---------------------------------------------------------------------------
-# Polaris credential caching tests
-# ---------------------------------------------------------------------------
-
-
-class TestFetchWithFileCache:
-    """Tests for _fetch_with_file_cache helper."""
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    def test_returns_cached_value_on_cache_hit(self, mock_fcntl, tmp_path):
-        """Test returns cached value without calling fetch when cache hits."""
-        cache_path = tmp_path / "creds.json"
-        sentinel = {"key": "cached_value"}
-
-        read_cache = Mock(return_value=sentinel)
-        fetch = Mock()
-        write_cache = Mock()
-
-        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
-
-        assert result == sentinel
-        read_cache.assert_called_once_with(cache_path)
-        fetch.assert_not_called()
-        write_cache.assert_not_called()
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    def test_fetches_and_writes_cache_on_cache_miss(self, mock_fcntl, tmp_path):
-        """Test fetches fresh data and writes cache when cache misses."""
-        cache_path = tmp_path / "creds.json"
-        sentinel = {"key": "fresh_value"}
-
-        read_cache = Mock(return_value=None)
-        fetch = Mock(return_value=sentinel)
-        write_cache = Mock()
-
-        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
-
-        assert result == sentinel
-        read_cache.assert_called_once_with(cache_path)
-        fetch.assert_called_once()
-        write_cache.assert_called_once_with(cache_path, sentinel)
-
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    def test_returns_none_without_writing_when_fetch_fails(self, mock_fcntl, tmp_path):
-        """Test returns None and does not write cache when fetch returns None."""
-        cache_path = tmp_path / "creds.json"
-
-        read_cache = Mock(return_value=None)
-        fetch = Mock(return_value=None)
-        write_cache = Mock()
-
-        result = _fetch_with_file_cache(cache_path, read_cache, fetch, write_cache)
-
-        assert result is None
-        fetch.assert_called_once()
-        write_cache.assert_not_called()
-
-
-class TestGetPolarisCachePath:
-    """Tests for _get_polaris_cache_path helper."""
-
-    def test_returns_path_in_home(self):
-        """Test returns path in home directory."""
-        path = _get_polaris_cache_path()
-
-        assert path == Path.home() / POLARIS_CREDENTIALS_CACHE_FILE
-
-
-class TestReadCachedPolarisCredentials:
-    """Tests for _read_cached_polaris_credentials helper."""
-
-    def test_returns_none_if_file_not_exists(self, tmp_path):
-        """Test returns None if cache file doesn't exist."""
-        result = _read_cached_polaris_credentials(tmp_path / "nonexistent.json")
-
-        assert result is None
-
-    def test_returns_none_on_invalid_json(self, tmp_path):
-        """Test returns None on invalid JSON."""
-        cache_file = tmp_path / "cache.json"
-        cache_file.write_text("not valid json")
-
-        result = _read_cached_polaris_credentials(cache_file)
-
-        assert result is None
-
-    def test_returns_none_on_missing_keys(self, tmp_path):
-        """Test returns None when required keys are missing."""
-        cache_file = tmp_path / "cache.json"
-        cache_file.write_text('{"client_id": "test", "client_secret": "test"}')
-
-        result = _read_cached_polaris_credentials(cache_file)
-
-        assert result is None
-
-    def test_returns_credentials_on_valid_cache(self, tmp_path):
-        """Test returns credentials on valid cache file."""
-        cache_file = tmp_path / "cache.json"
-        data = {
-            "client_id": "test_id",
-            "client_secret": "test_secret",
-            "personal_catalog": "user_test",
-            "tenant_catalogs": ["tenant_kbase"],
-        }
-        cache_file.write_text(json.dumps(data))
-
-        result = _read_cached_polaris_credentials(cache_file)
-
-        assert result is not None
-        assert result["client_id"] == "test_id"
-        assert result["personal_catalog"] == "user_test"
-
-
-class TestWritePolarisCachedCredentials:
-    """Tests for _write_polaris_credentials_cache helper."""
-
-    def test_writes_credentials_to_file(self, tmp_path):
-        """Test writes Polaris credentials to cache file."""
-        cache_file = tmp_path / "cache.json"
-        creds = {
-            "client_id": "test_id",
-            "client_secret": "test_secret",
-            "personal_catalog": "user_test",
-            "tenant_catalogs": [],
-        }
-
-        _write_polaris_credentials_cache(cache_file, creds)
-
-        assert cache_file.exists()
-        content = json.loads(cache_file.read_text())
-        assert content["client_id"] == "test_id"
-
-    def test_handles_os_error(self, tmp_path):
-        """Test handles OSError gracefully."""
-        cache_file = tmp_path / "nonexistent_dir" / "cache.json"
-
-        # Should not raise
-        _write_polaris_credentials_cache(cache_file, {"client_id": "test"})
-
-
 class TestGetPolarisCredentials:
     """Tests for get_polaris_credentials function."""
 
     @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_when_polaris_not_configured(self, mock_settings, mock_fcntl, mock_os):
+    def test_returns_none_when_polaris_not_configured(self, mock_settings, mock_os):
         """Test returns None when POLARIS_CATALOG_URI is not set."""
         mock_settings.return_value.POLARIS_CATALOG_URI = None
 
@@ -1197,37 +1050,6 @@ class TestGetPolarisCredentials:
         assert result is None
 
     @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._write_polaris_credentials_cache")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
-    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_cached_credentials(
-        self, mock_settings, mock_cache_path, mock_read_cache, mock_write_cache, mock_fcntl, mock_os, tmp_path
-    ):
-        """Test returns cached Polaris credentials when available."""
-        mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-
-        cached = {
-            "client_id": "cached_id",
-            "client_secret": "cached_secret",
-            "personal_catalog": "user_test",
-            "tenant_catalogs": ["tenant_kbase"],
-        }
-        mock_read_cache.return_value = cached
-
-        result = get_polaris_credentials()
-
-        assert result["client_id"] == "cached_id"
-        mock_os.environ.__setitem__.assert_any_call("POLARIS_CREDENTIAL", "cached_id:cached_secret")
-        mock_os.environ.__setitem__.assert_any_call("POLARIS_PERSONAL_CATALOG", "user_test")
-
-    @patch("berdl_notebook_utils.minio_governance.operations.os")
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._write_polaris_credentials_cache")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
     @patch(
         "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
     )
@@ -1238,18 +1060,11 @@ class TestGetPolarisCredentials:
         mock_settings,
         mock_get_client,
         mock_provision,
-        mock_cache_path,
-        mock_read_cache,
-        mock_write_cache,
-        mock_fcntl,
         mock_os,
-        tmp_path,
     ):
-        """Test fetches fresh credentials from API when no cache."""
+        """Test fetches credentials from MMS and sets environment variables."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
         mock_settings.return_value.USER = "test_user"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-        mock_read_cache.return_value = None
 
         mock_api_response = Mock()
         mock_api_response.to_dict.return_value = {
@@ -1264,25 +1079,22 @@ class TestGetPolarisCredentials:
 
         assert result["client_id"] == "new_id"
         assert result["personal_catalog"] == "user_test_user"
-        mock_write_cache.assert_called_once()
         mock_provision.sync.assert_called_once_with(username="test_user", client=mock_get_client.return_value)
+        mock_os.environ.__setitem__.assert_any_call("POLARIS_CREDENTIAL", "new_id:new_secret")
+        mock_os.environ.__setitem__.assert_any_call("POLARIS_PERSONAL_CATALOG", "user_test_user")
+        mock_settings.cache_clear.assert_called_once()
 
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
     @patch(
         "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
     )
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
     def test_returns_none_on_error_response(
-        self, mock_settings, mock_get_client, mock_provision, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
+        self, mock_settings, mock_get_client, mock_provision
     ):
         """Test returns None when API returns ErrorResponse."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
         mock_settings.return_value.USER = "test_user"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-        mock_read_cache.return_value = None
 
         mock_error = Mock(spec=ErrorResponse)
         mock_error.message = "Internal server error"
@@ -1292,25 +1104,70 @@ class TestGetPolarisCredentials:
 
         assert result is None
 
-    @patch("berdl_notebook_utils.minio_governance.operations.fcntl")
-    @patch("berdl_notebook_utils.minio_governance.operations._read_cached_polaris_credentials")
-    @patch("berdl_notebook_utils.minio_governance.operations._get_polaris_cache_path")
     @patch(
         "berdl_notebook_utils.minio_governance.operations.provision_polaris_user_polaris_user_provision_username_post"
     )
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
     def test_returns_none_on_no_response(
-        self, mock_settings, mock_get_client, mock_provision, mock_cache_path, mock_read_cache, mock_fcntl, tmp_path
+        self, mock_settings, mock_get_client, mock_provision
     ):
         """Test returns None when API returns None (unexpected status)."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
         mock_settings.return_value.USER = "test_user"
-        mock_cache_path.return_value = tmp_path / ".polaris_cache"
-        mock_read_cache.return_value = None
 
         mock_provision.sync.return_value = None
 
         result = get_polaris_credentials()
+
+        assert result is None
+
+
+class TestRotatePolarisCredentials:
+    """Tests for rotate_polaris_credentials function."""
+
+    @patch("berdl_notebook_utils.minio_governance.operations.os")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.rotate_polaris_credentials_polaris_credentials_rotate_username_post"
+    )
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    def test_rotates_current_user_credentials(
+        self,
+        mock_settings,
+        mock_get_client,
+        mock_rotate,
+        mock_os,
+    ):
+        """Test explicit Polaris credential rotation delegates to MMS and updates env vars."""
+        mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
+        mock_settings.return_value.USER = "test_user"
+
+        mock_api_response = Mock()
+        mock_api_response.to_dict.return_value = {
+            "client_id": "rotated_id",
+            "client_secret": "rotated_secret",
+            "personal_catalog": "user_test_user",
+            "tenant_catalogs": ["tenant_team"],
+        }
+        mock_rotate.sync.return_value = mock_api_response
+
+        result = rotate_polaris_credentials()
+
+        assert result["client_id"] == "rotated_id"
+        mock_rotate.sync.assert_called_once_with(username="test_user", client=mock_get_client.return_value)
+        mock_os.environ.__setitem__.assert_any_call("POLARIS_CREDENTIAL", "rotated_id:rotated_secret")
+        mock_settings.cache_clear.assert_called_once()
+
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.rotate_polaris_credentials_polaris_credentials_rotate_username_post",
+        None,
+    )
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    def test_returns_none_when_rotate_endpoint_missing(self, mock_settings):
+        """Test gracefully handles older governance clients without the rotate endpoint."""
+        mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
+
+        result = rotate_polaris_credentials()
 
         assert result is None

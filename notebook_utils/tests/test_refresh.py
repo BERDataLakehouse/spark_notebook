@@ -1,51 +1,8 @@
 """Tests for refresh.py - Credential and Spark environment refresh."""
 
-from pathlib import Path
 from unittest.mock import Mock, patch
 
-from berdl_notebook_utils.refresh import _remove_cache_file, refresh_spark_environment
-
-
-class TestRemoveCacheFile:
-    """Tests for _remove_cache_file helper."""
-
-    def test_removes_existing_file(self, tmp_path):
-        """Test removes file and returns True when file exists."""
-        cache_file = tmp_path / "test_cache"
-        cache_file.write_text("cached data")
-
-        result = _remove_cache_file(cache_file)
-
-        assert result is True
-        assert not cache_file.exists()
-
-    def test_preserves_lock_file(self, tmp_path):
-        """Test leaves the .lock companion file in place."""
-        cache_file = tmp_path / "test_cache"
-        lock_file = tmp_path / "test_cache.lock"
-        cache_file.write_text("cached data")
-        lock_file.write_text("lock")
-
-        _remove_cache_file(cache_file)
-
-        assert not cache_file.exists()
-        assert lock_file.exists()
-
-    def test_returns_false_when_file_missing(self, tmp_path):
-        """Test returns False when file doesn't exist."""
-        result = _remove_cache_file(tmp_path / "nonexistent")
-
-        assert result is False
-
-    def test_handles_os_error(self, tmp_path):
-        """Test silently handles OSError on unlink."""
-        with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "unlink", side_effect=OSError("permission denied")),
-        ):
-            result = _remove_cache_file(tmp_path / "test_cache")
-
-        assert result is False
+from berdl_notebook_utils.refresh import refresh_spark_environment
 
 
 class TestRefreshSparkEnvironment:
@@ -56,8 +13,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    @patch("berdl_notebook_utils.refresh._remove_cache_file")
-    def test_happy_path(self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
+    def test_happy_path(self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
         """Test full refresh with all services succeeding."""
         mock_minio_creds = Mock()
         mock_minio_creds.username = "u_testuser"
@@ -88,9 +44,8 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_stops_existing_spark_session(
-        self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
+        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
     ):
         """Test stops active Spark session before restarting Connect server."""
         mock_minio.return_value = Mock(username="u_test")
@@ -110,9 +65,8 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_polaris_not_configured(
-        self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
+        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
     ):
         """Test handles Polaris not being configured (returns None)."""
         mock_minio.return_value = Mock(username="u_test")
@@ -129,9 +83,8 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_minio_error_does_not_block(
-        self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
+        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
     ):
         """Test that MinIO failure doesn't prevent Polaris/Spark refresh."""
         mock_minio.side_effect = ConnectionError("minio unreachable")
@@ -156,9 +109,8 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_spark_connect_error_captured(
-        self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
+        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
     ):
         """Test that Spark Connect restart failure is captured in result."""
         mock_minio.return_value = Mock(username="u_test")
@@ -176,11 +128,10 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    @patch("berdl_notebook_utils.refresh._remove_cache_file")
-    def test_cache_files_removed_first(
-        self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
+    def test_settings_cleared_before_credentials_are_refetched(
+        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
     ):
-        """Test that cache files are removed before credentials are re-fetched."""
+        """Test settings cache is cleared before credentials are re-fetched."""
         mock_minio.return_value = Mock(username="u_test")
         mock_polaris.return_value = None
         mock_spark.getActiveSession.return_value = None
@@ -188,9 +139,6 @@ class TestRefreshSparkEnvironment:
 
         refresh_spark_environment()
 
-        # _remove_cache_file called once (polaris only — MinIO uses direct API calls)
-        assert mock_remove.call_count == 1
-        # Settings cache cleared before credential fetches
         mock_settings.cache_clear.assert_called()
 
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
@@ -198,9 +146,8 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    @patch("berdl_notebook_utils.refresh._remove_cache_file")
     def test_all_errors_still_returns_result(
-        self, mock_remove, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
+        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
     ):
         """Test that even if everything fails, we get a complete result dict."""
         mock_minio.side_effect = Exception("minio fail")

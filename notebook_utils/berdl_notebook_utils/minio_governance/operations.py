@@ -2,17 +2,11 @@
 Utility functions for BERDL MinIO Data Governance integration
 """
 
-import fcntl
-import json
 import logging
 import os
 import time
 import warnings
-from pathlib import Path
-from collections.abc import Callable
-from typing import TypeVar
-
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import httpx
 from governance_client.api.credentials import (
@@ -29,14 +23,22 @@ from governance_client.api.management import (
     remove_group_member_management_groups_group_name_members_username_delete,
 )
 
-# Polaris-specific imports — only available when governance client includes polaris endpoints
+# Polaris-specific imports — only available when governance client includes Polaris endpoints.
 try:
     from governance_client.api.polaris import provision_polaris_user_polaris_user_provision_username_post
+except ImportError:
+    provision_polaris_user_polaris_user_provision_username_post = None  # type: ignore[assignment]
+
+try:
+    from governance_client.api.polaris import rotate_polaris_credentials_polaris_credentials_rotate_username_post
+except ImportError:
+    rotate_polaris_credentials_polaris_credentials_rotate_username_post = None  # type: ignore[assignment]
+
+try:
     from governance_client.api.management import (
         ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post,
     )
 except ImportError:
-    provision_polaris_user_polaris_user_provision_username_post = None  # type: ignore[assignment]
     ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post = None  # type: ignore[assignment]
 from governance_client.api.management.list_group_names_management_groups_names_get import (
     sync as list_group_names_sync,
@@ -106,71 +108,7 @@ class TenantCreationResult(TypedDict):
 SQL_WAREHOUSE_BUCKET = "cdm-lake"  # TODO: change to berdl-lake
 SQL_USER_WAREHOUSE_PATH = "users-sql-warehouse"
 
-# Credential caching configuration (Polaris only — MinIO uses direct API calls)
-POLARIS_CREDENTIALS_CACHE_FILE = ".berdl_polaris_credentials"
-
 _GROUPS_CACHE_KEY = "me"
-
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
-_T = TypeVar("_T")
-
-
-def _fetch_with_file_cache(
-    cache_path: Path,
-    read_cache: Callable[[Path], _T | None],
-    fetch: Callable[[], _T | None],
-    write_cache: Callable[[Path, _T], None],
-) -> _T | None:
-    """Fetch credentials using file-based caching with exclusive file locking.
-
-    The lock is released when the file handle is closed (exiting the `with` block).
-    We intentionally do NOT delete the lock file afterward — another process
-    may have already acquired a lock on it between our unlock and unlink.
-    """
-    lock_path = cache_path.with_suffix(".lock")
-    with open(lock_path, "w") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-
-        cached = read_cache(cache_path)
-        if cached is not None:
-            return cached
-
-        result = fetch()
-        if result is not None:
-            write_cache(cache_path, result)
-        return result
-
-
-def _get_polaris_cache_path() -> Path:
-    """Get the path to the Polaris credentials cache file in the user's home directory."""
-    return Path.home() / POLARIS_CREDENTIALS_CACHE_FILE
-
-
-def _read_cached_polaris_credentials(cache_path: Path) -> "PolarisCredentials | None":
-    """Read Polaris credentials from cache file. Returns None if file doesn't exist or is corrupted."""
-    try:
-        if not cache_path.exists():
-            return None
-        with open(cache_path, "r") as f:
-            data = json.load(f)
-        # Validate required keys are present
-        if all(k in data for k in ("client_id", "client_secret", "personal_catalog", "tenant_catalogs")):
-            return data
-        return None
-    except (json.JSONDecodeError, TypeError, KeyError, OSError):
-        return None
-
-
-def _write_polaris_credentials_cache(cache_path: Path, credentials: "PolarisCredentials") -> None:
-    """Write Polaris credentials to cache file."""
-    try:
-        with open(cache_path, "w") as f:
-            json.dump(credentials, f)
-    except (OSError, TypeError):
-        pass
 
 
 def _build_table_path(username: str, namespace: str, table_name: str) -> str:
@@ -249,6 +187,34 @@ class PolarisCredentials(TypedDict):
     tenant_catalogs: list[str]
 
 
+def _parse_polaris_credentials_response(api_response: Any, action: str) -> PolarisCredentials | None:
+    """Convert a Polaris credentials API response to the notebook credential shape."""
+    polaris_logger = logging.getLogger(__name__)
+
+    if isinstance(api_response, ErrorResponse):
+        polaris_logger.warning("Polaris %s failed: %s", action, api_response.message)
+        return None
+    if api_response is None:
+        polaris_logger.warning("Polaris %s returned no response", action)
+        return None
+
+    data = api_response.to_dict()
+    return {
+        "client_id": data.get("client_id", ""),
+        "client_secret": data.get("client_secret", ""),
+        "personal_catalog": data.get("personal_catalog", ""),
+        "tenant_catalogs": data.get("tenant_catalogs", []),
+    }
+
+
+def _set_polaris_credentials_env(credentials: PolarisCredentials) -> None:
+    """Set Polaris credential environment variables and clear cached settings."""
+    os.environ["POLARIS_CREDENTIAL"] = f"{credentials['client_id']}:{credentials['client_secret']}"
+    os.environ["POLARIS_PERSONAL_CATALOG"] = credentials["personal_catalog"]
+    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(credentials["tenant_catalogs"])
+    get_settings.cache_clear()
+
+
 def _fetch_polaris_credentials() -> PolarisCredentials | None:
     """Fetch fresh Polaris credentials from the governance API."""
     settings = get_settings()
@@ -263,32 +229,21 @@ def _fetch_polaris_credentials() -> PolarisCredentials | None:
         username=settings.USER, client=client
     )
 
-    if isinstance(api_response, ErrorResponse):
-        polaris_logger.warning(f"Polaris provisioning failed: {api_response.message}")
-        return None
-    if api_response is None:
-        polaris_logger.warning("Polaris provisioning returned no response")
-        return None
-
-    data = api_response.to_dict()
-    return {
-        "client_id": data.get("client_id", ""),
-        "client_secret": data.get("client_secret", ""),
-        "personal_catalog": data.get("personal_catalog", ""),
-        "tenant_catalogs": data.get("tenant_catalogs", []),
-    }
+    return _parse_polaris_credentials_response(api_response, "provisioning")
 
 
 def get_polaris_credentials() -> PolarisCredentials | None:
     """
     Provision a Polaris catalog for the current user and set credentials as environment variables.
 
-    Uses file locking and caching to prevent race conditions and avoid unnecessary
-    API calls when credentials are already cached (same pattern as get_minio_credentials).
+    The governance API persists and reuses Polaris credentials server-side in
+    PostgreSQL. This function intentionally calls MMS each time and does not
+    read or write local Polaris credential files.
 
-    Calls POST /polaris/user_provision/{username} on the governance API on cache miss.
-    This provisions the user's Polaris environment (catalog, principal, roles, credentials,
-    tenant access) and returns the configuration.
+    Calls POST /polaris/user_provision/{username} on the governance API. This
+    ensures the user's Polaris environment exists (catalog, principal, roles,
+    credentials, tenant access) and returns cached credentials from MMS unless
+    the server-side record is missing.
 
     Sets the following environment variables:
     - POLARIS_CREDENTIAL: client_id:client_secret for authenticating with Polaris
@@ -303,19 +258,47 @@ def get_polaris_credentials() -> PolarisCredentials | None:
     if not settings.POLARIS_CATALOG_URI:
         return None
 
-    result = _fetch_with_file_cache(
-        _get_polaris_cache_path(),
-        _read_cached_polaris_credentials,
-        _fetch_polaris_credentials,
-        _write_polaris_credentials_cache,
-    )
+    result = _fetch_polaris_credentials()
     if result is None:
         return None
 
-    # Set as environment variables for Spark catalog configuration
-    os.environ["POLARIS_CREDENTIAL"] = f"{result['client_id']}:{result['client_secret']}"
-    os.environ["POLARIS_PERSONAL_CATALOG"] = result["personal_catalog"]
-    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(result["tenant_catalogs"])
+    _set_polaris_credentials_env(result)
+
+    return result
+
+
+def rotate_polaris_credentials() -> PolarisCredentials | None:
+    """
+    Explicitly rotate Polaris credentials for the current user and update env vars.
+
+    Normal provisioning is stable and MMS/PostgreSQL-backed. Use this only when
+    intentional credential rotation is needed, then restart/recreate long-lived
+    engines that cached catalog credentials, especially Spark Connect and Trino.
+
+    Returns:
+        PolarisCredentials dict, or None if Polaris is not configured or the
+        installed governance client does not include the rotate endpoint.
+    """
+    settings = get_settings()
+    polaris_logger = logging.getLogger(__name__)
+
+    if not settings.POLARIS_CATALOG_URI:
+        return None
+
+    if rotate_polaris_credentials_polaris_credentials_rotate_username_post is None:
+        polaris_logger.warning("Polaris rotate API not available — governance client is out of date")
+        return None
+
+    client = get_governance_client()
+    api_response = rotate_polaris_credentials_polaris_credentials_rotate_username_post.sync(
+        username=settings.USER, client=client
+    )
+
+    result = _parse_polaris_credentials_response(api_response, "credential rotation")
+    if result is None:
+        return None
+
+    _set_polaris_credentials_env(result)
 
     return result
 
