@@ -413,6 +413,35 @@ class TestGetMyGroups:
         with pytest.raises(RuntimeError, match="no response from API"):
             get_my_groups()
 
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_groups_workspaces_me_groups_get")
+    def test_cache_hit_skips_api(self, mock_get_groups, mock_get_client):
+        """Second call returns cached result without hitting the API again."""
+        mock_get_client.return_value = Mock()
+        mock_get_groups.sync.return_value = Mock(spec=UserGroupsResponse, groups=["g1"])
+
+        result1 = get_my_groups()
+        result2 = get_my_groups()
+
+        assert result1 is result2
+        mock_get_groups.sync.assert_called_once()
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_my_groups_workspaces_me_groups_get")
+    def test_force_refresh_bypasses_cache(self, mock_get_groups, mock_get_client):
+        """force_refresh=True always hits the API."""
+        mock_get_client.return_value = Mock()
+        first = Mock(spec=UserGroupsResponse, groups=["g1"])
+        second = Mock(spec=UserGroupsResponse, groups=["g1", "g2"])
+        mock_get_groups.sync.side_effect = [first, second]
+
+        result1 = get_my_groups()
+        result2 = get_my_groups(force_refresh=True)
+
+        assert result1.groups == ["g1"]
+        assert result2.groups == ["g1", "g2"]
+        assert mock_get_groups.sync.call_count == 2
+
 
 class TestGetMyAccessiblePaths:
     """Tests for get_my_accessible_paths function."""

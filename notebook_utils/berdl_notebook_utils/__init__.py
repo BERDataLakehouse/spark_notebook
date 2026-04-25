@@ -63,14 +63,34 @@ from berdl_notebook_utils.mcp import (
     mcp_query_table,
     mcp_select_table,
 )
-from berdl_notebook_utils.agent import (
-    # Agent
-    create_berdl_agent,
-    BERDLAgent,
-    AgentSettings,
-    get_agent_settings,
-)
 from berdl_notebook_utils.refresh import refresh_spark_environment
+
+# Agent imports are lazy-loaded via __getattr__ below to avoid ImportError
+# when a user's venv has an incompatible langchain version that shadows the
+# system package. This prevents the agent module from breaking all other imports.
+_AGENT_NAMES = {"create_berdl_agent", "BERDLAgent", "AgentSettings", "get_agent_settings"}
+
+
+def __getattr__(name):
+    if name in _AGENT_NAMES:
+        from berdl_notebook_utils.agent import (
+            create_berdl_agent,
+            BERDLAgent,
+            AgentSettings,
+            get_agent_settings,
+        )
+
+        _agent_exports = {
+            "create_berdl_agent": create_berdl_agent,
+            "BERDLAgent": BERDLAgent,
+            "AgentSettings": AgentSettings,
+            "get_agent_settings": get_agent_settings,
+        }
+        # Cache in module globals so __getattr__ is only called once
+        globals().update(_agent_exports)
+        return _agent_exports[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "BERDLSettings",
@@ -129,11 +149,10 @@ __all__ = [
     "mcp_sample_table",
     "mcp_query_table",
     "mcp_select_table",
-    # Agent
-    "create_berdl_agent",
-    "BERDLAgent",
-    "AgentSettings",
-    "get_agent_settings",
+    # Agent exports are intentionally omitted from __all__ to avoid eager
+    # imports when langchain is incompatible, but they remain available via
+    # lazy top-level access through __getattr__. Use:
+    # from berdl_notebook_utils import create_berdl_agent
     # Environment refresh
     "refresh_spark_environment",
 ]

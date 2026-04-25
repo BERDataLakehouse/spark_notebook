@@ -14,6 +14,7 @@ from pyspark.sql import SparkSession
 
 from .. import hive_metastore
 from ..minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
+from ..minio_governance._cache import invalidate_all as _invalidate_governance_cache
 from ..setup_spark_session import get_spark_session
 
 # =============================================================================
@@ -67,8 +68,13 @@ def _ttl_cache(ttl_seconds: int = _CACHE_TTL_SECONDS) -> Callable:
 
 @_ttl_cache()
 def _cached_get_my_groups():
-    """Cached wrapper for get_my_groups()."""
-    return get_my_groups()
+    """Cached wrapper for get_my_groups().
+
+    Uses force_refresh=True to bypass the library-level 1-hour cache so
+    that this wrapper's own 300s TTL controls freshness for data-store
+    callers (namespace viewers, database listings, etc.).
+    """
+    return get_my_groups(force_refresh=True)
 
 
 @_ttl_cache()
@@ -85,6 +91,7 @@ def _cached_get_my_accessible_paths():
 
 def clear_governance_cache() -> None:
     """Clear all governance API caches. Call this when user permissions change."""
+    _invalidate_governance_cache()
     getattr(_cached_get_my_groups, "clear_cache", lambda: None)()
     getattr(_cached_get_namespace_prefix, "clear_cache", lambda: None)()
     getattr(_cached_get_my_accessible_paths, "clear_cache", lambda: None)()
@@ -153,6 +160,7 @@ def get_databases(
     use_hms: bool = True,
     return_json: bool = True,
     filter_by_namespace: bool = True,
+    tenant: Optional[str] = None,
 ) -> Union[str, List[str]]:
     """
     Get the list of databases in the Hive metastore.
@@ -167,6 +175,10 @@ def get_databases(
                            - Group/tenant databases (groupname_*)
                            - Databases shared with the user (from accessible paths API)
                            When False, returns all databases in the metastore.
+        tenant: Optional tenant/group name to filter to a single tenant's databases.
+                When provided, only returns databases matching that tenant's namespace prefix
+                (e.g. tenant="globalusers" returns only globalusers_* databases).
+                Implies filter_by_namespace=True.
 
     Returns:
         List of database names, either as JSON string or raw list
@@ -179,6 +191,18 @@ def get_databases(
         databases = hive_metastore.get_databases()
     else:
         databases = _execute_with_spark(_get_dbs, spark)
+
+    # Single-tenant filter: just get that tenant's prefix and filter
+    if tenant is not None:
+        try:
+            tenant_prefix_response = _cached_get_namespace_prefix(tenant=tenant)
+            prefix = tenant_prefix_response.tenant_namespace_prefix
+            if not isinstance(prefix, str):
+                raise ValueError(f"No tenant namespace prefix returned for tenant '{tenant}'")
+            databases = sorted([db for db in databases if db.startswith(prefix)])
+        except Exception as e:
+            raise Exception(f"Could not filter databases for tenant '{tenant}': {e}") from e
+        return _format_output(databases, return_json)
 
     # Apply filtering: owned databases (fast) + shared databases (API call)
     if filter_by_namespace:

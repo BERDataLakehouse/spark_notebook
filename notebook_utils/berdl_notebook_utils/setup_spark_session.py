@@ -231,12 +231,13 @@ def _get_delta_conf() -> dict[str, str]:
 
 
 def _get_hive_conf(settings: BERDLSettings) -> dict[str, str]:
+    # Do not set spark.sql.hive.metastore.version / .jars — forcing version=4.0.0
+    # selects Shim_v4_0, which calls a 4-arg Hive.alterTable overload that only
+    # exists in Hive 4.x clients. The bundled jars are Hive 2.3.10. See
+    # configs/spark-defaults.conf.template for the full rationale.
     return {
-        "hive.metastore.uris": str(settings.BERDL_HIVE_METASTORE_URI),
+        "spark.hadoop.hive.metastore.uris": str(settings.BERDL_HIVE_METASTORE_URI),
         "spark.sql.catalogImplementation": "hive",
-        "spark.sql.hive.metastore.version": "4.0.0",
-        "spark.sql.hive.metastore.jars": "path",
-        "spark.sql.hive.metastore.jars.path": "/usr/local/spark/jars/*",
     }
 
 
