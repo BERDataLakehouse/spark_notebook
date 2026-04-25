@@ -73,7 +73,7 @@ services:
     # platform: linux/amd64
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.polaris-local
       additional_contexts:
         minio_manager_service_client: ../minio_manager_service_client
         datalake_mcp_server_client: ../datalake-mcp-server-client
