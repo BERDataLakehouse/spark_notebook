@@ -44,9 +44,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    def test_stops_existing_spark_session(
-        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
-    ):
+    def test_stops_existing_spark_session(self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
         """Test stops active Spark session before restarting Connect server."""
         mock_minio.return_value = Mock(username="u_test")
         mock_polaris.return_value = None
@@ -65,9 +63,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    def test_polaris_not_configured(
-        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
-    ):
+    def test_polaris_not_configured(self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
         """Test handles Polaris not being configured (returns None)."""
         mock_minio.return_value = Mock(username="u_test")
         mock_polaris.return_value = None
@@ -83,9 +79,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    def test_minio_error_does_not_block(
-        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
-    ):
+    def test_minio_error_does_not_block(self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
         """Test that MinIO failure doesn't prevent Polaris/Spark refresh."""
         mock_minio.side_effect = ConnectionError("minio unreachable")
         mock_polaris.return_value = {
@@ -109,9 +103,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    def test_spark_connect_error_captured(
-        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
-    ):
+    def test_spark_connect_error_captured(self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
         """Test that Spark Connect restart failure is captured in result."""
         mock_minio.return_value = Mock(username="u_test")
         mock_polaris.return_value = None
@@ -146,9 +138,7 @@ class TestRefreshSparkEnvironment:
     @patch("berdl_notebook_utils.refresh.get_polaris_credentials")
     @patch("berdl_notebook_utils.refresh.rotate_minio_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
-    def test_all_errors_still_returns_result(
-        self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start
-    ):
+    def test_all_errors_still_returns_result(self, mock_settings, mock_minio, mock_polaris, mock_spark, mock_sc_start):
         """Test that even if everything fails, we get a complete result dict."""
         mock_minio.side_effect = Exception("minio fail")
         mock_polaris.side_effect = Exception("polaris fail")

@@ -1089,9 +1089,7 @@ class TestGetPolarisCredentials:
     )
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_on_error_response(
-        self, mock_settings, mock_get_client, mock_provision
-    ):
+    def test_returns_none_on_error_response(self, mock_settings, mock_get_client, mock_provision):
         """Test returns None when API returns ErrorResponse."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
         mock_settings.return_value.USER = "test_user"
@@ -1109,9 +1107,7 @@ class TestGetPolarisCredentials:
     )
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
-    def test_returns_none_on_no_response(
-        self, mock_settings, mock_get_client, mock_provision
-    ):
+    def test_returns_none_on_no_response(self, mock_settings, mock_get_client, mock_provision):
         """Test returns None when API returns None (unexpected status)."""
         mock_settings.return_value.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
         mock_settings.return_value.USER = "test_user"
