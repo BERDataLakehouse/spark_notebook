@@ -68,14 +68,15 @@
 # - MinIO: minio/minio123
 # - PostgreSQL: hive/hivepassword
 services:
-  # Service names use the pattern: spark-notebook-{CI_KBASE_USERNAME}
-  # Update these keys if you change the usernames in .env
-  spark-notebook-tgu2:
+  spark-notebook:
     # image: ghcr.io/berdatalakehouse/spark_notebook:main
     # platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile
+      additional_contexts:
+        minio_manager_service_client: ../minio_manager_service_client
+        datalake_mcp_server_client: ../datalake-mcp-server-client
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
@@ -87,7 +88,7 @@ services:
       - CDM_TASK_SERVICE_URL=http://localhost:8080
       - SPARK_CLUSTER_MANAGER_API_URL=http://localhost:8000
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - BERDL_POD_IP=spark-notebook-${CI_KBASE_USERNAME}
+      - BERDL_POD_IP=spark-notebook
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
 
       # MINIO CONFIGURATION
@@ -115,10 +116,30 @@ services:
       - users_home:/home
       - global_share:/home/${CI_KBASE_USERNAME}/global_share
     depends_on:
-      - spark-master
-      - minio
-      - postgres
-      - hive-metastore
+      spark-master:
+        condition: service_started
+      minio-create-buckets:
+        condition: service_completed_successfully
+      minio-manager-service:
+        condition: service_healthy
+      polaris:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/api')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
     command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
   spark-connect-proxy:
@@ -163,10 +184,28 @@ services:
       - MMS_DB_USER=mms
       - MMS_DB_PASSWORD=mmspassword
       - MMS_DB_ENCRYPTION_KEY=change-me-in-prod
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - minio
-      - redis
-      - postgres
+      minio:
+        condition: service_healthy
+      minio-create-buckets:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      polaris:
+        condition: service_healthy
 
   datalake-mcp-server:
     # image: ghcr.io/berdatalakehouse/datalake-mcp-server:main
@@ -200,11 +239,26 @@ services:
       # from /home/{username}/.berdl_minio_credentials
       # In K8s: mount the parent directory or use a shared volume
       - users_home:/home:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/apis/mcp/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - hive-metastore
-      - minio
-      - minio-manager-service
-      - redis
+      hive-metastore:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-manager-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   tenant-access-request-service:
     # image: ghcr.io/berdatalakehouse/tenant_access_request_service:main
@@ -233,7 +287,8 @@ services:
       # Logging
       - LOG_LEVEL=DEBUG
     depends_on:
-      - minio-manager-service
+      minio-manager-service:
+        condition: service_healthy
 
   spark-master:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
@@ -325,6 +380,11 @@ services:
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     volumes:
       - redis_data:/data
 
@@ -374,13 +434,18 @@ services:
 
       - DELTALAKE_WAREHOUSE_DIR=s3a://cdm-lake/users-sql-warehouse
     depends_on:
-      - postgres
-      - minio
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-create-buckets:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "9083"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/9083'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
