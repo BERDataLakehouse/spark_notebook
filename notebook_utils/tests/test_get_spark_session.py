@@ -443,6 +443,27 @@ class TestGetCatalogConf:
         assert result["spark.sql.catalog.my.warehouse"] == "user_tgu2"
         assert "spark.sql.catalog.my.s3.endpoint" in result
         assert result["spark.sql.catalog.my.s3.path-style-access"] == "true"
+        assert "spark.sql.catalog.tgu2" in result
+        assert result["spark.sql.catalog.tgu2"] == "org.apache.iceberg.spark.SparkCatalog"
+        assert result["spark.sql.catalog.tgu2.type"] == "rest"
+        assert result["spark.sql.catalog.tgu2.warehouse"] == "user_tgu2"
+        assert result["spark.sql.catalog.tgu2.s3.path-style-access"] == "true"
+
+    def test_personal_catalog_alias_sanitized(self):
+        """Test personal portable alias is derived and sanitized from the Polaris catalog."""
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = "user_Alice-Lake"
+        settings.POLARIS_TENANT_CATALOGS = None
+
+        result = _get_catalog_conf(settings)
+
+        assert "spark.sql.catalog.my" in result
+        assert "spark.sql.catalog.alice_lake" in result
+        assert result["spark.sql.catalog.alice_lake.warehouse"] == "user_Alice-Lake"
 
     def test_tenant_catalog_config(self):
         """Test generates tenant catalog config with 'tenant_' prefix stripped."""
@@ -496,6 +517,7 @@ class TestGetCatalogConf:
         result = _get_catalog_conf(settings)
 
         assert result["spark.sql.catalog.my.s3.endpoint"] == "http://minio:9000"
+        assert result["spark.sql.catalog.test.s3.endpoint"] == "http://minio:9000"
 
     def test_both_personal_and_tenant_catalogs(self):
         """Test generates config for both personal and tenant catalogs."""
@@ -510,6 +532,7 @@ class TestGetCatalogConf:
         result = _get_catalog_conf(settings)
 
         assert "spark.sql.catalog.my" in result
+        assert "spark.sql.catalog.alice" in result
         assert "spark.sql.catalog.team" in result
 
 

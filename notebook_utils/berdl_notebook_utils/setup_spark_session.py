@@ -7,6 +7,7 @@ with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 # This file must be loaded AFTER the 02-get_minio_client.py file
 """
 
+import re
 import warnings
 from datetime import datetime
 from typing import Any
@@ -54,8 +55,6 @@ def convert_memory_format(memory_str: str, overhead_percentage: float = 0.1) -> 
     Returns:
         Memory string in Spark format with overhead accounted for
     """
-    import re
-
     # Extract number and unit from memory string
     match = re.match(r"^(\d+(?:\.\d+)?)\s*([kmgtKMGT]i?[bB]?)$", memory_str)
     if not match:
@@ -165,6 +164,34 @@ def _get_spark_defaults_conf() -> dict[str, str]:
     }
 
 
+def _sanitize_catalog_alias(value: str) -> str:
+    """Normalize a value into a Spark/Trino-compatible catalog alias."""
+    return re.sub(r"[^a-z0-9_]", "_", value.lower()).strip("_")
+
+
+def _get_personal_catalog_aliases(personal_catalog: str | None) -> list[str]:
+    """Return Spark aliases for the current user's personal Polaris catalog."""
+    if not personal_catalog:
+        return []
+
+    aliases = ["my"]
+    portable_alias = personal_catalog.strip()
+    if portable_alias.startswith("user_"):
+        portable_alias = portable_alias[len("user_") :]
+    portable_alias = _sanitize_catalog_alias(portable_alias)
+    if portable_alias and portable_alias not in aliases:
+        aliases.append(portable_alias)
+    return aliases
+
+
+def _get_tenant_catalog_alias(tenant_catalog: str) -> str:
+    """Return the short engine alias for a Polaris tenant catalog."""
+    alias = tenant_catalog.strip()
+    if alias.startswith("tenant_"):
+        alias = alias[len("tenant_") :]
+    return _sanitize_catalog_alias(alias)
+
+
 def _get_catalog_conf(settings: BERDLSettings) -> dict[str, str]:
     """Get Iceberg catalog configuration for Polaris REST catalog."""
     config = {}
@@ -203,9 +230,10 @@ def _get_catalog_conf(settings: BERDLSettings) -> dict[str, str]:
             props[f"{prefix}.{k}"] = v
         return props
 
-    # 1. Add Personal Catalog (if configured)
+    # 1. Add Personal Catalog aliases (if configured)
     if settings.POLARIS_PERSONAL_CATALOG:
-        config.update(_catalog_props("spark.sql.catalog.my", settings.POLARIS_PERSONAL_CATALOG))
+        for catalog_alias in _get_personal_catalog_aliases(settings.POLARIS_PERSONAL_CATALOG):
+            config.update(_catalog_props(f"spark.sql.catalog.{catalog_alias}", settings.POLARIS_PERSONAL_CATALOG))
 
     # 2. Add Tenant Catalogs (if configured)
     if settings.POLARIS_TENANT_CATALOGS:
@@ -213,7 +241,9 @@ def _get_catalog_conf(settings: BERDLSettings) -> dict[str, str]:
             tenant_catalog = tenant_catalog.strip()
             if not tenant_catalog:
                 continue
-            catalog_alias = tenant_catalog[7:] if tenant_catalog.startswith("tenant_") else tenant_catalog
+            catalog_alias = _get_tenant_catalog_alias(tenant_catalog)
+            if not catalog_alias:
+                continue
             config.update(_catalog_props(f"spark.sql.catalog.{catalog_alias}", tenant_catalog))
 
     return config
@@ -468,13 +498,14 @@ def get_spark_session(
     if use_spark_connect and not local:
         _settings = settings or get_settings()
         _catalog_aliases: list[str] = []
-        if _settings.POLARIS_PERSONAL_CATALOG:
-            _catalog_aliases.append("my")
+        _catalog_aliases.extend(_get_personal_catalog_aliases(_settings.POLARIS_PERSONAL_CATALOG))
         if _settings.POLARIS_TENANT_CATALOGS:
             for _raw in _settings.POLARIS_TENANT_CATALOGS.split(","):
                 _raw = _raw.strip()
                 if _raw:
-                    _catalog_aliases.append(_raw.removeprefix("tenant_"))
+                    _alias = _get_tenant_catalog_alias(_raw)
+                    if _alias:
+                        _catalog_aliases.append(_alias)
         for _alias in _catalog_aliases:
             try:
                 spark.sql(f"SHOW NAMESPACES IN {_alias}").collect()

@@ -9,9 +9,15 @@ from berdl_notebook_utils.berdl_settings import BERDLSettings
 from berdl_notebook_utils.setup_trino_session import (
     ALLOWED_CONNECTORS,
     _build_catalog_properties,
+    _build_iceberg_catalog_properties,
     _catalog_exists,
     _create_dynamic_catalog,
+    _create_polaris_catalogs,
     _escape_sql_string,
+    _get_personal_catalog_alias,
+    _get_polaris_oauth2_server_uri,
+    _get_tenant_catalog_alias,
+    _iter_tenant_catalogs,
     _sanitize_identifier,
     _validate_connector,
     get_trino_connection,
@@ -68,6 +74,10 @@ class TestBuildCatalogProperties:
         settings.MINIO_ENDPOINT_URL = endpoint_url
         settings.MINIO_SECURE = secure
         settings.BERDL_HIVE_METASTORE_URI = hive_uri
+        settings.POLARIS_CATALOG_URI = None
+        settings.POLARIS_CREDENTIAL = None
+        settings.POLARIS_PERSONAL_CATALOG = None
+        settings.POLARIS_TENANT_CATALOGS = None
         return settings
 
     def test_basic_properties(self):
@@ -116,6 +126,92 @@ class TestBuildCatalogProperties:
             "s3.region",
         }
         assert set(result.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# Polaris/Iceberg catalog helpers
+# ---------------------------------------------------------------------------
+class TestPolarisCatalogHelpers:
+    def _make_settings(self, polaris_uri="http://polaris:8181/api/catalog"):
+        settings = MagicMock(spec=BERDLSettings)
+        settings.MINIO_ENDPOINT_URL = "minio:9000"
+        settings.MINIO_SECURE = False
+        settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
+        settings.POLARIS_CATALOG_URI = polaris_uri
+        settings.POLARIS_CREDENTIAL = "client:secret"
+        settings.POLARIS_PERSONAL_CATALOG = "user_testuser"
+        settings.POLARIS_TENANT_CATALOGS = "tenant_globalusers,tenant_kbase"
+        return settings
+
+    def test_personal_catalog_alias_strips_user_prefix(self):
+        assert _get_personal_catalog_alias("user_tgu2") == "tgu2"
+
+    def test_personal_catalog_alias_sanitizes(self):
+        assert _get_personal_catalog_alias("user_Alice-Lake") == "alice_lake"
+
+    def test_personal_catalog_alias_none_when_missing(self):
+        assert _get_personal_catalog_alias(None) is None
+
+    def test_tenant_catalog_alias_strips_tenant_prefix(self):
+        assert _get_tenant_catalog_alias("tenant_globalusers") == "globalusers"
+
+    def test_tenant_catalog_alias_sanitizes(self):
+        assert _get_tenant_catalog_alias("tenant_KBase-Dev") == "kbase_dev"
+
+    def test_iter_tenant_catalogs_ignores_blanks(self):
+        assert _iter_tenant_catalogs("tenant_a, ,tenant_b,") == ["tenant_a", "tenant_b"]
+
+    def test_oauth2_server_uri_appends_v1(self):
+        settings = self._make_settings("http://polaris:8181/api/catalog")
+        assert _get_polaris_oauth2_server_uri(settings) == "http://polaris:8181/api/catalog/v1/oauth/tokens"
+
+    def test_oauth2_server_uri_handles_v1_uri(self):
+        settings = self._make_settings("http://polaris:8181/api/catalog/v1")
+        assert _get_polaris_oauth2_server_uri(settings) == "http://polaris:8181/api/catalog/v1/oauth/tokens"
+
+    def test_build_iceberg_catalog_properties(self):
+        settings = self._make_settings()
+
+        result = _build_iceberg_catalog_properties(settings, "user_testuser", "ak", "sk")
+
+        assert result["iceberg.catalog.type"] == "rest"
+        assert result["iceberg.rest-catalog.uri"] == "http://polaris:8181/api/catalog"
+        assert result["iceberg.rest-catalog.warehouse"] == "user_testuser"
+        assert result["iceberg.rest-catalog.security"] == "OAUTH2"
+        assert result["iceberg.rest-catalog.oauth2.credential"] == "client:secret"
+        assert result["iceberg.rest-catalog.oauth2.scope"] == "PRINCIPAL_ROLE:ALL"
+        assert result["iceberg.rest-catalog.oauth2.server-uri"] == "http://polaris:8181/api/catalog/v1/oauth/tokens"
+        assert result["iceberg.rest-catalog.vended-credentials-enabled"] == "false"
+        assert result["iceberg.security"] == "read_only"
+        assert result["fs.native-s3.enabled"] == "true"
+        assert result["s3.endpoint"] == "http://minio:9000"
+        assert result["s3.aws-access-key"] == "ak"
+        assert result["s3.aws-secret-key"] == "sk"
+        assert "hive.metastore.uri" not in result
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    def test_create_polaris_catalogs_creates_personal_and_tenant_aliases(self, mock_create_cat):
+        settings = self._make_settings()
+        cursor = MagicMock()
+
+        _create_polaris_catalogs(cursor, settings, "ak", "sk")
+
+        calls = mock_create_cat.call_args_list
+        assert [call[0][1] for call in calls] == ["testuser", "globalusers", "kbase"]
+        assert [call[0][2] for call in calls] == ["iceberg", "iceberg", "iceberg"]
+        assert calls[0][0][3]["iceberg.rest-catalog.warehouse"] == "user_testuser"
+        assert calls[1][0][3]["iceberg.rest-catalog.warehouse"] == "tenant_globalusers"
+        assert calls[2][0][3]["iceberg.rest-catalog.warehouse"] == "tenant_kbase"
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    def test_create_polaris_catalogs_skips_when_not_configured(self, mock_create_cat):
+        settings = self._make_settings()
+        settings.POLARIS_CATALOG_URI = None
+        cursor = MagicMock()
+
+        _create_polaris_catalogs(cursor, settings, "ak", "sk")
+
+        mock_create_cat.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +299,10 @@ class TestGetTrinoConnection:
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
         settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
+        settings.POLARIS_CATALOG_URI = None
+        settings.POLARIS_CREDENTIAL = None
+        settings.POLARIS_PERSONAL_CATALOG = None
+        settings.POLARIS_TENANT_CATALOGS = None
         return settings
 
     @pytest.fixture()
@@ -369,6 +469,10 @@ class TestGetTrinoConnection:
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
         settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
+        settings.POLARIS_CATALOG_URI = None
+        settings.POLARIS_CREDENTIAL = None
+        settings.POLARIS_PERSONAL_CATALOG = None
+        settings.POLARIS_TENANT_CATALOGS = None
         mock_get_settings.return_value = settings
         mock_get_creds.return_value = CredentialsResponse(username="autouser", access_key="ak", secret_key="sk")
         mock_trino.dbapi.connect.return_value = MagicMock()
@@ -396,6 +500,30 @@ class TestGetTrinoConnection:
         mock_conn.cursor.assert_called_once()
         mock_create_cat.assert_called_once()
         assert mock_create_cat.call_args[0][0] is mock_cursor
+
+    @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
+    @patch("berdl_notebook_utils.setup_trino_session.trino")
+    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    def test_creates_polaris_catalogs_when_configured(
+        self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
+    ):
+        mock_settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"
+        mock_settings.POLARIS_CREDENTIAL = "client:secret"
+        mock_settings.POLARIS_PERSONAL_CATALOG = "user_testuser"
+        mock_settings.POLARIS_TENANT_CATALOGS = "tenant_globalusers,tenant_kbase"
+        mock_get_creds.return_value = mock_credentials
+        mock_conn = MagicMock()
+        mock_trino.dbapi.connect.return_value = mock_conn
+
+        get_trino_connection(settings=mock_settings)
+
+        calls = mock_create_cat.call_args_list
+        assert [call[0][1] for call in calls] == ["u_testuser", "testuser", "globalusers", "kbase"]
+        assert [call[0][2] for call in calls] == ["delta_lake", "iceberg", "iceberg", "iceberg"]
+        assert calls[1][0][3]["iceberg.rest-catalog.warehouse"] == "user_testuser"
+        assert calls[2][0][3]["iceberg.rest-catalog.warehouse"] == "tenant_globalusers"
+        assert calls[3][0][3]["iceberg.rest-catalog.warehouse"] == "tenant_kbase"
+        assert mock_conn._client_session.catalog == "u_testuser"
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +603,10 @@ class TestGetTrinoConnectionFalsyValues:
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
         settings.KBASE_AUTH_TOKEN = "fake-kbase-token"
+        settings.POLARIS_CATALOG_URI = None
+        settings.POLARIS_CREDENTIAL = None
+        settings.POLARIS_PERSONAL_CATALOG = None
+        settings.POLARIS_TENANT_CATALOGS = None
         return settings
 
     @pytest.fixture()
