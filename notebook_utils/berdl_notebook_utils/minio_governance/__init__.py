@@ -19,6 +19,9 @@ from .operations import (
     get_my_sql_warehouse,
     get_my_workspace,
     get_namespace_prefix,
+    grant_namespace_access,
+    list_namespace_access,
+    revoke_namespace_access,
     # Management operations
     add_group_member,
     create_tenant_and_assign_users,
@@ -67,6 +70,9 @@ __all__ = [
     "get_my_sql_warehouse",
     "get_my_workspace",
     "get_namespace_prefix",
+    "grant_namespace_access",
+    "list_namespace_access",
+    "revoke_namespace_access",
     # Management operations (admin-only, via /management API)
     "add_group_member",
     "create_tenant_and_assign_users",

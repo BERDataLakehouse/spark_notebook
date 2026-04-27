@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import warnings
+from collections.abc import Sequence
 from typing import Any, TypedDict
 
 import httpx
@@ -301,6 +302,201 @@ def rotate_polaris_credentials() -> PolarisCredentials | None:
     _set_polaris_credentials_env(result)
 
     return result
+
+
+def _normalize_namespace_parts(namespace: str | Sequence[str]) -> list[str]:
+    """Normalize a dotted namespace string or explicit namespace parts."""
+    if isinstance(namespace, str):
+        parts = namespace.split(".")
+    else:
+        parts = list(namespace)
+    normalized = [part.strip() for part in parts]
+    if not normalized or any(not part for part in normalized):
+        raise ValueError("namespace must not be empty or contain empty parts")
+    return normalized
+
+
+def _governance_api_request(
+    method: str,
+    path: str,
+    action: str,
+    *,
+    json_body: dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
+) -> Any:
+    """Call a governance API endpoint not yet guaranteed in the generated client."""
+    settings = get_settings()
+    base_url = str(settings.GOVERNANCE_API_URL).rstrip("/")
+    url = f"{base_url}/{path.lstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {settings.KBASE_AUTH_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    try:
+        response = httpx.request(
+            method,
+            url,
+            headers=headers,
+            json=json_body,
+            params=params,
+            timeout=30.0,
+        )
+    except httpx.RequestError as exc:
+        raise RuntimeError(f"Failed to connect to governance API while trying to {action}: {exc}") from exc
+
+    if response.status_code >= 400:
+        try:
+            body = response.json()
+        except ValueError:
+            body = response.text
+        if isinstance(body, dict):
+            detail = body.get("detail") or body.get("message") or body
+        else:
+            detail = body
+        raise RuntimeError(f"Failed to {action}: {response.status_code} {detail}")
+
+    if not response.text:
+        return None
+    return response.json()
+
+
+def _print_namespace_acl_refresh_hint(
+    username: str,
+    tenant_name: str,
+    namespace_parts: Sequence[str],
+    action: str,
+) -> None:
+    """Print the Spark refresh instruction expected by notebook users."""
+    settings = get_settings()
+    qualified_namespace = f"{tenant_name}.{'.'.join(namespace_parts)}"
+    if username == settings.USER:
+        target = "Run"
+    else:
+        target = f"Ask {username} to run"
+
+    if action == "grant":
+        print(
+            f"Namespace access updated for {username}: {qualified_namespace}. "
+            f"{target} refresh_spark_environment() before using {qualified_namespace} "
+            "from Spark Connect or an existing Spark session."
+        )
+    else:
+        print(
+            f"Namespace access revoked for {username}: {qualified_namespace}. "
+            f"{target} refresh_spark_environment() or restart Spark to clear stale catalog access."
+        )
+
+
+def grant_namespace_access(
+    tenant_name: str,
+    username: str,
+    namespace: str | Sequence[str],
+    access_level: str = "read",
+    show_refresh_hint: bool = True,
+) -> dict[str, Any]:
+    """
+    Grant a user read or write access to a Polaris namespace in a tenant catalog.
+
+    Args:
+        tenant_name: Base tenant name, not the ``ro`` group variant.
+        username: KBase username receiving namespace access.
+        namespace: Dotted namespace string (``"shared_data"`` or ``"geo.curated"``)
+            or explicit namespace parts.
+        access_level: ``"read"`` or ``"write"``.
+        show_refresh_hint: If True, print the Spark refresh instruction after success.
+
+    Returns:
+        Namespace ACL grant response as a dictionary.
+    """
+    if access_level not in {"read", "write"}:
+        raise ValueError("access_level must be 'read' or 'write'")
+
+    namespace_parts = _normalize_namespace_parts(namespace)
+    result = _governance_api_request(
+        "POST",
+        f"/tenants/{tenant_name}/namespace-acls",
+        "grant namespace access",
+        json_body={
+            "username": username,
+            "namespace": namespace_parts,
+            "access_level": access_level,
+        },
+    )
+    if show_refresh_hint:
+        _print_namespace_acl_refresh_hint(username, tenant_name, namespace_parts, "grant")
+    return result
+
+
+def revoke_namespace_access(
+    tenant_name: str,
+    username: str,
+    namespace: str | Sequence[str],
+    show_refresh_hint: bool = True,
+) -> dict[str, Any]:
+    """
+    Revoke a user's namespace ACL grant.
+
+    Args:
+        tenant_name: Base tenant name, not the ``ro`` group variant.
+        username: KBase username whose namespace access should be revoked.
+        namespace: Dotted namespace string or explicit namespace parts.
+        show_refresh_hint: If True, print the Spark refresh instruction after success.
+
+    Returns:
+        Revoked namespace ACL grant response as a dictionary.
+    """
+    namespace_parts = _normalize_namespace_parts(namespace)
+    result = _governance_api_request(
+        "DELETE",
+        f"/tenants/{tenant_name}/namespace-acls",
+        "revoke namespace access",
+        json_body={
+            "username": username,
+            "namespace": namespace_parts,
+        },
+    )
+    if show_refresh_hint:
+        _print_namespace_acl_refresh_hint(username, tenant_name, namespace_parts, "revoke")
+    return result
+
+
+def list_namespace_access(
+    tenant_name: str | None = None,
+    namespace: str | Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
+    """
+    List namespace ACL grants.
+
+    With ``tenant_name`` provided, this lists grants for a tenant and requires
+    steward/admin access. Without ``tenant_name``, this lists grants for the
+    authenticated user via ``GET /me/namespace-acls``.
+
+    Args:
+        tenant_name: Optional tenant name to inspect as steward/admin.
+        namespace: Optional namespace filter for tenant-scoped listing.
+
+    Returns:
+        List of namespace ACL grant response dictionaries.
+    """
+    if tenant_name is None:
+        if namespace is not None:
+            raise ValueError("namespace filter requires tenant_name")
+        return _governance_api_request(
+            "GET",
+            "/me/namespace-acls",
+            "list current user's namespace access",
+        )
+
+    params = None
+    if namespace is not None:
+        params = {"namespace": ".".join(_normalize_namespace_parts(namespace))}
+
+    return _governance_api_request(
+        "GET",
+        f"/tenants/{tenant_name}/namespace-acls",
+        "list tenant namespace access",
+        params=params,
+    )
 
 
 def rotate_minio_credentials() -> CredentialsResponse:

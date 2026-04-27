@@ -25,6 +25,7 @@ from berdl_notebook_utils.minio_governance.operations import (
     get_my_sql_warehouse,
     get_group_sql_warehouse,
     get_namespace_prefix,
+    grant_namespace_access,
     get_my_workspace,
     get_my_policies,
     get_my_groups,
@@ -44,7 +45,9 @@ from berdl_notebook_utils.minio_governance.operations import (
     request_tenant_access,
     rotate_minio_credentials,
     rotate_polaris_credentials,
+    list_namespace_access,
     regenerate_policies,
+    revoke_namespace_access,
     CredentialsResponse,
     ErrorResponse,
     GroupManagementResponse,
@@ -1167,3 +1170,133 @@ class TestRotatePolarisCredentials:
         result = rotate_polaris_credentials()
 
         assert result is None
+
+
+class TestNamespaceAccess:
+    """Tests for Polaris namespace ACL notebook wrappers."""
+
+    def _settings(self):
+        settings = Mock()
+        settings.GOVERNANCE_API_URL = "http://governance"
+        settings.KBASE_AUTH_TOKEN = "token-123"
+        settings.USER = "steward"
+        return settings
+
+    def _response(self, status_code: int = 200, payload: dict | list | None = None):
+        response = Mock()
+        response.status_code = status_code
+        response.text = "{}" if payload is not None else ""
+        response.json.return_value = payload
+        return response
+
+    @patch("builtins.print")
+    @patch("berdl_notebook_utils.minio_governance.operations.httpx.request")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    def test_grant_namespace_access_posts_payload_and_prints_refresh_hint(
+        self,
+        mock_settings,
+        mock_request,
+        mock_print,
+    ):
+        mock_settings.return_value = self._settings()
+        payload = {
+            "id": "grant-1",
+            "tenant_name": "kbase",
+            "namespace": ["shared_data"],
+            "namespace_name": "shared_data",
+            "username": "alice",
+            "access_level": "write",
+            "status": "active",
+        }
+        mock_request.return_value = self._response(201, payload)
+
+        result = grant_namespace_access("kbase", "alice", "shared_data", access_level="write")
+
+        assert result == payload
+        mock_request.assert_called_once_with(
+            "POST",
+            "http://governance/tenants/kbase/namespace-acls",
+            headers={"Authorization": "Bearer token-123", "Content-Type": "application/json"},
+            json={"username": "alice", "namespace": ["shared_data"], "access_level": "write"},
+            params=None,
+            timeout=30.0,
+        )
+        assert "refresh_spark_environment()" in mock_print.call_args.args[0]
+        assert "kbase.shared_data" in mock_print.call_args.args[0]
+
+    @patch("builtins.print")
+    @patch("berdl_notebook_utils.minio_governance.operations.httpx.request")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    def test_revoke_namespace_access_sends_delete(self, mock_settings, mock_request, mock_print):
+        mock_settings.return_value = self._settings()
+        payload = {"id": "grant-1", "status": "revoked"}
+        mock_request.return_value = self._response(200, payload)
+
+        result = revoke_namespace_access("kbase", "alice", ["geo", "curated"])
+
+        assert result == payload
+        mock_request.assert_called_once_with(
+            "DELETE",
+            "http://governance/tenants/kbase/namespace-acls",
+            headers={"Authorization": "Bearer token-123", "Content-Type": "application/json"},
+            json={"username": "alice", "namespace": ["geo", "curated"]},
+            params=None,
+            timeout=30.0,
+        )
+        assert "refresh_spark_environment()" in mock_print.call_args.args[0]
+        assert "kbase.geo.curated" in mock_print.call_args.args[0]
+
+    @patch("berdl_notebook_utils.minio_governance.operations.httpx.request")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    def test_list_namespace_access_for_current_user(self, mock_settings, mock_request):
+        mock_settings.return_value = self._settings()
+        payload = [{"id": "grant-1"}]
+        mock_request.return_value = self._response(200, payload)
+
+        result = list_namespace_access()
+
+        assert result == payload
+        mock_request.assert_called_once_with(
+            "GET",
+            "http://governance/me/namespace-acls",
+            headers={"Authorization": "Bearer token-123", "Content-Type": "application/json"},
+            json=None,
+            params=None,
+            timeout=30.0,
+        )
+
+    @patch("berdl_notebook_utils.minio_governance.operations.httpx.request")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    def test_list_namespace_access_for_tenant_with_namespace_filter(self, mock_settings, mock_request):
+        mock_settings.return_value = self._settings()
+        payload = [{"id": "grant-1"}]
+        mock_request.return_value = self._response(200, payload)
+
+        result = list_namespace_access("kbase", namespace=["geo", "curated"])
+
+        assert result == payload
+        mock_request.assert_called_once_with(
+            "GET",
+            "http://governance/tenants/kbase/namespace-acls",
+            headers={"Authorization": "Bearer token-123", "Content-Type": "application/json"},
+            json=None,
+            params={"namespace": "geo.curated"},
+            timeout=30.0,
+        )
+
+    def test_grant_namespace_access_rejects_invalid_access_level(self):
+        with pytest.raises(ValueError, match="access_level"):
+            grant_namespace_access("kbase", "alice", "shared_data", access_level="admin")
+
+    def test_list_namespace_access_rejects_filter_without_tenant(self):
+        with pytest.raises(ValueError, match="requires tenant_name"):
+            list_namespace_access(namespace="shared_data")
+
+    @patch("berdl_notebook_utils.minio_governance.operations.httpx.request")
+    @patch("berdl_notebook_utils.minio_governance.operations.get_settings")
+    def test_namespace_access_raises_runtime_error_on_api_error(self, mock_settings, mock_request):
+        mock_settings.return_value = self._settings()
+        mock_request.return_value = self._response(409, {"detail": "Namespace has child namespaces"})
+
+        with pytest.raises(RuntimeError, match="Namespace has child namespaces"):
+            grant_namespace_access("kbase", "alice", "shared_data", show_refresh_hint=False)
