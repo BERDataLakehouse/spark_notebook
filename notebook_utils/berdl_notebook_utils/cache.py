@@ -6,10 +6,10 @@ invalidated when the KBase auth token changes.
 """
 
 import os
+import sys
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
-import sys
 from typing import TypeVar
 
 TOKEN_CACHE_FILE = ".berdl_kbase_session"
@@ -17,6 +17,8 @@ TOKEN_CACHE_FILE = ".berdl_kbase_session"
 F = TypeVar("F", bound=Callable)
 
 _token_change_caches = []
+_token_cache_file_snapshot: tuple[Path, int, int, int, int, int] | None = None
+_token_cache_env_token: str | None = None
 
 
 def kbase_token_dependent(func):
@@ -56,16 +58,42 @@ def sync_kbase_token_from_cache_file(path: Path | None = None) -> bool:
 
     Returns True when the process environment was updated.
     """
-    token_path = path if path is not None else _get_token_cache_path()
+    global _token_cache_env_token, _token_cache_file_snapshot
+
     try:
-        token = token_path.read_text().strip()
-    except OSError:
+        token_path = path if path is not None else _get_token_cache_path()
+        token_stat = token_path.stat()
+    except (OSError, RuntimeError):
+        _token_cache_file_snapshot = None
         return False
 
-    if not token or token == os.environ.get("KBASE_AUTH_TOKEN", ""):
+    file_snapshot = (
+        token_path,
+        token_stat.st_dev,
+        token_stat.st_ino,
+        token_stat.st_ctime_ns,
+        token_stat.st_mtime_ns,
+        token_stat.st_size,
+    )
+    env_token = os.environ.get("KBASE_AUTH_TOKEN", "")
+
+    if file_snapshot == _token_cache_file_snapshot and env_token == _token_cache_env_token:
+        return False
+
+    try:
+        token = token_path.read_text().strip()
+    except (OSError, UnicodeDecodeError):
+        _token_cache_file_snapshot = file_snapshot
+        _token_cache_env_token = env_token
+        return False
+
+    _token_cache_file_snapshot = file_snapshot
+    if not token or token == env_token:
+        _token_cache_env_token = env_token
         return False
 
     os.environ["KBASE_AUTH_TOKEN"] = token
+    _token_cache_env_token = token
     clear_berdl_token_caches()
     return True
 

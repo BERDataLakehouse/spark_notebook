@@ -2,9 +2,11 @@
 
 from functools import lru_cache
 import os
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 
+import berdl_notebook_utils.cache as cache_module
 from berdl_notebook_utils.cache import (
     _token_change_caches,
     clear_berdl_token_caches,
@@ -208,6 +210,47 @@ class TestSyncKbaseTokenFromCacheFile:
 
     def test_noops_when_token_file_is_missing(self, tmp_path):
         assert sync_kbase_token_from_cache_file(tmp_path / "missing") is False
+
+    def test_noops_when_home_path_is_unavailable(self, monkeypatch):
+        def raise_runtime_error():
+            raise RuntimeError("home directory is unavailable")
+
+        monkeypatch.setattr(cache_module, "_get_token_cache_path", raise_runtime_error)
+
+        assert sync_kbase_token_from_cache_file() is False
+
+    def test_noops_when_token_file_is_not_text(self, tmp_path, monkeypatch):
+        token_file = tmp_path / ".berdl_kbase_session"
+        token_file.write_bytes(b"\xff")
+        monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
+
+        assert sync_kbase_token_from_cache_file(token_file) is False
+        assert os.environ["KBASE_AUTH_TOKEN"] == "old-token"
+
+    def test_skips_read_when_file_snapshot_and_env_are_unchanged(self, tmp_path, monkeypatch):
+        read_count = 0
+        token_file = tmp_path / ".berdl_kbase_session"
+        token_file.write_text("fresh-token")
+        original_read_text = Path.read_text
+        monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
+        monkeypatch.setattr(cache_module, "_token_cache_file_snapshot", None)
+        monkeypatch.setattr(cache_module, "_token_cache_env_token", None)
+
+        def counted_read_text(self, *args, **kwargs):
+            nonlocal read_count
+            if self == token_file:
+                read_count += 1
+            return original_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", counted_read_text)
+
+        assert sync_kbase_token_from_cache_file(token_file) is True
+        assert sync_kbase_token_from_cache_file(token_file) is False
+        assert read_count == 1
+
+        monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
+        assert sync_kbase_token_from_cache_file(token_file) is True
+        assert read_count == 2
 
 
 class TestSyncKbaseTokenBeforeCall:
