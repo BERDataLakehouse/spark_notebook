@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from berdl_notebook_utils.berdl_settings import BERDLSettings
+from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
 from berdl_notebook_utils.clients import (
     get_minio_client,
     get_task_service_client,
@@ -26,6 +26,7 @@ def clear_caches():
     get_governance_client.cache_clear()
     get_spark_cluster_client.cache_clear()
     get_hive_metastore_client.cache_clear()
+    get_settings.cache_clear()
     yield
 
 
@@ -106,6 +107,31 @@ class TestGetGovernanceClient:
             # URL may have trailing slash added by httpx/AuthenticatedClient
             assert call_kwargs["base_url"].rstrip("/") == "http://localhost:8000"
             assert call_kwargs["token"] == "test-token-123"
+
+    def test_get_governance_client_refreshes_token_before_cache_lookup(self, tmp_path, monkeypatch):
+        """Test that cached governance client is rebuilt after token cache changes."""
+        token_file = tmp_path / ".berdl_kbase_session"
+        monkeypatch.setattr(
+            "berdl_notebook_utils.cache._get_token_cache_path",
+            lambda: token_file,
+        )
+        monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
+        token_file.write_text("old-token")
+
+        with patch("berdl_notebook_utils.clients.GovernanceAuthenticatedClient") as mock_client_class:
+            old_client = Mock(name="old_client")
+            new_client = Mock(name="new_client")
+            mock_client_class.side_effect = [old_client, new_client]
+
+            client1 = get_governance_client()
+
+            token_file.write_text("new-token")
+            client2 = get_governance_client()
+
+            assert client1 is old_client
+            assert client2 is new_client
+            assert mock_client_class.call_args_list[0][1]["token"] == "old-token"
+            assert mock_client_class.call_args_list[1][1]["token"] == "new-token"
 
 
 class TestGetSparkClusterClient:

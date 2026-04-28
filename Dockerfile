@@ -1,4 +1,4 @@
-ARG BASE_TAG=pr-156
+ARG BASE_TAG=pr-157
 ARG BASE_REGISTRY=ghcr.io/berdatalakehouse/
 FROM ${BASE_REGISTRY}spark_notebook_base:${BASE_TAG}
 
@@ -23,7 +23,7 @@ RUN python3 /tmp/patch_s3contents.py && rm /tmp/patch_s3contents.py
 COPY notebook_utils /tmp/notebook_utils
 RUN eval "$(conda shell.bash hook)" && uv pip install --no-deps --system /tmp/notebook_utils && rm -rf /tmp/notebook_utils
 
-RUN eval "$(conda shell.bash hook)" && uv pip install --no-deps --system "git+https://github.com/kbase/data-lakehouse-ingest.git@v0.0.8"
+RUN eval "$(conda shell.bash hook)" && uv pip install --no-deps --system "git+https://github.com/kbase/data-lakehouse-ingest.git@v0.0.9"
 
 WORKDIR /home
 ENTRYPOINT ["/entrypoint.sh"]
