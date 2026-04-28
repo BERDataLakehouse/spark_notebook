@@ -430,6 +430,22 @@ class TestGetTableSchemaErrorPath:
         assert result == []
 
 
+class TestGetTableSchemaDetailed:
+    """Tests for get_table_schema detailed=True branch."""
+
+    def test_detailed_returns_column_dicts(self):
+        """Test detailed=True returns each column's _asdict()."""
+        mock_spark = Mock()
+        col1, col2 = Mock(), Mock()
+        col1._asdict.return_value = {"name": "id"}
+        col2._asdict.return_value = {"name": "name"}
+        mock_spark.catalog.listColumns.return_value = [col1, col2]
+
+        result = get_table_schema("test_db", "t", spark=mock_spark, return_json=False, detailed=True)
+
+        assert result == [{"name": "id"}, {"name": "name"}]
+
+
 class TestGetDbStructureSparkPath:
     """Tests for get_db_structure with use_hms=False (Spark inner function)."""
 
