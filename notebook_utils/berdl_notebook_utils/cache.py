@@ -99,7 +99,19 @@ def sync_kbase_token_from_cache_file(path: Path | None = None) -> bool:
 
 
 def sync_kbase_token_before_call(func: F) -> F:
-    """Decorator that refreshes the process token before cache lookup/use."""
+    """Refresh the process token before a cached function is accessed.
+
+    When combining with ``lru_cache``, this must be the outermost decorator:
+
+        @sync_kbase_token_before_call
+        @kbase_token_dependent
+        @lru_cache(maxsize=1)
+        def get_client(...):
+            ...
+
+    If ``lru_cache`` wraps this decorator instead, cache hits bypass the wrapper
+    and the token sync will not run.
+    """
 
     @wraps(func)
     def wrapper(*args, **kwargs):

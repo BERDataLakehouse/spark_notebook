@@ -275,3 +275,25 @@ class TestSyncKbaseTokenBeforeCall:
         assert cached_func() == "fresh-token"
         assert cached_func() == "fresh-token"
         assert calls == ["fresh-token"]
+
+    def test_lru_cache_must_not_wrap_token_sync(self, tmp_path, monkeypatch):
+        calls: list[str] = []
+        token_file = tmp_path / ".berdl_kbase_session"
+        token_file.write_text("first-token")
+        monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
+        monkeypatch.setattr(
+            "berdl_notebook_utils.cache._get_token_cache_path",
+            lambda: token_file,
+        )
+
+        @lru_cache
+        @sync_kbase_token_before_call
+        def cached_func():
+            calls.append(os.environ["KBASE_AUTH_TOKEN"])
+            return os.environ["KBASE_AUTH_TOKEN"]
+
+        assert cached_func() == "first-token"
+
+        token_file.write_text("second-token")
+        assert cached_func() == "first-token"
+        assert calls == ["first-token"]
