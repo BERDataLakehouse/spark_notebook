@@ -8,9 +8,10 @@ from minio import Minio
 from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from berdl_notebook_utils.cache import kbase_token_dependent
+from berdl_notebook_utils.cache import kbase_token_dependent, sync_kbase_token_before_call
 
 
+@sync_kbase_token_before_call
 @kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_task_service_client(settings: BERDLSettings | None = None) -> CTSClient:
@@ -44,6 +45,7 @@ def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
     )
 
 
+@sync_kbase_token_before_call
 @kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_governance_client(
@@ -64,6 +66,7 @@ def get_governance_client(
     )
 
 
+@sync_kbase_token_before_call
 @kbase_token_dependent
 @lru_cache(maxsize=1)
 def get_spark_cluster_client(

@@ -278,8 +278,8 @@ def get_tables(
 
 
 def get_table_schema(
-    database: str, table: str, spark: Optional[SparkSession] = None, return_json: bool = True
-) -> Union[str, List[str]]:
+    database: str, table: str, spark: Optional[SparkSession] = None, return_json: bool = True, detailed: bool = False
+) -> Union[str, List[str], List[Dict[str, Any]]]:
     """
     Get the schema of a specific table in a database.
 
@@ -288,14 +288,20 @@ def get_table_schema(
         table: Name of the table
         spark: Optional SparkSession to use
         return_json: Whether to return JSON string or raw data
+        detailed: If True, return each column as a dict of all
+            pyspark.sql.catalog.Column fields instead of just its name
 
     Returns:
-        List of column names, either as JSON string or raw list
+        List of column names, or list of column metadata dicts when detailed=True,
+        either as JSON string or raw list
     """
 
-    def _get_schema(session: SparkSession, db: str, tbl: str) -> List[str]:
+    def _get_schema(session: SparkSession, db: str, tbl: str) -> Union[List[str], List[Dict[str, Any]]]:
         try:
-            return [column.name for column in session.catalog.listColumns(dbName=db, tableName=tbl)]
+            cols = session.catalog.listColumns(dbName=db, tableName=tbl)
+            if detailed:
+                return [c._asdict() for c in cols]
+            return [c.name for c in cols]
         except Exception:
             # Observed that certain tables lack their corresponding S3 files
             print(f"Error retrieving schema for table {tbl} in database {db}")

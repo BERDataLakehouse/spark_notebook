@@ -11,26 +11,20 @@ invalidated so they rebuild with the fresh token on next use.
 """
 
 import logging
-import os
 import threading
 import time
-from pathlib import Path
 
-from berdl_notebook_utils.cache import clear_kbase_token_caches
+from berdl_notebook_utils.cache import sync_kbase_token_from_cache_file
 
 logger = logging.getLogger(__name__)
 
-TOKEN_CACHE_FILE = ".berdl_kbase_session"
 TOKEN_SYNC_INTERVAL_SECONDS = 30
 
 
 def _sync_token():
     """Read token from session file and update env var if changed."""
     try:
-        token = (Path.home() / TOKEN_CACHE_FILE).read_text().strip()
-        if token and token != os.environ.get("KBASE_AUTH_TOKEN", ""):
-            os.environ["KBASE_AUTH_TOKEN"] = token
-            clear_kbase_token_caches()
+        if sync_kbase_token_from_cache_file():
             logger.info("Kernel token updated from session file")
     except Exception:
         logger.debug("Token sync skipped: session file not available")
