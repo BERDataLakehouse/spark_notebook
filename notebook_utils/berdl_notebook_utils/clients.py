@@ -1,5 +1,5 @@
+import warnings
 from functools import lru_cache
-from urllib.parse import urlparse
 
 from cdmtaskserviceclient.client import CTSClient
 from governance_client import AuthenticatedClient as GovernanceAuthenticatedClient
@@ -9,6 +9,7 @@ from spark_manager_client.client import AuthenticatedClient as SparkAuthenticate
 
 from berdl_notebook_utils import BERDLSettings, get_settings
 from berdl_notebook_utils.cache import kbase_token_dependent, sync_kbase_token_before_call
+from berdl_notebook_utils.hms_pool import HMSClientPool, build_pool_from_settings
 
 
 @sync_kbase_token_before_call
@@ -91,25 +92,44 @@ def get_spark_cluster_client(
 
 
 @lru_cache(maxsize=1)
+def get_hive_metastore_pool(settings: BERDLSettings | None = None) -> HMSClientPool:
+    """Return the per-process Hive Metastore connection pool.
+
+    Use this in preference to :func:`get_hive_metastore_client`. ``HMSClient``
+    is a Thrift client and is **not thread-safe**: a single client instance
+    serializes one in-flight call. The pool keeps that invariant while
+    allowing many concurrent callers in the same process. See
+    :class:`berdl_notebook_utils.hms_pool.HMSClientPool` for the correctness
+    rationale and tunables.
+    """
+    return build_pool_from_settings(settings)
+
+
 def get_hive_metastore_client(
-    settings: BERDLSettings | None = None,
+    settings: BERDLSettings | None = None,  # noqa: ARG001 - kept for API compat
 ) -> HMSClient:
+    """**DEPRECATED**: returns a single shared, non-thread-safe ``HMSClient``.
+
+    Concurrent callers using the same instance will corrupt the underlying
+    Thrift socket — see :mod:`berdl_notebook_utils.hms_pool`. Use
+    :func:`get_hive_metastore_pool` instead and check out connections per
+    call::
+
+        with get_hive_metastore_pool().acquire() as client:
+            return client.get_databases("*")
+
+    This function is retained only so that downstream code that explicitly
+    serializes its own access to a single client can continue to work during
+    the transition. New code MUST NOT call it.
     """
-    Get a Hive Metastore client for direct HMS operations.
-
-    Args:
-        settings: Optional BERDLSettings instance. If None, reads from environment.
-
-    Returns:
-        HMSClient configured to connect to the Hive Metastore
-    """
-    if settings is None:
-        settings = get_settings()
-
-    # Parse the thrift URI to extract host and port
-    # Format: thrift://hostname:port
-    parsed_uri = urlparse(str(settings.BERDL_HIVE_METASTORE_URI))
-    host = parsed_uri.hostname
-    port = parsed_uri.port
-
-    return HMSClient(host=host, port=port)
+    warnings.warn(
+        "get_hive_metastore_client() returns a non-thread-safe singleton and "
+        "is deprecated. Use get_hive_metastore_pool().acquire() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    pool = get_hive_metastore_pool(settings)
+    # Build one fresh client (not from the pool) so the caller owns its full
+    # lifecycle and the pool's invariants are not violated.
+    # Disable lint of private call: documented escape hatch for legacy callers.
+    return pool._new_client()  # type: ignore[attr-defined]  # noqa: SLF001
