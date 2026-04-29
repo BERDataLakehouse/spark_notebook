@@ -123,6 +123,7 @@ class TestListIcebergNamespaces:
         spark = MagicMock()
 
         with patch.object(data_store, "_list_iceberg_catalogs", return_value=["kbase", "my"]):
+
             def sql_side_effect(query):
                 result = MagicMock()
                 if "SHOW NAMESPACES IN kbase" in query:
@@ -141,6 +142,7 @@ class TestListIcebergNamespaces:
         spark = MagicMock()
 
         with patch.object(data_store, "_list_iceberg_catalogs", return_value=["my", "broken"]):
+
             def sql_side_effect(query):
                 if "broken" in query:
                     raise Exception("Catalog not accessible")
@@ -188,16 +190,12 @@ class TestAliasesForUser:
     """Tests for _aliases_for_user."""
 
     def test_personal_aliases_includes_my_and_stripped(self):
-        personal, tenant = _aliases_for_user(
-            {"POLARIS_PERSONAL_CATALOG": "user_alice", "POLARIS_TENANT_CATALOGS": ""}
-        )
+        personal, tenant = _aliases_for_user({"POLARIS_PERSONAL_CATALOG": "user_alice", "POLARIS_TENANT_CATALOGS": ""})
         assert personal == {"my", "alice"}
         assert tenant == set()
 
     def test_personal_aliases_handles_no_personal_catalog(self):
-        personal, tenant = _aliases_for_user(
-            {"POLARIS_PERSONAL_CATALOG": None, "POLARIS_TENANT_CATALOGS": None}
-        )
+        personal, tenant = _aliases_for_user({"POLARIS_PERSONAL_CATALOG": None, "POLARIS_TENANT_CATALOGS": None})
         assert personal == set()
         assert tenant == set()
 
@@ -561,9 +559,7 @@ class TestGetTableSchema:
         c2._asdict.return_value = {"name": "email", "dataType": "string"}
         spark.catalog.listColumns.return_value = [c1, c2]
 
-        result = get_table_schema(
-            "my.demo", "users", spark=spark, return_json=False, detailed=True
-        )
+        result = get_table_schema("my.demo", "users", spark=spark, return_json=False, detailed=True)
 
         assert result == [{"name": "id", "dataType": "int"}, {"name": "email", "dataType": "string"}]
 
@@ -591,9 +587,7 @@ class TestGetDbStructure:
             patch.object(data_store, "get_databases", return_value=["my.demo", "u_alice__db"]),
             patch.object(data_store, "get_tables", side_effect=[["t1", "t2"], ["t3"]]),
         ):
-            result = get_db_structure(
-                with_schema=False, return_json=False, spark=spark, filter_by_namespace=False
-            )
+            result = get_db_structure(with_schema=False, return_json=False, spark=spark, filter_by_namespace=False)
 
         assert result == {"my.demo": ["t1", "t2"], "u_alice__db": ["t3"]}
 
@@ -604,9 +598,7 @@ class TestGetDbStructure:
             patch.object(data_store, "get_tables", return_value=["t1"]),
             patch.object(data_store, "get_table_schema", return_value=["c1", "c2"]),
         ):
-            result = get_db_structure(
-                with_schema=True, return_json=False, spark=spark, filter_by_namespace=False
-            )
+            result = get_db_structure(with_schema=True, return_json=False, spark=spark, filter_by_namespace=False)
 
         assert result == {"my.demo": {"t1": ["c1", "c2"]}}
 
@@ -616,9 +608,7 @@ class TestGetDbStructure:
             patch.object(data_store, "get_databases", return_value=["my.demo"]),
             patch.object(data_store, "get_tables", return_value=["t1"]),
         ):
-            result = get_db_structure(
-                with_schema=False, return_json=True, spark=spark, filter_by_namespace=False
-            )
+            result = get_db_structure(with_schema=False, return_json=True, spark=spark, filter_by_namespace=False)
 
         assert json.loads(result) == {"my.demo": ["t1"]}
 

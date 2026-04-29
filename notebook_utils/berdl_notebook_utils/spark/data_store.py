@@ -71,10 +71,7 @@ def _list_iceberg_catalogs(spark: SparkSession) -> List[str]:
         match = _CATALOG_KEY_PATTERN.match(row["key"])
         if match:
             catalogs.add(match.group(1))
-    logger.info(
-        f"Discovered {len(catalogs)} catalog(s) from Spark config: "
-        f"{sorted(catalogs)}"
-    )
+    logger.info(f"Discovered {len(catalogs)} catalog(s) from Spark config: {sorted(catalogs)}")
     return sorted(c for c in catalogs if c not in _EXCLUDED_CATALOGS)
 
 
@@ -124,9 +121,7 @@ def _aliases_for_user(settings: Any) -> tuple[set[str], set[str]]:
     the ``tenant_`` prefix stripped (e.g. ``tenant_globalusers`` →
     ``globalusers``).
     """
-    personal = set(
-        _get_personal_catalog_aliases(_settings_get(settings, "POLARIS_PERSONAL_CATALOG"))
-    )
+    personal = set(_get_personal_catalog_aliases(_settings_get(settings, "POLARIS_PERSONAL_CATALOG")))
     tenant: set[str] = set()
     raw_tenants = _settings_get(settings, "POLARIS_TENANT_CATALOGS")
     if raw_tenants:
@@ -224,23 +219,15 @@ def get_databases(
     if tenant is not None:
         hive_prefix = f"{tenant}_"
         iceberg_prefix = f"{tenant}."
-        databases = sorted(
-            db
-            for db in databases
-            if db.startswith(iceberg_prefix) or db.startswith(hive_prefix)
-        )
+        databases = sorted(db for db in databases if db.startswith(iceberg_prefix) or db.startswith(hive_prefix))
         return _format_output(databases, return_json)
 
     if filter_by_namespace:
         username = _settings_get(settings, "USER")
         if not username:
-            raise ValueError(
-                "settings.USER must be set when filter_by_namespace=True"
-            )
+            raise ValueError("settings.USER must be set when filter_by_namespace=True")
         personal, tenant_aliases = _aliases_for_user(settings)
-        databases = _filter_to_user_namespaces(
-            databases, username, personal, tenant_aliases
-        )
+        databases = _filter_to_user_namespaces(databases, username, personal, tenant_aliases)
 
     return _format_output(sorted(databases), return_json)
 
@@ -327,9 +314,7 @@ def get_table_schema(
         else:
             data = [c.name for c in cols]
     except Exception:
-        logger.error(
-            f"Error retrieving schema for table {table} in database {database}"
-        )
+        logger.error(f"Error retrieving schema for table {table} in database {database}")
         data = []
     return _format_output(data, return_json)
 
@@ -371,10 +356,7 @@ def get_db_structure(
         tables = get_tables(database=db, spark=spark, return_json=False)
         if with_schema:
             structure[db] = {
-                tbl: get_table_schema(
-                    database=db, table=tbl, spark=spark, return_json=False
-                )
-                for tbl in tables
+                tbl: get_table_schema(database=db, table=tbl, spark=spark, return_json=False) for tbl in tables
             }
         else:
             structure[db] = tables
