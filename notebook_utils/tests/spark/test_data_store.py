@@ -1,21 +1,18 @@
-"""
-Tests for spark/data_store.py - Data store operations.
-"""
+"""Tests for spark/data_store.py — Iceberg + Hive listing with prefix filtering."""
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from berdl_notebook_utils.spark import data_store
 from berdl_notebook_utils.spark.data_store import (
-    _cached_get_my_accessible_paths,
-    _cached_get_my_groups,
-    _cached_get_namespace_prefix,
-    _execute_with_spark,
-    _extract_databases_from_paths,
+    _aliases_for_user,
+    _filter_to_user_namespaces,
     _format_output,
-    _ttl_cache,
-    clear_governance_cache,
+    _list_iceberg_catalogs,
+    _list_iceberg_namespaces,
+    _list_hive_databases,
     get_databases,
     get_db_structure,
     get_table_schema,
@@ -23,459 +20,613 @@ from berdl_notebook_utils.spark.data_store import (
 )
 
 
-class TestTtlCache:
-    """Tests for _ttl_cache decorator."""
-
-    def test_cache_returns_cached_value(self):
-        """Test cache returns cached value within TTL."""
-        call_count = 0
-
-        @_ttl_cache(ttl_seconds=60)
-        def expensive_func():
-            nonlocal call_count
-            call_count += 1
-            return "result"
-
-        # First call
-        result1 = expensive_func()
-        # Second call should use cache
-        result2 = expensive_func()
-
-        assert result1 == "result"
-        assert result2 == "result"
-        assert call_count == 1
-
-    def test_cache_clear(self):
-        """Test cache can be cleared."""
-        call_count = 0
-
-        @_ttl_cache(ttl_seconds=60)
-        def expensive_func():
-            nonlocal call_count
-            call_count += 1
-            return "result"
-
-        expensive_func()
-        expensive_func.clear_cache()
-        expensive_func()
-
-        assert call_count == 2
+# =============================================================================
+# Helpers
+# =============================================================================
 
 
-class TestClearGovernanceCache:
-    """Tests for clear_governance_cache function."""
+def _make_set_rows(*catalog_names: str) -> list:
+    """Create mock SET command rows for catalog configs.
 
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_groups")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_accessible_paths")
-    def test_clear_governance_cache(self, mock_paths, mock_prefix, mock_groups):
-        """Test clear_governance_cache clears all caches."""
-        mock_groups.clear_cache = Mock()
-        mock_prefix.clear_cache = Mock()
-        mock_paths.clear_cache = Mock()
+    For each catalog name, generates the top-level ``spark.sql.catalog.<name>``
+    key plus a few sub-property keys to simulate realistic SET output.
+    """
+    rows = []
+    for name in catalog_names:
+        rows.append({"key": f"spark.sql.catalog.{name}", "value": "org.apache.iceberg.spark.SparkCatalog"})
+        rows.append({"key": f"spark.sql.catalog.{name}.type", "value": "rest"})
+        rows.append({"key": f"spark.sql.catalog.{name}.uri", "value": "http://polaris:8181/api/catalog"})
+    rows.append({"key": "spark.app.name", "value": "test"})
+    rows.append({"key": "spark.sql.extensions", "value": "io.delta.sql.DeltaSparkSessionExtension"})
+    return rows
 
-        clear_governance_cache()
 
-        # The function uses getattr, so we just verify it doesn't raise
+# =============================================================================
+# _format_output
+# =============================================================================
 
 
 class TestFormatOutput:
     """Tests for _format_output helper."""
 
     def test_format_output_json(self):
-        """Test format_output returns JSON string."""
         result = _format_output(["item1", "item2"], return_json=True)
-
         assert json.loads(result) == ["item1", "item2"]
 
     def test_format_output_raw(self):
-        """Test format_output returns raw data."""
         data = ["item1", "item2"]
         result = _format_output(data, return_json=False)
-
         assert result == data
 
+    def test_format_complex_data_as_json(self):
+        data = {"my.demo": ["t1", "t2"], "u_alice__demo": ["t3"]}
+        result = _format_output(data, return_json=True)
+        assert json.loads(result) == data
 
-class TestExtractDatabasesFromPaths:
-    """Tests for _extract_databases_from_paths function."""
 
-    def test_extract_databases_from_sql_warehouse_paths(self):
-        """Test extracting databases from SQL warehouse paths."""
-        paths = [
-            "s3a://cdm-lake/users-sql-warehouse/user1/test_db.db/table1/",
-            "s3a://cdm-lake/users-sql-warehouse/user1/analytics.db/metrics/",
-            "s3a://cdm-lake/tenant-sql-warehouse/team/shared.db/data/",
-        ]
+# =============================================================================
+# _list_iceberg_catalogs
+# =============================================================================
 
-        result = _extract_databases_from_paths(paths)
 
-        assert "test_db" in result
-        assert "analytics" in result
-        assert "shared" in result
+class TestListIcebergCatalogs:
+    """Tests for _list_iceberg_catalogs."""
 
-    def test_ignores_non_sql_warehouse_paths(self):
-        """Test ignoring paths not in SQL warehouses."""
-        paths = [
-            "s3a://cdm-lake/logs/app.log",
-            "s3a://cdm-lake/warehouse/some.db/table/",
-            "s3a://cdm-lake/users-sql-warehouse/user1/valid.db/table/",
-        ]
+    def test_excludes_spark_catalog(self):
+        spark = MagicMock()
+        spark.sql.return_value.collect.return_value = _make_set_rows("spark_catalog", "my", "kbase")
 
-        result = _extract_databases_from_paths(paths)
+        result = _list_iceberg_catalogs(spark)
 
-        assert "valid" in result
-        assert "some" not in result
+        assert "spark_catalog" not in result
+        assert result == ["kbase", "my"]
 
-    def test_handles_empty_paths(self):
-        """Test handling empty paths list."""
-        result = _extract_databases_from_paths([])
+    def test_returns_sorted(self):
+        spark = MagicMock()
+        spark.sql.return_value.collect.return_value = _make_set_rows("zebra", "alpha")
+
+        result = _list_iceberg_catalogs(spark)
+
+        assert result == ["alpha", "zebra"]
+
+    def test_empty_when_only_spark_catalog(self):
+        spark = MagicMock()
+        spark.sql.return_value.collect.return_value = _make_set_rows("spark_catalog")
+
+        result = _list_iceberg_catalogs(spark)
 
         assert result == []
+
+    def test_ignores_subproperty_keys(self):
+        """Sub-property keys like spark.sql.catalog.my.type must not be matched as catalogs."""
+        spark = MagicMock()
+        spark.sql.return_value.collect.return_value = [
+            {"key": "spark.sql.catalog.my", "value": "..."},
+            {"key": "spark.sql.catalog.my.type", "value": "rest"},
+            {"key": "spark.sql.catalog.my.uri", "value": "http://x"},
+        ]
+
+        result = _list_iceberg_catalogs(spark)
+
+        assert result == ["my"]
+
+
+# =============================================================================
+# _list_iceberg_namespaces
+# =============================================================================
+
+
+class TestListIcebergNamespaces:
+    """Tests for _list_iceberg_namespaces."""
+
+    def test_returns_catalog_namespace_format(self):
+        spark = MagicMock()
+
+        with patch.object(data_store, "_list_iceberg_catalogs", return_value=["kbase", "my"]):
+            def sql_side_effect(query):
+                result = MagicMock()
+                if "SHOW NAMESPACES IN kbase" in query:
+                    result.collect.return_value = [{"namespace": "shared"}, {"namespace": "research"}]
+                elif "SHOW NAMESPACES IN my" in query:
+                    result.collect.return_value = [{"namespace": "demo"}]
+                return result
+
+            spark.sql.side_effect = sql_side_effect
+
+            result = _list_iceberg_namespaces(spark)
+
+        assert sorted(result) == ["kbase.research", "kbase.shared", "my.demo"]
+
+    def test_skips_inaccessible_catalog(self):
+        spark = MagicMock()
+
+        with patch.object(data_store, "_list_iceberg_catalogs", return_value=["my", "broken"]):
+            def sql_side_effect(query):
+                if "broken" in query:
+                    raise Exception("Catalog not accessible")
+                result = MagicMock()
+                result.collect.return_value = [{"namespace": "demo"}]
+                return result
+
+            spark.sql.side_effect = sql_side_effect
+
+            result = _list_iceberg_namespaces(spark)
+
+        assert result == ["my.demo"]
+
+    def test_empty_when_no_catalogs(self):
+        spark = MagicMock()
+        with patch.object(data_store, "_list_iceberg_catalogs", return_value=[]):
+            assert _list_iceberg_namespaces(spark) == []
+
+
+# =============================================================================
+# _list_hive_databases
+# =============================================================================
+
+
+class TestListHiveDatabases:
+    """Tests for _list_hive_databases (direct HMS Thrift, no Spark)."""
+
+    def test_returns_sorted_database_names(self):
+        with patch.object(data_store.hive_metastore, "get_databases", return_value=["zeta", "alpha", "m"]):
+            result = _list_hive_databases()
+        assert result == ["alpha", "m", "zeta"]
+
+    def test_returns_empty_on_failure(self):
+        with patch.object(data_store.hive_metastore, "get_databases", side_effect=Exception("HMS down")):
+            result = _list_hive_databases()
+        assert result == []
+
+
+# =============================================================================
+# _aliases_for_user
+# =============================================================================
+
+
+class TestAliasesForUser:
+    """Tests for _aliases_for_user."""
+
+    def test_personal_aliases_includes_my_and_stripped(self):
+        personal, tenant = _aliases_for_user(
+            {"POLARIS_PERSONAL_CATALOG": "user_alice", "POLARIS_TENANT_CATALOGS": ""}
+        )
+        assert personal == {"my", "alice"}
+        assert tenant == set()
+
+    def test_personal_aliases_handles_no_personal_catalog(self):
+        personal, tenant = _aliases_for_user(
+            {"POLARIS_PERSONAL_CATALOG": None, "POLARIS_TENANT_CATALOGS": None}
+        )
+        assert personal == set()
+        assert tenant == set()
+
+    def test_tenant_aliases_strips_tenant_prefix(self):
+        personal, tenant = _aliases_for_user(
+            {
+                "POLARIS_PERSONAL_CATALOG": "user_tgu2",
+                "POLARIS_TENANT_CATALOGS": "tenant_globalusers,tenant_kbase",
+            }
+        )
+        assert personal == {"my", "tgu2"}
+        assert tenant == {"globalusers", "kbase"}
+
+    def test_tenant_aliases_skips_blank_entries(self):
+        personal, tenant = _aliases_for_user(
+            {
+                "POLARIS_PERSONAL_CATALOG": "user_tgu2",
+                "POLARIS_TENANT_CATALOGS": "tenant_globalusers,,  ,tenant_kbase",
+            }
+        )
+        assert tenant == {"globalusers", "kbase"}
+
+    def test_accepts_object_with_attrs(self):
+        ns = MagicMock()
+        ns.POLARIS_PERSONAL_CATALOG = "user_bob"
+        ns.POLARIS_TENANT_CATALOGS = "tenant_team1"
+
+        personal, tenant = _aliases_for_user(ns)
+        assert personal == {"my", "bob"}
+        assert tenant == {"team1"}
+
+
+# =============================================================================
+# _filter_to_user_namespaces
+# =============================================================================
+
+
+class TestFilterToUserNamespaces:
+    """Tests for _filter_to_user_namespaces."""
+
+    def test_keeps_personal_iceberg_catalog(self):
+        result = _filter_to_user_namespaces(
+            ["my.demo", "stranger.foo"],
+            username="alice",
+            personal_aliases={"my", "alice"},
+            tenant_aliases=set(),
+        )
+        assert result == ["my.demo"]
+
+    def test_keeps_tenant_iceberg_catalog(self):
+        result = _filter_to_user_namespaces(
+            ["globalusers.shared", "stranger.foo"],
+            username="alice",
+            personal_aliases={"my", "alice"},
+            tenant_aliases={"globalusers"},
+        )
+        assert result == ["globalusers.shared"]
+
+    def test_keeps_user_hive_prefix(self):
+        result = _filter_to_user_namespaces(
+            ["u_alice__demo", "u_bob__demo"],
+            username="alice",
+            personal_aliases={"my", "alice"},
+            tenant_aliases=set(),
+        )
+        assert result == ["u_alice__demo"]
+
+    def test_keeps_tenant_hive_prefix(self):
+        result = _filter_to_user_namespaces(
+            ["globalusers_shared", "kbase_data", "u_other__db"],
+            username="alice",
+            personal_aliases={"my", "alice"},
+            tenant_aliases={"globalusers"},
+        )
+        assert result == ["globalusers_shared"]
+
+    def test_drops_unrelated_databases(self):
+        result = _filter_to_user_namespaces(
+            ["default", "u_bob__demo", "stranger.foo", "kbase_data"],
+            username="alice",
+            personal_aliases={"my", "alice"},
+            tenant_aliases={"globalusers"},
+        )
+        assert result == []
+
+
+# =============================================================================
+# get_databases
+# =============================================================================
 
 
 class TestGetDatabases:
-    """Tests for get_databases function."""
+    """Tests for get_databases."""
 
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_hms_no_filter(self, mock_hms):
-        """Test get_databases using HMS without filtering."""
-        mock_hms.get_databases.return_value = ["db1", "db2"]
+    def test_returns_iceberg_and_hive_unfiltered(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=["my.demo", "kbase.shared"]),
+            patch.object(data_store, "_list_hive_databases", return_value=["u_alice__demo", "default"]),
+        ):
+            result = get_databases(spark=spark, return_json=False, filter_by_namespace=False)
 
-        result = get_databases(use_hms=True, filter_by_namespace=False)
+        assert result == ["default", "kbase.shared", "my.demo", "u_alice__demo"]
 
-        assert "db1" in result
-        assert "db2" in result
+    def test_returns_json(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=["my.demo"]),
+            patch.object(data_store, "_list_hive_databases", return_value=[]),
+        ):
+            result = get_databases(spark=spark, return_json=True, filter_by_namespace=False)
 
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_databases_spark_no_filter(self, mock_execute):
-        """Test get_databases using Spark without filtering."""
-        mock_execute.return_value = ["db1", "db2"]
+        assert json.loads(result) == ["my.demo"]
 
-        result = get_databases(use_hms=False, filter_by_namespace=False, return_json=False)
+    def test_filter_by_namespace_keeps_personal_and_tenant(self):
+        """End-to-end: settings drive both Iceberg catalog and Hive prefix filtering."""
+        spark = MagicMock()
+        with (
+            patch.object(
+                data_store,
+                "_list_iceberg_namespaces",
+                return_value=[
+                    "my.demo_personal",
+                    "tgu2.demo_personal",
+                    "globalusers.shared_data",
+                    "stranger.foo",
+                ],
+            ),
+            patch.object(
+                data_store,
+                "_list_hive_databases",
+                return_value=[
+                    "default",
+                    "globalusers_demo_shared",
+                    "u_bsadkhin__demo",
+                    "u_tgu2__demo_personal",
+                ],
+            ),
+        ):
+            result = get_databases(
+                spark=spark,
+                return_json=False,
+                filter_by_namespace=True,
+                settings={
+                    "USER": "tgu2",
+                    "POLARIS_PERSONAL_CATALOG": "user_tgu2",
+                    "POLARIS_TENANT_CATALOGS": "tenant_globalusers",
+                },
+            )
 
-        assert result == ["db1", "db2"]
+        assert result == [
+            "globalusers.shared_data",
+            "globalusers_demo_shared",
+            "my.demo_personal",
+            "tgu2.demo_personal",
+            "u_tgu2__demo_personal",
+        ]
 
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_accessible_paths")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_groups")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_with_filter(self, mock_hms, mock_groups, mock_prefix, mock_paths):
-        """Test get_databases with namespace filtering."""
-        mock_hms.get_databases.return_value = ["u_test__db1", "u_other__db2", "shared_db"]
+    def test_filter_requires_username(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=[]),
+            patch.object(data_store, "_list_hive_databases", return_value=[]),
+        ):
+            with pytest.raises(ValueError, match="settings.USER"):
+                get_databases(
+                    spark=spark,
+                    return_json=False,
+                    filter_by_namespace=True,
+                    settings={"USER": ""},
+                )
 
-        mock_groups.return_value = Mock(groups=["team1"])
-        mock_prefix.return_value = Mock(
-            user_namespace_prefix="u_test__",
-            tenant_namespace_prefix="t_team1__",
-        )
-        mock_paths.return_value = Mock(accessible_paths=["s3a://cdm-lake/users-sql-warehouse/other/shared_db.db/"])
+    def test_uses_get_settings_default(self):
+        """When settings is None, get_databases falls back to get_settings()."""
+        spark = MagicMock()
+        fake_settings = MagicMock()
+        fake_settings.USER = "alice"
+        fake_settings.POLARIS_PERSONAL_CATALOG = "user_alice"
+        fake_settings.POLARIS_TENANT_CATALOGS = ""
 
-        result = get_databases(use_hms=True, filter_by_namespace=True, return_json=False)
+        with (
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=["my.demo"]),
+            patch.object(data_store, "_list_hive_databases", return_value=["u_alice__db"]),
+            patch.object(data_store, "get_settings", return_value=fake_settings),
+        ):
+            result = get_databases(spark=spark, return_json=False)
 
-        assert "u_test__db1" in result
+        assert result == ["my.demo", "u_alice__db"]
+
+    def test_creates_spark_session_when_not_provided(self):
+        """When spark is None, a session is created via get_spark_session()."""
+        fake_spark = MagicMock()
+        with (
+            patch.object(data_store, "get_spark_session", return_value=fake_spark) as mock_get,
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=[]),
+            patch.object(data_store, "_list_hive_databases", return_value=[]),
+        ):
+            get_databases(spark=None, return_json=False, filter_by_namespace=False)
+
+        mock_get.assert_called_once()
+
+    def test_use_hms_param_is_ignored(self):
+        """use_hms is accepted for backward compatibility but does not affect behavior."""
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=["my.demo"]),
+            patch.object(data_store, "_list_hive_databases", return_value=["u_alice__db"]),
+        ):
+            result_true = get_databases(spark=spark, use_hms=True, return_json=False, filter_by_namespace=False)
+            result_false = get_databases(spark=spark, use_hms=False, return_json=False, filter_by_namespace=False)
+
+        assert result_true == ["my.demo", "u_alice__db"]
+        assert result_false == ["my.demo", "u_alice__db"]
 
 
 class TestGetDatabasesByTenant:
-    """Tests for get_databases with tenant parameter."""
+    """Tests for get_databases with the tenant= parameter."""
 
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_single_tenant(self, mock_hms, mock_prefix):
-        """Test get_databases with tenant filters to that tenant's prefix only."""
-        mock_hms.get_databases.return_value = [
-            "u_test__db1",
-            "globalusers_shared",
+    def test_single_tenant_filters_hive_and_iceberg(self):
+        spark = MagicMock()
+        with (
+            patch.object(
+                data_store,
+                "_list_iceberg_namespaces",
+                return_value=["globalusers.shared", "kbase.foo", "my.demo"],
+            ),
+            patch.object(
+                data_store,
+                "_list_hive_databases",
+                return_value=[
+                    "globalusers_analytics",
+                    "globalusers_shared",
+                    "kbase_data",
+                    "u_alice__db",
+                ],
+            ),
+        ):
+            result = get_databases(spark=spark, tenant="globalusers", return_json=False)
+
+        assert result == [
+            "globalusers.shared",
             "globalusers_analytics",
-            "teamx_project",
+            "globalusers_shared",
         ]
-        mock_prefix.return_value = Mock(tenant_namespace_prefix="globalusers_")
 
-        result = get_databases(use_hms=True, tenant="globalusers", return_json=False)
-
-        assert result == ["globalusers_analytics", "globalusers_shared"]
-        mock_prefix.assert_called_once_with(tenant="globalusers")
-
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_tenant_no_matches(self, mock_hms, mock_prefix):
-        """Test get_databases with tenant that has no matching databases."""
-        mock_hms.get_databases.return_value = ["u_test__db1", "globalusers_shared"]
-        mock_prefix.return_value = Mock(tenant_namespace_prefix="teamx_")
-
-        result = get_databases(use_hms=True, tenant="teamx", return_json=False)
-
+    def test_single_tenant_no_matches(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=["my.demo"]),
+            patch.object(data_store, "_list_hive_databases", return_value=["u_alice__db"]),
+        ):
+            result = get_databases(spark=spark, tenant="teamx", return_json=False)
         assert result == []
 
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_tenant_returns_json(self, mock_hms, mock_prefix):
-        """Test get_databases with tenant returns JSON when return_json=True."""
-        mock_hms.get_databases.return_value = ["globalusers_db1"]
-        mock_prefix.return_value = Mock(tenant_namespace_prefix="globalusers_")
-
-        result = get_databases(use_hms=True, tenant="globalusers", return_json=True)
-
+    def test_single_tenant_returns_json(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "_list_iceberg_namespaces", return_value=[]),
+            patch.object(data_store, "_list_hive_databases", return_value=["globalusers_db1"]),
+        ):
+            result = get_databases(spark=spark, tenant="globalusers", return_json=True)
         assert json.loads(result) == ["globalusers_db1"]
 
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_tenant_error_raises(self, mock_hms, mock_prefix):
-        """Test get_databases with tenant raises on API error."""
-        mock_hms.get_databases.return_value = ["db1"]
-        mock_prefix.side_effect = Exception("API error")
 
-        with pytest.raises(Exception, match="Could not filter databases for tenant 'badteam'"):
-            get_databases(use_hms=True, tenant="badteam", return_json=False)
-
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_databases_tenant_invalid_prefix_raises(self, mock_hms, mock_prefix):
-        """Test get_databases raises when tenant returns Unset/None prefix."""
-        from governance_client.types import UNSET
-
-        mock_hms.get_databases.return_value = ["db1"]
-        mock_prefix.return_value = Mock(tenant_namespace_prefix=UNSET)
-
-        with pytest.raises(Exception, match="Could not filter databases for tenant"):
-            get_databases(use_hms=True, tenant="badteam", return_json=False)
+# =============================================================================
+# get_tables
+# =============================================================================
 
 
 class TestGetTables:
-    """Tests for get_tables function."""
+    """Tests for get_tables — Iceberg vs Hive routing by database shape."""
 
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_tables_hms(self, mock_hms):
-        """Test get_tables using HMS."""
-        mock_hms.get_tables.return_value = ["table1", "table2"]
+    def test_iceberg_uses_show_tables(self):
+        spark = MagicMock()
+        spark.sql.return_value.collect.return_value = [
+            {"tableName": "table_b"},
+            {"tableName": "table_a"},
+        ]
 
-        result = get_tables("test_db", use_hms=True, return_json=False)
+        result = get_tables("my.demo", spark=spark, return_json=False)
 
-        assert result == ["table1", "table2"]
-        mock_hms.get_tables.assert_called_once_with("test_db")
+        assert result == ["table_a", "table_b"]
+        spark.sql.assert_called_once_with("SHOW TABLES IN my.demo")
 
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_tables_spark(self, mock_execute):
-        """Test get_tables using Spark."""
-        mock_execute.return_value = ["table1", "table2"]
+    def test_iceberg_returns_empty_on_failure(self):
+        spark = MagicMock()
+        spark.sql.side_effect = Exception("namespace not found")
 
-        result = get_tables("test_db", use_hms=False, return_json=False)
-
-        assert result == ["table1", "table2"]
-
-
-class TestGetTableSchema:
-    """Tests for get_table_schema function."""
-
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_table_schema(self, mock_execute):
-        """Test get_table_schema returns column names."""
-        mock_execute.return_value = ["col1", "col2", "col3"]
-
-        result = get_table_schema("test_db", "test_table", return_json=False)
-
-        assert result == ["col1", "col2", "col3"]
-
-
-class TestGetDbStructure:
-    """Tests for get_db_structure function."""
-
-    @patch("berdl_notebook_utils.spark.data_store.get_databases")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_db_structure_without_schema(self, mock_hms, mock_get_dbs):
-        """Test get_db_structure without schema."""
-        mock_get_dbs.return_value = ["db1"]
-        mock_hms.get_tables.return_value = ["table1", "table2"]
-
-        result = get_db_structure(with_schema=False, use_hms=True, return_json=False)
-
-        assert "db1" in result
-        assert result["db1"] == ["table1", "table2"]
-
-    @patch("berdl_notebook_utils.spark.data_store.get_table_schema")
-    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
-    @patch("berdl_notebook_utils.spark.data_store.get_databases")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_get_db_structure_with_schema(self, mock_hms, mock_get_dbs, mock_spark, mock_schema):
-        """Test get_db_structure with schema."""
-        mock_get_dbs.return_value = ["db1"]
-        mock_hms.get_tables.return_value = ["table1"]
-        mock_schema.return_value = ["col1", "col2"]
-
-        result = get_db_structure(with_schema=True, use_hms=True, return_json=False)
-
-        assert "db1" in result
-        assert "table1" in result["db1"]
-        assert result["db1"]["table1"] == ["col1", "col2"]
-
-    @patch("berdl_notebook_utils.spark.data_store._execute_with_spark")
-    def test_get_db_structure_using_spark(self, mock_execute):
-        """Test get_db_structure using Spark."""
-        mock_execute.return_value = {"db1": ["table1"]}
-
-        result = get_db_structure(use_hms=False, return_json=False)
-
-        assert result == {"db1": ["table1"]}
-
-
-class TestExecuteWithSpark:
-    """Tests for _execute_with_spark helper."""
-
-    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
-    def test_execute_with_spark_creates_session(self, mock_get_session):
-        """Test creates Spark session if not provided."""
-        mock_spark = Mock()
-        mock_get_session.return_value = mock_spark
-
-        def test_func(spark, arg1):
-            return f"result_{arg1}"
-
-        result = _execute_with_spark(test_func, None, "test")
-
-        mock_get_session.assert_called_once()
-        assert result == "result_test"
-
-    def test_execute_with_spark_uses_provided_session(self):
-        """Test uses provided Spark session."""
-        mock_spark = Mock()
-
-        def test_func(spark, arg1):
-            return f"result_{arg1}"
-
-        result = _execute_with_spark(test_func, mock_spark, "test")
-
-        assert result == "result_test"
-
-
-class TestCachedWrappers:
-    """Tests for cached governance API wrappers."""
-
-    @patch("berdl_notebook_utils.spark.data_store.get_my_groups")
-    def test_cached_get_my_groups(self, mock_get_my_groups):
-        """Test _cached_get_my_groups calls through to get_my_groups."""
-        mock_get_my_groups.return_value = Mock(groups=["team1"])
-        _cached_get_my_groups.clear_cache()
-
-        result = _cached_get_my_groups()
-
-        assert result.groups == ["team1"]
-        mock_get_my_groups.assert_called_once()
-
-    @patch("berdl_notebook_utils.spark.data_store.get_namespace_prefix")
-    def test_cached_get_namespace_prefix(self, mock_get_ns):
-        """Test _cached_get_namespace_prefix calls through to get_namespace_prefix."""
-        mock_get_ns.return_value = Mock(user_namespace_prefix="u_test__")
-        _cached_get_namespace_prefix.clear_cache()
-
-        result = _cached_get_namespace_prefix()
-
-        assert result.user_namespace_prefix == "u_test__"
-        mock_get_ns.assert_called_once()
-
-    @patch("berdl_notebook_utils.spark.data_store.get_my_accessible_paths")
-    def test_cached_get_my_accessible_paths(self, mock_get_paths):
-        """Test _cached_get_my_accessible_paths calls through to get_my_accessible_paths."""
-        mock_get_paths.return_value = Mock(accessible_paths=["s3a://bucket/path"])
-        _cached_get_my_accessible_paths.clear_cache()
-
-        result = _cached_get_my_accessible_paths()
-
-        assert result.accessible_paths == ["s3a://bucket/path"]
-        mock_get_paths.assert_called_once()
-
-
-class TestGetDatabasesFilterError:
-    """Tests for get_databases filter_by_namespace error path."""
-
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_accessible_paths")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_namespace_prefix")
-    @patch("berdl_notebook_utils.spark.data_store._cached_get_my_groups")
-    @patch("berdl_notebook_utils.spark.data_store.hive_metastore")
-    def test_filter_error_raises(self, mock_hms, mock_groups, mock_prefix, mock_paths):
-        """Test get_databases raises when filter_by_namespace fails."""
-        mock_hms.get_databases.return_value = ["db1"]
-        mock_groups.side_effect = Exception("API error")
-
-        with pytest.raises(Exception, match="Could not filter databases by namespace"):
-            get_databases(use_hms=True, filter_by_namespace=True, return_json=False)
-
-
-class TestGetTablesSparkInnerFunction:
-    """Tests for get_tables using Spark (inner _get_tbls function)."""
-
-    def test_get_tables_spark_calls_catalog(self):
-        """Test get_tables with use_hms=False uses Spark catalog."""
-        mock_spark = Mock()
-        mock_table1 = Mock()
-        mock_table1.name = "table1"
-        mock_table2 = Mock()
-        mock_table2.name = "table2"
-        mock_spark.catalog.listTables.return_value = [mock_table1, mock_table2]
-
-        result = get_tables("test_db", spark=mock_spark, use_hms=False, return_json=False)
-
-        assert result == ["table1", "table2"]
-        mock_spark.catalog.listTables.assert_called_once_with(dbName="test_db")
-
-
-class TestGetTableSchemaErrorPath:
-    """Tests for get_table_schema inner error handling."""
-
-    def test_schema_error_returns_empty_list(self):
-        """Test _get_schema returns [] when catalog raises Exception."""
-        mock_spark = Mock()
-        mock_spark.catalog.listColumns.side_effect = Exception("table not found")
-
-        result = get_table_schema("test_db", "broken_table", spark=mock_spark, return_json=False)
+        result = get_tables("my.missing", spark=spark, return_json=False)
 
         assert result == []
 
+    def test_iceberg_creates_spark_session_when_missing(self):
+        fake_spark = MagicMock()
+        fake_spark.sql.return_value.collect.return_value = []
+        with patch.object(data_store, "get_spark_session", return_value=fake_spark) as mock_get:
+            get_tables("my.demo", spark=None, return_json=False)
+        mock_get.assert_called_once()
 
-class TestGetTableSchemaDetailed:
-    """Tests for get_table_schema detailed=True branch."""
+    def test_hive_uses_hms(self):
+        with patch.object(data_store.hive_metastore, "get_tables", return_value=["t2", "t1"]):
+            result = get_tables("u_alice__demo", spark=None, return_json=False)
+
+        assert result == ["t1", "t2"]
+
+    def test_hive_returns_empty_on_failure(self):
+        with patch.object(data_store.hive_metastore, "get_tables", side_effect=Exception("HMS down")):
+            result = get_tables("u_alice__demo", spark=None, return_json=False)
+        assert result == []
+
+    def test_use_hms_param_is_ignored(self):
+        """use_hms is accepted but routing is by database shape."""
+        with patch.object(data_store.hive_metastore, "get_tables", return_value=["t1"]):
+            result = get_tables("u_alice__db", use_hms=False, spark=None, return_json=False)
+        assert result == ["t1"]
+
+
+# =============================================================================
+# get_table_schema
+# =============================================================================
+
+
+class TestGetTableSchema:
+    """Tests for get_table_schema."""
+
+    def test_returns_column_names(self):
+        spark = MagicMock()
+        c1, c2 = Mock(name="id"), Mock(name="email")
+        c1.name = "id"
+        c2.name = "email"
+        spark.catalog.listColumns.return_value = [c1, c2]
+
+        result = get_table_schema("my.demo", "users", spark=spark, return_json=False)
+
+        assert result == ["id", "email"]
+        spark.catalog.listColumns.assert_called_once_with(tableName="my.demo.users")
+
+    def test_works_for_hive_flat_database(self):
+        spark = MagicMock()
+        c1 = Mock()
+        c1.name = "col1"
+        spark.catalog.listColumns.return_value = [c1]
+
+        result = get_table_schema("u_alice__demo", "t", spark=spark, return_json=False)
+
+        assert result == ["col1"]
+        spark.catalog.listColumns.assert_called_once_with(tableName="u_alice__demo.t")
+
+    def test_returns_empty_on_failure(self):
+        spark = MagicMock()
+        spark.catalog.listColumns.side_effect = Exception("table not found")
+
+        result = get_table_schema("my.demo", "missing", spark=spark, return_json=False)
+
+        assert result == []
 
     def test_detailed_returns_column_dicts(self):
-        """Test detailed=True returns each column's _asdict()."""
-        mock_spark = Mock()
-        col1, col2 = Mock(), Mock()
-        col1._asdict.return_value = {"name": "id"}
-        col2._asdict.return_value = {"name": "name"}
-        mock_spark.catalog.listColumns.return_value = [col1, col2]
+        spark = MagicMock()
+        c1, c2 = Mock(), Mock()
+        c1._asdict.return_value = {"name": "id", "dataType": "int"}
+        c2._asdict.return_value = {"name": "email", "dataType": "string"}
+        spark.catalog.listColumns.return_value = [c1, c2]
 
-        result = get_table_schema("test_db", "t", spark=mock_spark, return_json=False, detailed=True)
+        result = get_table_schema(
+            "my.demo", "users", spark=spark, return_json=False, detailed=True
+        )
 
-        assert result == [{"name": "id"}, {"name": "name"}]
+        assert result == [{"name": "id", "dataType": "int"}, {"name": "email", "dataType": "string"}]
+
+    def test_returns_json(self):
+        spark = MagicMock()
+        c1 = Mock()
+        c1.name = "id"
+        spark.catalog.listColumns.return_value = [c1]
+
+        result = get_table_schema("my.demo", "t", spark=spark, return_json=True)
+        assert json.loads(result) == ["id"]
 
 
-class TestGetDbStructureSparkPath:
-    """Tests for get_db_structure with use_hms=False (Spark inner function)."""
+# =============================================================================
+# get_db_structure
+# =============================================================================
 
-    @patch("berdl_notebook_utils.spark.data_store.get_table_schema")
-    @patch("berdl_notebook_utils.spark.data_store.get_tables")
-    @patch("berdl_notebook_utils.spark.data_store.get_databases")
-    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
-    def test_spark_path_without_schema(self, mock_get_session, mock_get_dbs, mock_get_tables, mock_get_schema):
-        """Test get_db_structure via Spark without schema."""
-        mock_spark = Mock()
-        mock_get_session.return_value = mock_spark
-        mock_get_dbs.return_value = ["db1"]
-        mock_get_tables.return_value = ["t1", "t2"]
 
-        result = get_db_structure(with_schema=False, use_hms=False, return_json=False)
+class TestGetDbStructure:
+    """Tests for get_db_structure."""
 
-        assert result == {"db1": ["t1", "t2"]}
+    def test_without_schema(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "get_databases", return_value=["my.demo", "u_alice__db"]),
+            patch.object(data_store, "get_tables", side_effect=[["t1", "t2"], ["t3"]]),
+        ):
+            result = get_db_structure(
+                with_schema=False, return_json=False, spark=spark, filter_by_namespace=False
+            )
 
-    @patch("berdl_notebook_utils.spark.data_store.get_table_schema")
-    @patch("berdl_notebook_utils.spark.data_store.get_tables")
-    @patch("berdl_notebook_utils.spark.data_store.get_databases")
-    @patch("berdl_notebook_utils.spark.data_store.get_spark_session")
-    def test_spark_path_with_schema(self, mock_get_session, mock_get_dbs, mock_get_tables, mock_get_schema):
-        """Test get_db_structure via Spark with schema."""
-        mock_spark = Mock()
-        mock_get_session.return_value = mock_spark
-        mock_get_dbs.return_value = ["db1"]
-        mock_get_tables.return_value = ["t1"]
-        mock_get_schema.return_value = ["col1", "col2"]
+        assert result == {"my.demo": ["t1", "t2"], "u_alice__db": ["t3"]}
 
-        result = get_db_structure(with_schema=True, use_hms=False, return_json=False)
+    def test_with_schema(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "get_databases", return_value=["my.demo"]),
+            patch.object(data_store, "get_tables", return_value=["t1"]),
+            patch.object(data_store, "get_table_schema", return_value=["c1", "c2"]),
+        ):
+            result = get_db_structure(
+                with_schema=True, return_json=False, spark=spark, filter_by_namespace=False
+            )
 
-        assert result == {"db1": {"t1": ["col1", "col2"]}}
+        assert result == {"my.demo": {"t1": ["c1", "c2"]}}
+
+    def test_returns_json(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "get_databases", return_value=["my.demo"]),
+            patch.object(data_store, "get_tables", return_value=["t1"]),
+        ):
+            result = get_db_structure(
+                with_schema=False, return_json=True, spark=spark, filter_by_namespace=False
+            )
+
+        assert json.loads(result) == {"my.demo": ["t1"]}
+
+    def test_creates_spark_session_when_missing(self):
+        fake_spark = MagicMock()
+        with (
+            patch.object(data_store, "get_spark_session", return_value=fake_spark) as mock_get,
+            patch.object(data_store, "get_databases", return_value=[]),
+        ):
+            get_db_structure(spark=None, return_json=False, filter_by_namespace=False)
+        mock_get.assert_called_once()
