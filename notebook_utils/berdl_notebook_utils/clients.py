@@ -149,8 +149,9 @@ def get_hive_metastore_client(
         stacklevel=2,
     )
     pool = get_hive_metastore_pool(settings)
-    # Build a fresh client through the pool's factory so socket-level
-    # timeouts still apply, but bypass the pool itself: the caller owns
-    # the connection's full lifecycle.
+    # Return a fresh, UNOPENED client built through the pool's factory.
+    # The legacy contract was: caller does open()/.../close(). We preserve
+    # that contract while still applying socket_timeout_ms so legacy callers
+    # also get wedge-protection.
     # Disable lint of private call: documented escape hatch for legacy callers.
-    return pool._new_client()  # type: ignore[attr-defined]  # noqa: SLF001
+    return pool._build_client()  # type: ignore[attr-defined]  # noqa: SLF001

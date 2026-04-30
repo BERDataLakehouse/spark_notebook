@@ -147,14 +147,27 @@ class HMSClientPool:
     # Internals
     # ------------------------------------------------------------------
 
-    def _new_client(self) -> HMSClient:
+    def _build_client(self) -> HMSClient:
+        """Construct a configured but **unopened** ``HMSClient``.
+
+        The transport carries the pool's socket-level connect+read timeout
+        (``socket_timeout_ms``) so that even callers who use this client
+        outside the pool — e.g. the deprecated
+        :func:`berdl_notebook_utils.clients.get_hive_metastore_client` — get
+        the same wedge-protection. The caller is responsible for ``open()``
+        and ``close()``.
+        """
         sock = TSocket.TSocket(self._host, self._port)
         # Applies to both connect() and recv() at the socket layer. Without
         # this, a wedged peer can block a worker thread forever.
         sock.setTimeout(self._socket_timeout_ms)
         transport = TTransport.TBufferedTransport(sock)
         protocol = TBinaryProtocol.TBinaryProtocol(transport)
-        client = HMSClient(iprot=protocol)
+        return HMSClient(iprot=protocol)
+
+    def _new_client(self) -> HMSClient:
+        """Construct, open, and account for a new pool-owned ``HMSClient``."""
+        client = self._build_client()
         client.open()
         with self._metrics_lock:
             self._created += 1
