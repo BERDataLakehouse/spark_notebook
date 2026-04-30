@@ -15,6 +15,7 @@ from berdl_notebook_utils.minio_governance.operations import (
     get_my_sql_warehouse,
     get_group_sql_warehouse,
 )
+from berdl_notebook_utils.spark._cache import invalidate_all as _invalidate_data_store_cache
 
 DEFAULT_NAMESPACE = "default"
 
@@ -115,6 +116,8 @@ def create_namespace_if_not_exists(
         catalog = tenant_name or "my"
         full_ns = f"{catalog}.{namespace}"
         spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {full_ns}")
+        # Catalog state changed: any cached database listing is now stale.
+        _invalidate_data_store_cache()
         print(f"Namespace {full_ns} is ready to use.")
         return full_ns
 
@@ -137,6 +140,8 @@ def create_namespace_if_not_exists(
         spark.sql(f"CREATE DATABASE IF NOT EXISTS {namespace}")
         print(f"Namespace {namespace} is ready to use.")
 
+    # Catalog state changed: any cached database listing is now stale.
+    _invalidate_data_store_cache()
     return namespace
 
 
@@ -186,6 +191,9 @@ def remove_table(
     spark_catalog = f"{namespace}.{table_name}"
 
     spark.sql(f"DROP TABLE IF EXISTS {spark_catalog}")
+    # Catalog state changed: cached tables list for this namespace and any
+    # cached schema for this table are now stale.
+    _invalidate_data_store_cache()
     print(f"Table {spark_catalog} removed.")
 
 

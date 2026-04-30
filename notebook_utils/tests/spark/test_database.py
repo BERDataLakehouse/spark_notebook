@@ -216,3 +216,55 @@ def test_create_namespace_iceberg_no_governance_prefix() -> None:
     with patch("berdl_notebook_utils.spark.database.get_namespace_prefix") as mock_prefix:
         create_namespace_if_not_exists(mock_spark, "test_db", iceberg=True)
         mock_prefix.assert_not_called()
+
+
+# ============================================================================
+# Cache invalidation hooks
+# ============================================================================
+
+
+class TestCacheInvalidationOnMutation:
+    """create_namespace_if_not_exists / remove_table must wipe data_store caches."""
+
+    def test_create_namespace_iceberg_invalidates_data_store_cache(self) -> None:
+        from berdl_notebook_utils.spark import _cache as ds_cache
+
+        ds_cache.databases_cache.set("k", ["stale"])
+        ds_cache.tables_cache.set("ns", ["stale"])
+
+        create_namespace_if_not_exists(make_mock_spark(), "new_ns", iceberg=True)
+
+        assert ds_cache.databases_cache.get("k") is None
+        assert ds_cache.tables_cache.get("ns") is None
+
+    def test_create_namespace_delta_invalidates_data_store_cache(self) -> None:
+        from berdl_notebook_utils.spark import _cache as ds_cache
+
+        ds_cache.databases_cache.set("k", ["stale"])
+
+        create_namespace_if_not_exists(make_mock_spark(database_exists=False), NAMESPACE)
+
+        assert ds_cache.databases_cache.get("k") is None
+
+    def test_create_namespace_skipped_when_exists_does_not_clear_cache(self) -> None:
+        """If the namespace already existed, no mutation occurred → cache preserved."""
+        from berdl_notebook_utils.spark import _cache as ds_cache
+
+        ds_cache.databases_cache.set("k", ["fresh"])
+
+        create_namespace_if_not_exists(make_mock_spark(database_exists=True), NAMESPACE)
+
+        # No catalog change happened, so the cache should still be valid.
+        assert ds_cache.databases_cache.get("k") == ["fresh"]
+
+    def test_remove_table_invalidates_data_store_cache(self) -> None:
+        from berdl_notebook_utils.spark import _cache as ds_cache
+        from berdl_notebook_utils.spark.database import remove_table
+
+        ds_cache.tables_cache.set("ns", ["t1", "t2"])
+        ds_cache.schema_cache.set(("ns", "t1", False), ["c1"])
+
+        remove_table(Mock(name="SparkSession"), "t1", "ns")
+
+        assert ds_cache.tables_cache.get("ns") is None
+        assert ds_cache.schema_cache.get(("ns", "t1", False)) is None
