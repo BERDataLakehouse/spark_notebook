@@ -8,12 +8,14 @@ import pytest
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
 from berdl_notebook_utils.clients import (
-    get_minio_client,
-    get_task_service_client,
-    get_s3_client,
+    _get_hive_metastore_pool_cached,
     get_governance_client,
-    get_spark_cluster_client,
     get_hive_metastore_client,
+    get_hive_metastore_pool,
+    get_minio_client,
+    get_s3_client,
+    get_spark_cluster_client,
+    get_task_service_client,
 )
 
 
@@ -25,7 +27,7 @@ def clear_caches():
     get_s3_client.cache_clear()
     get_governance_client.cache_clear()
     get_spark_cluster_client.cache_clear()
-    get_hive_metastore_client.cache_clear()
+    _get_hive_metastore_pool_cached.cache_clear()
     get_settings.cache_clear()
     yield
 
@@ -159,29 +161,34 @@ class TestGetSparkClusterClient:
             assert call_kwargs["base_url"].rstrip("/") == "http://localhost:8000"
 
 
-class TestGetHiveMetastoreClient:
-    """Tests for get_hive_metastore_client function."""
+class TestGetHiveMetastorePool:
+    """Tests for the new pool-based HMS access."""
 
-    def test_get_hive_metastore_client_creates_client(self):
-        """Test that get_hive_metastore_client creates an HMS client."""
-        with patch("berdl_notebook_utils.clients.HMSClient") as mock_hms:
-            mock_hms.return_value = Mock()
-            get_hive_metastore_client()
+    def test_pool_is_built_from_thrift_uri(self):
+        """``get_hive_metastore_pool`` parses the thrift:// URI from settings."""
+        pool = get_hive_metastore_pool()
+        # Settings come from conftest: thrift://localhost:9083.
+        assert pool._host == "localhost"  # noqa: SLF001 - test of internals
+        assert pool._port == 9083  # noqa: SLF001
+        assert pool.max_size >= 1
 
-            mock_hms.assert_called_once()
-            call_kwargs = mock_hms.call_args[1]
-            assert "host" in call_kwargs
-            assert "port" in call_kwargs
+    def test_pool_is_cached_per_process(self):
+        """Repeat calls return the same pool instance (no per-call rebuild)."""
+        assert get_hive_metastore_pool() is get_hive_metastore_pool()
 
-    def test_get_hive_metastore_client_parses_thrift_uri(self):
-        """Test that the thrift URI is correctly parsed."""
-        with patch("berdl_notebook_utils.clients.HMSClient") as mock_hms:
-            mock_hms.return_value = Mock()
-            get_hive_metastore_client()
 
-            call_kwargs = mock_hms.call_args[1]
-            assert call_kwargs["host"] == "localhost"
-            assert call_kwargs["port"] == 9083
+class TestDeprecatedGetHiveMetastoreClient:
+    """The legacy singleton accessor is preserved for transitional callers,
+    but it MUST emit a DeprecationWarning so callers find and migrate it."""
+
+    def test_emits_deprecation_warning(self):
+        with patch.object(
+            type(get_hive_metastore_pool()),
+            "_new_client",
+            return_value=Mock(),
+        ):
+            with pytest.warns(DeprecationWarning, match="thread-safe"):
+                get_hive_metastore_client()
 
 
 class TestClientWithCustomSettings:
