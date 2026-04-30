@@ -17,7 +17,16 @@ from berdl_notebook_utils.spark.data_store import (
     get_db_structure,
     get_table_schema,
     get_tables,
+    invalidate_cache,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_data_store_caches():
+    """Reset in-process TTL caches before/after each test for isolation."""
+    invalidate_cache()
+    yield
+    invalidate_cache()
 
 
 # =============================================================================
@@ -466,50 +475,60 @@ class TestGetDatabasesByTenant:
 
 
 class TestGetTables:
-    """Tests for get_tables — Iceberg vs Hive routing by database shape."""
+    """Tests for get_tables — unified path via spark.catalog.listTables."""
 
-    def test_iceberg_uses_show_tables(self):
+    @staticmethod
+    def _make_table(name: str):
+        t = Mock()
+        t.name = name
+        return t
+
+    def test_iceberg_uses_list_tables(self):
         spark = MagicMock()
-        spark.sql.return_value.collect.return_value = [
-            {"tableName": "table_b"},
-            {"tableName": "table_a"},
+        spark.catalog.listTables.return_value = [
+            self._make_table("table_b"),
+            self._make_table("table_a"),
         ]
 
         result = get_tables("my.demo", spark=spark, return_json=False)
 
         assert result == ["table_a", "table_b"]
-        spark.sql.assert_called_once_with("SHOW TABLES IN my.demo")
+        spark.catalog.listTables.assert_called_once_with(dbName="my.demo")
 
-    def test_iceberg_returns_empty_on_failure(self):
+    def test_hive_uses_list_tables(self):
         spark = MagicMock()
-        spark.sql.side_effect = Exception("namespace not found")
+        spark.catalog.listTables.return_value = [
+            self._make_table("t2"),
+            self._make_table("t1"),
+        ]
+
+        result = get_tables("u_alice__demo", spark=spark, return_json=False)
+
+        assert result == ["t1", "t2"]
+        spark.catalog.listTables.assert_called_once_with(dbName="u_alice__demo")
+
+    def test_returns_empty_on_failure(self):
+        spark = MagicMock()
+        spark.catalog.listTables.side_effect = Exception("namespace not found")
 
         result = get_tables("my.missing", spark=spark, return_json=False)
 
         assert result == []
 
-    def test_iceberg_creates_spark_session_when_missing(self):
+    def test_creates_spark_session_when_missing(self):
         fake_spark = MagicMock()
-        fake_spark.sql.return_value.collect.return_value = []
+        fake_spark.catalog.listTables.return_value = []
         with patch.object(data_store, "get_spark_session", return_value=fake_spark) as mock_get:
             get_tables("my.demo", spark=None, return_json=False)
         mock_get.assert_called_once()
 
-    def test_hive_uses_hms(self):
-        with patch.object(data_store.hive_metastore, "get_tables", return_value=["t2", "t1"]):
-            result = get_tables("u_alice__demo", spark=None, return_json=False)
-
-        assert result == ["t1", "t2"]
-
-    def test_hive_returns_empty_on_failure(self):
-        with patch.object(data_store.hive_metastore, "get_tables", side_effect=Exception("HMS down")):
-            result = get_tables("u_alice__demo", spark=None, return_json=False)
-        assert result == []
-
     def test_use_hms_param_is_ignored(self):
-        """use_hms is accepted but routing is by database shape."""
-        with patch.object(data_store.hive_metastore, "get_tables", return_value=["t1"]):
-            result = get_tables("u_alice__db", use_hms=False, spark=None, return_json=False)
+        """use_hms is accepted but listing always goes through Spark."""
+        spark = MagicMock()
+        spark.catalog.listTables.return_value = [self._make_table("t1")]
+
+        result = get_tables("u_alice__db", use_hms=False, spark=spark, return_json=False)
+
         assert result == ["t1"]
 
 
@@ -620,3 +639,162 @@ class TestGetDbStructure:
         ):
             get_db_structure(spark=None, return_json=False, filter_by_namespace=False)
         mock_get.assert_called_once()
+
+
+# =============================================================================
+# Caching behavior
+# =============================================================================
+
+
+class TestCaching:
+    """Tests for the in-process TTL caches added to the public API."""
+
+    @staticmethod
+    def _make_table(name: str):
+        t = Mock()
+        t.name = name
+        return t
+
+    def test_get_tables_cache_hit_skips_spark(self):
+        spark = MagicMock()
+        spark.catalog.listTables.return_value = [self._make_table("t1"), self._make_table("t2")]
+
+        first = get_tables("my.demo", spark=spark, return_json=False)
+        second = get_tables("my.demo", spark=spark, return_json=False)
+
+        assert first == second == ["t1", "t2"]
+        # Underlying Spark call happens only once.
+        spark.catalog.listTables.assert_called_once_with(dbName="my.demo")
+
+    def test_get_tables_force_refresh_bypasses_cache(self):
+        spark = MagicMock()
+        spark.catalog.listTables.side_effect = [
+            [self._make_table("t1")],
+            [self._make_table("t1"), self._make_table("t2")],
+        ]
+
+        first = get_tables("my.demo", spark=spark, return_json=False)
+        second = get_tables("my.demo", spark=spark, return_json=False, force_refresh=True)
+
+        assert first == ["t1"]
+        assert second == ["t1", "t2"]
+        assert spark.catalog.listTables.call_count == 2
+
+    def test_get_tables_invalidate_cache_clears_entry(self):
+        spark = MagicMock()
+        spark.catalog.listTables.side_effect = [
+            [self._make_table("t1")],
+            [self._make_table("t1"), self._make_table("t2")],
+        ]
+
+        first = get_tables("my.demo", spark=spark, return_json=False)
+        invalidate_cache()
+        second = get_tables("my.demo", spark=spark, return_json=False)
+
+        assert first == ["t1"]
+        assert second == ["t1", "t2"]
+        assert spark.catalog.listTables.call_count == 2
+
+    def test_get_tables_cache_returns_json_from_raw_cache(self):
+        """Cache stores raw list; return_json formats on retrieval."""
+        spark = MagicMock()
+        spark.catalog.listTables.return_value = [self._make_table("t1")]
+
+        raw = get_tables("my.demo", spark=spark, return_json=False)
+        as_json = get_tables("my.demo", spark=spark, return_json=True)
+
+        assert raw == ["t1"]
+        assert json.loads(as_json) == ["t1"]
+        spark.catalog.listTables.assert_called_once()
+
+    def test_get_table_schema_cache_hit(self):
+        spark = MagicMock()
+        c1 = Mock()
+        c1.name = "id"
+        c2 = Mock()
+        c2.name = "email"
+        spark.catalog.listColumns.return_value = [c1, c2]
+
+        first = get_table_schema("my.demo", "users", spark=spark, return_json=False)
+        second = get_table_schema("my.demo", "users", spark=spark, return_json=False)
+
+        assert first == second == ["id", "email"]
+        spark.catalog.listColumns.assert_called_once()
+
+    def test_get_table_schema_detailed_keys_separately(self):
+        """detailed=True / detailed=False are separate cache entries."""
+        spark = MagicMock()
+        c1 = Mock()
+        c1.name = "id"
+        c1._asdict.return_value = {"name": "id", "dataType": "int"}
+        spark.catalog.listColumns.return_value = [c1]
+
+        names = get_table_schema("my.demo", "users", spark=spark, return_json=False, detailed=False)
+        details = get_table_schema("my.demo", "users", spark=spark, return_json=False, detailed=True)
+
+        assert names == ["id"]
+        assert details == [{"name": "id", "dataType": "int"}]
+        # Two distinct cache keys → two real lookups.
+        assert spark.catalog.listColumns.call_count == 2
+
+    def test_get_databases_cache_hit_skips_spark_and_hms(self):
+        spark = MagicMock()
+        spark.sql.return_value.collect.return_value = _make_set_rows()
+        settings = {"USER": "alice"}
+        with patch.object(data_store.hive_metastore, "get_databases", return_value=["u_alice__demo"]) as mock_hms:
+            first = get_databases(spark=spark, return_json=False, filter_by_namespace=False, settings=settings)
+            second = get_databases(spark=spark, return_json=False, filter_by_namespace=False, settings=settings)
+
+        assert first == second == ["u_alice__demo"]
+        mock_hms.assert_called_once()
+
+    def test_get_databases_cache_keyed_by_tenant(self):
+        spark = MagicMock()
+        spark.sql.return_value.collect.return_value = _make_set_rows()
+        settings = {"USER": "alice"}
+        hive_dbs = ["kbase_demo", "u_alice__demo"]
+        with patch.object(data_store.hive_metastore, "get_databases", return_value=hive_dbs) as mock_hms:
+            tenant_view = get_databases(
+                spark=spark,
+                return_json=False,
+                filter_by_namespace=False,
+                tenant="kbase",
+                settings=settings,
+            )
+            user_view = get_databases(spark=spark, return_json=False, filter_by_namespace=False, settings=settings)
+
+        assert tenant_view == ["kbase_demo"]
+        assert user_view == ["kbase_demo", "u_alice__demo"]
+        # Two different cache keys → two real lookups.
+        assert mock_hms.call_count == 2
+
+    def test_get_db_structure_cache_hit(self):
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "get_databases", return_value=["my.demo"]) as mock_dbs,
+            patch.object(data_store, "get_tables", return_value=["t1"]) as mock_tables,
+        ):
+            first = get_db_structure(with_schema=False, return_json=False, spark=spark, filter_by_namespace=False)
+            second = get_db_structure(with_schema=False, return_json=False, spark=spark, filter_by_namespace=False)
+
+        assert first == second == {"my.demo": ["t1"]}
+        # Inner builders run only on the first call.
+        mock_dbs.assert_called_once()
+        mock_tables.assert_called_once()
+
+    def test_get_db_structure_force_refresh_propagates(self):
+        """force_refresh on the structure should propagate to inner calls."""
+        spark = MagicMock()
+        with (
+            patch.object(data_store, "get_databases", return_value=["my.demo"]) as mock_dbs,
+            patch.object(data_store, "get_tables", return_value=["t1"]) as mock_tables,
+        ):
+            get_db_structure(with_schema=False, return_json=False, spark=spark, filter_by_namespace=False)
+            get_db_structure(
+                with_schema=False, return_json=False, spark=spark, filter_by_namespace=False, force_refresh=True
+            )
+
+        assert mock_dbs.call_count == 2
+        # And the second call to get_databases must have force_refresh=True.
+        assert mock_dbs.call_args_list[1].kwargs.get("force_refresh") is True
+        assert mock_tables.call_args_list[1].kwargs.get("force_refresh") is True
