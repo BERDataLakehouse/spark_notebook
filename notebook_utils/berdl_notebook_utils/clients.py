@@ -1,5 +1,5 @@
+import warnings
 from functools import lru_cache
-from urllib.parse import urlparse
 
 from cdmtaskserviceclient.client import CTSClient
 from governance_client import AuthenticatedClient as GovernanceAuthenticatedClient
@@ -9,6 +9,7 @@ from spark_manager_client.client import AuthenticatedClient as SparkAuthenticate
 
 from berdl_notebook_utils import BERDLSettings, get_settings
 from berdl_notebook_utils.cache import kbase_token_dependent, sync_kbase_token_before_call
+from berdl_notebook_utils.hms_pool import HMSClientPool, build_pool_from_settings
 
 
 @sync_kbase_token_before_call
@@ -91,25 +92,65 @@ def get_spark_cluster_client(
 
 
 @lru_cache(maxsize=1)
+def _get_hive_metastore_pool_cached() -> HMSClientPool:
+    """Internal: lru-cached pool built from default (env-driven) settings.
+
+    Kept private because :class:`BERDLSettings` is a Pydantic ``BaseSettings``
+    model and is not hashable, so we cannot ``lru_cache`` a function that
+    accepts one as an argument. The public :func:`get_hive_metastore_pool`
+    wrapper bypasses this cache when a custom ``settings`` is supplied.
+    """
+    return build_pool_from_settings(None)
+
+
+def get_hive_metastore_pool(settings: BERDLSettings | None = None) -> HMSClientPool:
+    """Return the per-process Hive Metastore connection pool.
+
+    Use this in preference to :func:`get_hive_metastore_client`. ``HMSClient``
+    is a Thrift client and is **not thread-safe**: a single client instance
+    serializes one in-flight call. The pool keeps that invariant while
+    allowing many concurrent callers in the same process. See
+    :class:`berdl_notebook_utils.hms_pool.HMSClientPool` for the correctness
+    rationale and tunables.
+
+    With the default (no-argument) form, the pool is constructed once per
+    process and cached. When ``settings`` is supplied, a fresh pool is
+    built each call (the cache is bypassed because ``BERDLSettings`` is
+    not hashable).
+    """
+    if settings is None:
+        return _get_hive_metastore_pool_cached()
+    return build_pool_from_settings(settings)
+
+
 def get_hive_metastore_client(
     settings: BERDLSettings | None = None,
 ) -> HMSClient:
+    """**DEPRECATED**: returns a fresh, single-owner ``HMSClient`` per call.
+
+    The previous implementation returned an ``@lru_cache``'d singleton that
+    was unsafe to share across threads — concurrent callers corrupted its
+    Thrift socket (see :mod:`berdl_notebook_utils.hms_pool` for details).
+    To keep the old call sites working without keeping the unsafe behavior,
+    each call now constructs and returns a **new** ``HMSClient``; the
+    caller is responsible for its full lifecycle (``open()``/``close()``)
+    and MUST NOT share it across threads.
+
+    New code should use :func:`get_hive_metastore_pool` instead::
+
+        with get_hive_metastore_pool().acquire() as client:
+            return client.get_databases("*")
     """
-    Get a Hive Metastore client for direct HMS operations.
-
-    Args:
-        settings: Optional BERDLSettings instance. If None, reads from environment.
-
-    Returns:
-        HMSClient configured to connect to the Hive Metastore
-    """
-    if settings is None:
-        settings = get_settings()
-
-    # Parse the thrift URI to extract host and port
-    # Format: thrift://hostname:port
-    parsed_uri = urlparse(str(settings.BERDL_HIVE_METASTORE_URI))
-    host = parsed_uri.hostname
-    port = parsed_uri.port
-
-    return HMSClient(host=host, port=port)
+    warnings.warn(
+        "get_hive_metastore_client() is deprecated. It now returns a fresh, "
+        "single-owner HMSClient per call (the previous singleton was not "
+        "thread-safe). Use get_hive_metastore_pool().acquire() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    pool = get_hive_metastore_pool(settings)
+    # Build a fresh client through the pool's factory so socket-level
+    # timeouts still apply, but bypass the pool itself: the caller owns
+    # the connection's full lifecycle.
+    # Disable lint of private call: documented escape hatch for legacy callers.
+    return pool._new_client()  # type: ignore[attr-defined]  # noqa: SLF001
