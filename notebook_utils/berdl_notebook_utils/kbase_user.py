@@ -96,9 +96,7 @@ def sync_orcid_to_env(
     auth_url = auth_url or os.environ.get("KBASE_AUTH_URL")
     token = token or os.environ.get("KBASE_AUTH_TOKEN")
     if not auth_url or not token:
-        logger.debug(
-            "Skipping ORCID sync: KBASE_AUTH_URL and KBASE_AUTH_TOKEN must both be set"
-        )
+        logger.debug("Skipping ORCID sync: KBASE_AUTH_URL and KBASE_AUTH_TOKEN must both be set")
         return None
 
     try:

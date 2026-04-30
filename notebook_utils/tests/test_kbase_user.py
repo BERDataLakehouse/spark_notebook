@@ -74,16 +74,11 @@ class TestExtractOrcid:
         assert extract_orcid({"user": "x", "idents": None}) is None
 
     def test_returns_none_when_orcid_provusername_missing(self):
-        assert (
-            extract_orcid({"idents": [{"provider": "OrcID"}]}) is None
-        )
+        assert extract_orcid({"idents": [{"provider": "OrcID"}]}) is None
 
     def test_provider_match_is_case_sensitive(self):
         # KBase auth uses literal "OrcID" — we do not normalize.
-        assert (
-            extract_orcid({"idents": [{"provider": "orcid", "provusername": "x"}]})
-            is None
-        )
+        assert extract_orcid({"idents": [{"provider": "orcid", "provusername": "x"}]}) is None
 
     def test_returns_first_orcid_when_multiple(self):
         profile = {
@@ -116,9 +111,7 @@ class TestFetchUserProfile:
             return _response(url, json=SAMPLE_PROFILE_WITH_ORCID)
 
         with patch.object(kbase_user.httpx, "get", side_effect=fake_get):
-            result = fetch_user_profile(
-                "https://ci.kbase.us/services/auth/", "TOK", timeout=5.0
-            )
+            result = fetch_user_profile("https://ci.kbase.us/services/auth/", "TOK", timeout=5.0)
 
         assert result == SAMPLE_PROFILE_WITH_ORCID
         assert captured["url"] == "https://ci.kbase.us/services/auth/api/V2/me"
@@ -155,9 +148,7 @@ class TestSyncOrcidToEnv:
     def test_sets_env_var_when_orcid_present(self, monkeypatch):
         monkeypatch.setenv("KBASE_AUTH_URL", "https://ci.kbase.us/services/auth/")
         monkeypatch.setenv("KBASE_AUTH_TOKEN", "TOK")
-        with patch.object(
-            kbase_user, "fetch_user_profile", return_value=SAMPLE_PROFILE_WITH_ORCID
-        ):
+        with patch.object(kbase_user, "fetch_user_profile", return_value=SAMPLE_PROFILE_WITH_ORCID):
             result = sync_orcid_to_env()
 
         assert result == "0009-0004-8221-7736"
@@ -168,9 +159,7 @@ class TestSyncOrcidToEnv:
     def test_returns_none_and_leaves_env_unset_when_no_orcid(self, monkeypatch):
         monkeypatch.setenv("KBASE_AUTH_URL", "https://ci.kbase.us/services/auth/")
         monkeypatch.setenv("KBASE_AUTH_TOKEN", "TOK")
-        with patch.object(
-            kbase_user, "fetch_user_profile", return_value=SAMPLE_PROFILE_WITHOUT_ORCID
-        ):
+        with patch.object(kbase_user, "fetch_user_profile", return_value=SAMPLE_PROFILE_WITHOUT_ORCID):
             result = sync_orcid_to_env()
 
         import os
@@ -214,9 +203,7 @@ class TestSyncOrcidToEnv:
     def test_explicit_args_override_env(self, monkeypatch):
         monkeypatch.setenv("KBASE_AUTH_URL", "https://wrong/")
         monkeypatch.setenv("KBASE_AUTH_TOKEN", "wrong")
-        with patch.object(
-            kbase_user, "fetch_user_profile", return_value=SAMPLE_PROFILE_WITH_ORCID
-        ) as fetch:
+        with patch.object(kbase_user, "fetch_user_profile", return_value=SAMPLE_PROFILE_WITH_ORCID) as fetch:
             sync_orcid_to_env(auth_url="https://right/", token="right")
 
         fetch.assert_called_once_with("https://right/", "right")
