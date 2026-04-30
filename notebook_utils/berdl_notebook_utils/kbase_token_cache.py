@@ -1,16 +1,33 @@
-"""
-Token-dependent cache management.
+"""KBase auth token cache management.
 
-Provides a decorator for registering lru_cache'd functions that should be
-invalidated when the KBase auth token changes.
+Manages two related concerns tied to KBase auth tokens:
+
+1. Registry of ``@lru_cache``'d functions whose results depend on the
+   current KBase token (e.g. authenticated client factories) — see
+   :func:`kbase_token_dependent`. These are wiped via
+   :func:`clear_kbase_token_caches` when the token rotates.
+
+2. The token-sync watcher that picks up token changes from
+   ``~/.berdl_kbase_session`` and pushes them into ``os.environ``, then
+   triggers cache invalidation — see
+   :func:`sync_kbase_token_from_cache_file`.
+
+Token rotation also wipes all TTL caches registered in
+:mod:`berdl_notebook_utils.caches` (groups, tenants, table schemas, etc.)
+because their contents may have been computed with the prior token.
+
+This module was previously named ``cache.py``; it was renamed to
+``kbase_token_cache`` to clearly distinguish it from the general TTL
+cache registry in :mod:`berdl_notebook_utils.caches`.
 """
 
 import os
-import sys
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
 from typing import TypeVar
+
+from .caches import clear_all_caches as _clear_all_ttl_caches
 
 TOKEN_CACHE_FILE = ".berdl_kbase_session"
 
@@ -37,20 +54,19 @@ def _get_token_cache_path() -> Path:
     return Path.home() / TOKEN_CACHE_FILE
 
 
-def _clear_loaded_governance_caches() -> None:
-    module = sys.modules.get("berdl_notebook_utils.minio_governance._cache")
-    if module is None:
-        return
-
-    invalidate_all = getattr(module, "invalidate_all", None)
-    if callable(invalidate_all):
-        invalidate_all()
-
-
 def clear_berdl_token_caches() -> None:
-    """Clear all token-dependent BERDL caches in this process."""
+    """Clear all in-process BERDL caches in response to a token change.
+
+    Wipes both:
+
+    * ``@lru_cache``'d client/factory functions registered via
+      :func:`kbase_token_dependent`, and
+    * every TTL cache registered in :mod:`berdl_notebook_utils.caches`
+      (governance, data_store, etc.) whose content may have been computed
+      with the prior token.
+    """
     clear_kbase_token_caches()
-    _clear_loaded_governance_caches()
+    _clear_all_ttl_caches()
 
 
 def sync_kbase_token_from_cache_file(path: Path | None = None) -> bool:

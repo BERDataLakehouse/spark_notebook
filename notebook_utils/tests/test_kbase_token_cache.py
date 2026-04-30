@@ -1,13 +1,12 @@
-"""Tests for cache.py - Token-dependent cache management."""
+"""Tests for kbase_token_cache.py - Token-dependent cache management."""
 
 from functools import lru_cache
 import os
 from pathlib import Path
-import sys
-from types import SimpleNamespace
 
-import berdl_notebook_utils.cache as cache_module
-from berdl_notebook_utils.cache import (
+import berdl_notebook_utils.kbase_token_cache as cache_module
+from berdl_notebook_utils import caches as central_caches
+from berdl_notebook_utils.kbase_token_cache import (
     _token_change_caches,
     clear_berdl_token_caches,
     clear_kbase_token_caches,
@@ -131,31 +130,38 @@ class TestClearKbaseTokenCaches:
 class TestClearBerdlTokenCaches:
     """Tests for clearing all BERDL token-dependent caches."""
 
-    def test_clears_token_and_loaded_governance_caches(self, monkeypatch):
-        calls: list[str] = []
+    def test_clears_lru_caches_and_central_registry(self):
+        """clear_berdl_token_caches() must wipe both lru_cache'd functions
+        and every TTL cache registered via berdl_notebook_utils.caches."""
+        ttl_cache = central_caches.register_cache(
+            "test_kbase_token_cache.token_clear",
+            maxsize=4,
+            ttl_seconds=60,
+            description="Throwaway cache used by clear_berdl_token_caches test.",
+        )
+        ttl_cache.set("key", "value")
 
         @lru_cache
         def cached_func():
             return "value"
 
         _token_change_caches.append(cached_func)
-        monkeypatch.setitem(
-            sys.modules,
-            "berdl_notebook_utils.minio_governance._cache",
-            SimpleNamespace(invalidate_all=lambda: calls.append("governance")),
-        )
 
         try:
             cached_func()
             cached_func()
             assert cached_func.cache_info().hits == 1
+            assert ttl_cache.get("key") == "value"
 
             clear_berdl_token_caches()
 
             assert cached_func.cache_info().hits == 0
-            assert calls == ["governance"]
+            assert ttl_cache.get("key") is None
         finally:
             _token_change_caches.remove(cached_func)
+            central_caches.clear_cache("test_kbase_token_cache.token_clear")
+            # Drop the throwaway registration so it doesn't leak across tests.
+            central_caches._registry.pop("test_kbase_token_cache.token_clear", None)
 
 
 class TestSyncKbaseTokenFromCacheFile:
@@ -186,20 +192,26 @@ class TestSyncKbaseTokenFromCacheFile:
         finally:
             _token_change_caches.remove(cached_func)
 
-    def test_clears_loaded_governance_caches(self, tmp_path, monkeypatch):
-        calls: list[str] = []
+    def test_clears_central_registry_caches(self, tmp_path, monkeypatch):
+        """A token change must wipe every cache registered in the central registry."""
+        ttl_cache = central_caches.register_cache(
+            "test_kbase_token_cache.sync_clear",
+            maxsize=4,
+            ttl_seconds=60,
+            description="Throwaway cache used by sync_kbase_token_from_cache_file test.",
+        )
+        ttl_cache.set("key", "value")
+
         token_file = tmp_path / ".berdl_kbase_session"
         token_file.write_text("new-token")
         monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
-        monkeypatch.setitem(
-            sys.modules,
-            "berdl_notebook_utils.minio_governance._cache",
-            SimpleNamespace(invalidate_all=lambda: calls.append("governance")),
-        )
 
-        assert sync_kbase_token_from_cache_file(token_file) is True
-
-        assert calls == ["governance"]
+        try:
+            assert sync_kbase_token_from_cache_file(token_file) is True
+            assert ttl_cache.get("key") is None
+        finally:
+            central_caches.clear_cache("test_kbase_token_cache.sync_clear")
+            central_caches._registry.pop("test_kbase_token_cache.sync_clear", None)
 
     def test_noops_when_token_is_unchanged(self, tmp_path, monkeypatch):
         token_file = tmp_path / ".berdl_kbase_session"
@@ -262,7 +274,7 @@ class TestSyncKbaseTokenBeforeCall:
         token_file.write_text("fresh-token")
         monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
         monkeypatch.setattr(
-            "berdl_notebook_utils.cache._get_token_cache_path",
+            "berdl_notebook_utils.kbase_token_cache._get_token_cache_path",
             lambda: token_file,
         )
 
@@ -282,7 +294,7 @@ class TestSyncKbaseTokenBeforeCall:
         token_file.write_text("first-token")
         monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
         monkeypatch.setattr(
-            "berdl_notebook_utils.cache._get_token_cache_path",
+            "berdl_notebook_utils.kbase_token_cache._get_token_cache_path",
             lambda: token_file,
         )
 
