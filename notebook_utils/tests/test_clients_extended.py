@@ -170,11 +170,33 @@ class TestDeprecatedGetHiveMetastoreClient:
     def test_emits_deprecation_warning(self):
         with patch.object(
             type(get_hive_metastore_pool()),
-            "_new_client",
+            "_build_client",
             return_value=Mock(),
         ):
             with pytest.warns(DeprecationWarning, match="thread-safe"):
                 get_hive_metastore_client()
+
+    def test_returns_unopened_client(self):
+        """Regression: the deprecated factory MUST return an unopened client
+        because the pre-fix legacy contract is ``client.open() / ... /
+        client.close()``. Returning an already-open client breaks every
+        legacy caller with ``TTransportException: already open``.
+        """
+        with pytest.warns(DeprecationWarning):
+            client = get_hive_metastore_client()
+        try:
+            # Underlying TSocket has no handle yet → not connected.
+            # If this assertion fails the legacy ``client.open()`` call sites
+            # will raise ``TTransportException: already open``.
+            assert client._oprot.trans.isOpen() is False, (  # noqa: SLF001
+                "deprecated get_hive_metastore_client() must return an "
+                "unopened client; legacy callers do client.open() themselves"
+            )
+        finally:
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 class TestClientWithCustomSettings:
