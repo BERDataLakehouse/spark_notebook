@@ -212,13 +212,20 @@ class HMSClientPool:
 
             yield client
 
-            # Successful path: return the connection to the idle cache.
-            try:
-                self._idle.put_nowait((client, time.monotonic()))
-                returned = True
-            except queue.Full:
-                # Pool was resized down or another caller raced us; dispose.
+            # Successful path: return the connection to the idle cache, unless
+            # the pool was closed while it was checked out (in which case we
+            # must dispose to honour close()'s contract — no idle sockets must
+            # remain after the pool is closed).
+            if self._closed:
                 self._dispose(client)
+                returned = True
+            else:
+                try:
+                    self._idle.put_nowait((client, time.monotonic()))
+                    returned = True
+                except queue.Full:
+                    # Pool was resized down or another caller raced us; dispose.
+                    self._dispose(client)
         except Exception:
             # Any error while the connection was checked out: dispose. We
             # cannot safely reuse a connection whose protocol state is unknown.

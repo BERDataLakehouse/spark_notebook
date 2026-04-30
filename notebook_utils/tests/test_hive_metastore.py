@@ -25,8 +25,8 @@ from berdl_notebook_utils.hms_pool import HMSClientPool, HMSPoolClosed, HMSPoolE
 
 
 def _reset_pool_cache():
-    """Clear the lru_cache on get_hive_metastore_pool so each test gets a fresh pool."""
-    clients_module.get_hive_metastore_pool.cache_clear()
+    """Clear the lru_cache on the pool factory so each test gets a fresh pool."""
+    clients_module._get_hive_metastore_pool_cached.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -50,6 +50,17 @@ def _patch_pool_with(client_factory):
 
     with patch.object(HMSClientPool, "_new_client", autospec=True, side_effect=fake_new_client):
         yield
+
+
+def _join_all_or_fail(threads, timeout: float) -> None:
+    """Join every thread with ``timeout`` and fail loudly if any are still
+    alive afterwards. Without this, a deadlocked worker can silently let
+    a concurrency regression slip through (``join(timeout=...)`` returns
+    without raising on hang)."""
+    for t in threads:
+        t.join(timeout=timeout)
+    stuck = [t.name for t in threads if t.is_alive()]
+    assert not stuck, f"{len(stuck)} thread(s) did not finish within {timeout}s: {stuck[:8]}"
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +175,7 @@ class TestHMSClientPool:
             threads = [threading.Thread(target=worker) for _ in range(16)]
             for t in threads:
                 t.start()
-            for t in threads:
-                t.join(timeout=10)
+            _join_all_or_fail(threads, timeout=10)
             assert pool.created <= 4
             assert pool.in_use == 0
 
@@ -194,6 +204,21 @@ class TestHMSClientPool:
             pool.close()
             assert pool.idle_count == 0
             assert pool.disposed == 1
+
+    def test_close_during_checkout_disposes_on_release(self):
+        """If ``close()`` is called while a connection is checked out, the
+        successful return path must dispose the connection rather than leaking
+        it back into ``_idle``. Honours close()'s contract: no idle sockets
+        remain after close()."""
+        with _patch_pool_with(lambda: _make_fake_client()):
+            pool = HMSClientPool(host="x", port=1, max_size=2, acquire_timeout_s=0.1)
+            with pool.acquire():
+                # Pool gets closed mid-checkout (e.g. by another thread).
+                pool.close()
+            # After release: the connection was disposed, not parked into idle.
+            assert pool.idle_count == 0
+            assert pool.disposed == 1
+            assert pool.in_use == 0
 
     def test_idle_max_recycles_old_connections(self):
         with _patch_pool_with(lambda: _make_fake_client()):
@@ -245,8 +270,7 @@ class TestHMSClientPoolConcurrency:
             threads = [threading.Thread(target=worker, args=(i,)) for i in range(16)]
             for t in threads:
                 t.start()
-            for t in threads:
-                t.join(timeout=30)
+            _join_all_or_fail(threads, timeout=30)
 
             assert violations == [], f"client sharing detected ({len(violations)} violations): {violations[:5]}"
             assert pool.in_use == 0
@@ -275,8 +299,7 @@ class TestHMSClientPoolConcurrency:
             threads = [threading.Thread(target=worker) for _ in range(8)]
             for t in threads:
                 t.start()
-            for t in threads:
-                t.join(timeout=15)
+            _join_all_or_fail(threads, timeout=15)
 
             # Every checked-out connection that saw an exception was disposed.
             assert pool.idle_count == 0

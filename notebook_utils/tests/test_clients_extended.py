@@ -8,12 +8,13 @@ import pytest
 
 from berdl_notebook_utils.berdl_settings import BERDLSettings, get_settings
 from berdl_notebook_utils.clients import (
-    get_task_service_client,
-    get_minio_client,
+    _get_hive_metastore_pool_cached,
     get_governance_client,
-    get_spark_cluster_client,
     get_hive_metastore_client,
     get_hive_metastore_pool,
+    get_minio_client,
+    get_spark_cluster_client,
+    get_task_service_client,
 )
 
 
@@ -24,7 +25,7 @@ def clear_caches():
     get_minio_client.cache_clear()
     get_governance_client.cache_clear()
     get_spark_cluster_client.cache_clear()
-    get_hive_metastore_pool.cache_clear()
+    _get_hive_metastore_pool_cached.cache_clear()
     get_settings.cache_clear()
     yield
 
