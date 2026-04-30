@@ -8,7 +8,7 @@ from minio import Minio
 from spark_manager_client.client import AuthenticatedClient as SparkAuthenticatedClient
 
 from berdl_notebook_utils import BERDLSettings, get_settings
-from berdl_notebook_utils.cache import kbase_token_dependent, sync_kbase_token_before_call
+from berdl_notebook_utils.kbase_token_cache import kbase_token_dependent, sync_kbase_token_before_call
 from berdl_notebook_utils.hms_pool import HMSClientPool, build_pool_from_settings
 
 

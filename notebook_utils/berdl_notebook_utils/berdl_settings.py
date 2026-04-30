@@ -8,7 +8,7 @@ from functools import lru_cache
 from pydantic import AnyHttpUrl, AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings
 
-from berdl_notebook_utils.cache import kbase_token_dependent, sync_kbase_token_before_call
+from berdl_notebook_utils.kbase_token_cache import kbase_token_dependent, sync_kbase_token_before_call
 
 # Configure logging
 logger = logging.getLogger(__name__)

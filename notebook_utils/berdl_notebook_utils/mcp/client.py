@@ -12,7 +12,7 @@ import httpx
 from datalake_mcp_server_client.client import AuthenticatedClient
 
 from berdl_notebook_utils.berdl_settings import get_settings
-from berdl_notebook_utils.cache import kbase_token_dependent, sync_kbase_token_before_call
+from berdl_notebook_utils.kbase_token_cache import kbase_token_dependent, sync_kbase_token_before_call
 
 logger = logging.getLogger(__name__)
 
