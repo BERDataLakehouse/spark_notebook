@@ -8,7 +8,7 @@ from functools import lru_cache
 from pydantic import AnyHttpUrl, AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings
 
-from berdl_notebook_utils.cache import kbase_token_dependent, sync_kbase_token_before_call
+from berdl_notebook_utils.kbase_token_cache import kbase_token_dependent, sync_kbase_token_before_call
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -21,6 +21,16 @@ class BERDLSettings(BaseSettings):
 
     # Core authentication
     KBASE_AUTH_TOKEN: str
+    KBASE_AUTH_URL: AnyHttpUrl | None = Field(
+        default=None,
+        description="KBase Auth service base URL (e.g. https://ci.kbase.us/services/auth/). "
+        "When set, /api/V2/me is queried at startup to populate ORCID.",
+    )
+    ORCID: str | None = Field(
+        default=None,
+        description="ORCID identifier for the current user, populated from /api/V2/me at startup "
+        "when the KBase account is linked to ORCID.",
+    )
     CDM_TASK_SERVICE_URL: AnyHttpUrl  # Accepts http:// and https://
     USER: str  # KBase username of the user running the notebook
 

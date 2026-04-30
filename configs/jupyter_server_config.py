@@ -10,6 +10,8 @@ from hybridcontents import HybridContentsManager
 from jupyter_server.services.contents.largefilemanager import LargeFileManager
 from grouped_s3_contents import GroupedS3ContentsManager
 
+from berdl_notebook_utils.kbase_user import sync_orcid_to_env
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("berdl.jupyter_config")
@@ -134,6 +136,23 @@ def get_user_governance_paths():
     return sources
 
 
+def provision_kbase_user_profile():
+    """Sync KBase user-profile fields (currently ORCID) to the server env.
+
+    Called once at Jupyter Server startup so values like ORCID are inherited
+    by all kernels spawned from this server. Failures are logged and
+    swallowed — they must not prevent the server from starting.
+    """
+    try:
+        orcid = sync_orcid_to_env()
+        if orcid:
+            logger.info(f"ORCID provisioned for current user: {orcid}")
+        else:
+            logger.info("ORCID not set (no linked ORCID or KBASE_AUTH_URL not configured)")
+    except Exception as e:
+        logger.warning(f"Failed to sync KBase user profile: {e}")
+
+
 def start_spark_connect():
     """Start Spark Connect server at Jupyter Server startup.
 
@@ -165,10 +184,13 @@ username = os.environ.get("NB_USER", "jovyan")
 endpoint_url, access_key, secret_key, use_ssl = get_minio_config()
 governance_paths = get_user_governance_paths()
 
-# 3. Start Spark Connect server in background (non-blocking)
+# 3. Provision KBase user-profile fields (ORCID) so spawned kernels inherit them
+provision_kbase_user_profile()
+
+# 4. Start Spark Connect server in background (non-blocking)
 start_spark_connect()
 
-# 4. Configure HybridContentsManager
+# 5. Configure HybridContentsManager
 # - Root ("") -> Local filesystem
 # - "datalake_minio" -> GroupedS3ContentsManager with all S3 paths as subdirectories
 c.HybridContentsManager.manager_classes = {

@@ -214,22 +214,12 @@ def berdl_notebook_help():
     - update_tenant_metadata: Update tenant display name, description, org
     - show_my_tenants: Display all your tenants (admins see all tenants)
 
-    MCP Server Operations (via Global Datalake MCP Server):
-    -------------------------------------------------------
-    - mcp_list_databases: List all databases via MCP server
-    - mcp_list_tables: List tables in a database via MCP server
-    - mcp_get_table_schema: Get table schema via MCP server
-    - mcp_get_database_structure: Get complete database structure via MCP server
-    - mcp_count_table: Count rows in a table via MCP server
-    - mcp_sample_table: Sample data from a table via MCP server
-    - mcp_query_table: Execute SQL queries via MCP server
-    - mcp_select_table: Execute structured SELECT queries with filters, joins, aggregations
-
-    BERDL Agent (AI Assistant):
-    ---------------------------
-    - create_berdl_agent: Create an AI agent for natural language data lake interactions
-    - BERDLAgent: Agent class for advanced configuration
-    - AgentSettings: Agent configuration settings
+    Data Store Operations:
+    ---------------------
+    - get_databases: List all accessible databases
+    - get_tables: List tables in a database
+    - get_table_schema: Get column schema for a table
+    - get_db_structure: Get full {database: [tables]} structure (optionally with schemas)
 
     Environment Refresh:
     -------------------
@@ -243,25 +233,15 @@ def berdl_notebook_help():
     # Create Spark session
     spark = get_spark_session("MyAnalysis")
 
-    # Read and display data
-    df = spark.read.csv("s3a://your-bucket/data.csv")
-    display_df(df)
+    # Browse the data store
+    from berdl_notebook_utils import get_databases, get_tables, get_table_schema
 
-    # Share table with colleagues
-    share_table("analytics", "user_metrics", with_users=["alice", "bob"])
+    databases = get_databases()
+    tables = get_tables("my_db")
+    schema = get_table_schema("my_db", "my_table")
 
-    # Use MCP server for queries
-    from berdl_notebook_utils import mcp_list_databases, mcp_query_table
-
-    databases = mcp_list_databases()
-    results = mcp_query_table("SELECT * FROM my_db.my_table LIMIT 10")
-
-    # Use AI Agent for natural language queries
-    from berdl_notebook_utils import create_berdl_agent
-
-    agent = create_berdl_agent()
-    result = agent.run("What databases do I have access to?")
-    result = agent.run("Show me the top 10 rows from my_db.user_activity")
+    # Run SQL queries through Spark
+    results = spark.sql("SELECT * FROM my_db.my_table LIMIT 10").toPandas()
 
     For detailed documentation, see the README.md or individual module docstrings.
     """

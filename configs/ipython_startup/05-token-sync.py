@@ -14,7 +14,7 @@ import logging
 import threading
 import time
 
-from berdl_notebook_utils.cache import sync_kbase_token_from_cache_file
+from berdl_notebook_utils.kbase_token_cache import sync_kbase_token_from_cache_file
 
 logger = logging.getLogger(__name__)
 

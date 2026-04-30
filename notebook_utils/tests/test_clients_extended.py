@@ -100,7 +100,7 @@ class TestGetGovernanceClient:
         """Test that cached governance client is rebuilt after token cache changes."""
         token_file = tmp_path / ".berdl_kbase_session"
         monkeypatch.setattr(
-            "berdl_notebook_utils.cache._get_token_cache_path",
+            "berdl_notebook_utils.kbase_token_cache._get_token_cache_path",
             lambda: token_file,
         )
         monkeypatch.setenv("KBASE_AUTH_TOKEN", "old-token")
