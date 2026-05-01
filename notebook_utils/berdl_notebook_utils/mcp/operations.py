@@ -64,12 +64,11 @@ def _handle_error_response(response: Any, operation: str) -> None:
 
 def mcp_list_databases() -> list[str]:
     """
-    List all databases (Iceberg catalog namespaces) via MCP server.
+    List all databases from the Iceberg catalog via MCP server.
 
     This function connects to the global datalake-mcp-server, which will use
     your authentication token to connect to your personal Spark Connect server.
-
-    Note: Only Iceberg catalogs are listed (spark_catalog is excluded).
+    Databases are filtered by user/tenant namespace prefixes by default.
 
     Returns:
         List of database names (e.g., ['my.demo_dataset', 'kbase.pangenome'])
@@ -102,7 +101,7 @@ def mcp_list_tables(database: str) -> list[str]:
     List all tables in a specific database via MCP server.
 
     Args:
-        database: Name of the database (e.g., 'my.demo_dataset')
+        database: Name of the database (catalog.namespace format, e.g. "my.demo")
 
     Returns:
         List of table names in the database
@@ -169,6 +168,8 @@ def mcp_get_database_structure(
 ) -> dict[str, list[str] | dict[str, list[str]]]:
     """
     Get the complete structure of all databases via MCP server.
+
+    Databases are filtered by user/tenant namespace prefixes by default.
 
     Args:
         with_schema: If True, includes table schemas (column names) (default: False)

@@ -76,6 +76,20 @@ class TestMcpListDatabases:
 
             assert result == ["default", "analytics", "user_data"]
 
+    def test_uses_default_request(self, mock_client):
+        """Test that DatabaseListRequest is constructed with defaults."""
+        mock_response = Mock()
+        mock_response.databases = []
+
+        with patch("berdl_notebook_utils.mcp.operations.list_databases") as mock_api:
+            mock_api.sync.return_value = mock_response
+
+            mcp_list_databases()
+
+            call_kwargs = mock_api.sync.call_args[1]
+            # filter_by_namespace defaults to True on the request model
+            assert call_kwargs["body"].filter_by_namespace is True
+
     def test_raises_on_none_response(self, mock_client):
         """Test that None response raises an exception."""
         with patch("berdl_notebook_utils.mcp.operations.list_databases") as mock_api:
