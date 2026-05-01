@@ -62,15 +62,13 @@ def _handle_error_response(response: Any, operation: str) -> None:
         raise Exception(error_msg)
 
 
-def mcp_list_databases(use_hms: bool = True) -> list[str]:
+def mcp_list_databases() -> list[str]:
     """
-    List all databases in the Hive metastore via MCP server.
+    List all databases from the Iceberg catalog via MCP server.
 
     This function connects to the global datalake-mcp-server, which will use
     your authentication token to connect to your personal Spark Connect server.
-
-    Args:
-        use_hms: If True, uses Hive Metastore client for faster retrieval (default: True)
+    Databases are filtered by user/tenant namespace prefixes by default.
 
     Returns:
         List of database names
@@ -81,12 +79,12 @@ def mcp_list_databases(use_hms: bool = True) -> list[str]:
     Example:
         >>> databases = mcp_list_databases()
         >>> print(databases)
-        ['default', 'my_database', 'analytics']
+        ['my.demo_dataset', 'kbase.analytics']
     """
     client = get_datalake_mcp_client()
-    request = DatabaseListRequest(use_hms=use_hms)
+    request = DatabaseListRequest()
 
-    logger.debug(f"Listing databases via MCP server (use_hms={use_hms})")
+    logger.debug("Listing databases via MCP server")
     response = list_databases.sync(client=client, body=request)
 
     _handle_error_response(response, "list_databases")
@@ -98,13 +96,12 @@ def mcp_list_databases(use_hms: bool = True) -> list[str]:
     return response.databases
 
 
-def mcp_list_tables(database: str, use_hms: bool = True) -> list[str]:
+def mcp_list_tables(database: str) -> list[str]:
     """
     List all tables in a specific database via MCP server.
 
     Args:
-        database: Name of the database
-        use_hms: If True, uses Hive Metastore client for faster retrieval (default: True)
+        database: Name of the database (catalog.namespace format, e.g. "my.demo")
 
     Returns:
         List of table names in the database
@@ -113,12 +110,12 @@ def mcp_list_tables(database: str, use_hms: bool = True) -> list[str]:
         Exception: If the MCP server returns an error or is unreachable
 
     Example:
-        >>> tables = mcp_list_tables("my_database")
+        >>> tables = mcp_list_tables("my.demo_dataset")
         >>> print(tables)
         ['users', 'orders', 'products']
     """
     client = get_datalake_mcp_client()
-    request = TableListRequest(database=database, use_hms=use_hms)
+    request = TableListRequest(database=database)
 
     logger.debug(f"Listing tables in database '{database}' via MCP server")
     response = list_database_tables.sync(client=client, body=request)
@@ -167,14 +164,15 @@ def mcp_get_table_schema(database: str, table: str) -> list[str]:
 
 
 def mcp_get_database_structure(
-    with_schema: bool = False, use_hms: bool = True
+    with_schema: bool = False,
 ) -> dict[str, list[str] | dict[str, list[str]]]:
     """
     Get the complete structure of all databases via MCP server.
 
+    Databases are filtered by user/tenant namespace prefixes by default.
+
     Args:
         with_schema: If True, includes table schemas (column names) (default: False)
-        use_hms: If True, uses Hive Metastore client for faster retrieval (default: True)
 
     Returns:
         Dictionary mapping database names to either:
@@ -188,15 +186,15 @@ def mcp_get_database_structure(
         >>> # Without schema
         >>> structure = mcp_get_database_structure()
         >>> print(structure)
-        {'default': ['table1', 'table2'], 'analytics': ['metrics', 'events']}
+        {'my.demo': ['table1', 'table2'], 'kbase.analytics': ['metrics', 'events']}
 
         >>> # With schema
         >>> structure = mcp_get_database_structure(with_schema=True)
         >>> print(structure)
-        {'default': {'table1': ['col1', 'col2'], 'table2': ['col3', 'col4']}}
+        {'my.demo': {'table1': ['col1', 'col2'], 'table2': ['col3', 'col4']}}
     """
     client = get_datalake_mcp_client()
-    request = DatabaseStructureRequest(with_schema=with_schema, use_hms=use_hms)
+    request = DatabaseStructureRequest(with_schema=with_schema)
 
     logger.debug(f"Getting database structure via MCP server (with_schema={with_schema})")
     response = get_database_structure.sync(client=client, body=request)
