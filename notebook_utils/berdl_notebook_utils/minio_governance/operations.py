@@ -72,6 +72,7 @@ from governance_client.models import (
     PathAccessResponse,
     PathRequest,
     PublicAccessResponse,
+    RegeneratePoliciesRequest,
     RegeneratePoliciesResponse,
     ShareRequest,
     ShareResponse,
@@ -1250,7 +1251,10 @@ def request_tenant_access(
 # =============================================================================
 
 
-def regenerate_policies() -> RegeneratePoliciesResponse:
+def regenerate_policies(
+    exclude_users: list[str] | None = None,
+    exclude_groups: list[str] | None = None,
+) -> RegeneratePoliciesResponse:
     """
     Force-regenerate all MinIO IAM HOME policies from the current template.
 
@@ -1258,19 +1262,44 @@ def regenerate_policies() -> RegeneratePoliciesResponse:
     statements (e.g., Iceberg paths). Each regeneration is independent — errors
     do not block others.
 
+    Args:
+        exclude_users: Usernames to skip (e.g., system/service accounts such as
+            ``hive``, ``mms``, ``cdm_task_service``). Names that do not exist
+            are silently ignored. ``None`` or ``[]`` means "regenerate for all
+            users". The caller is responsible for deciding which accounts are
+            "system" — this function does not infer it.
+        exclude_groups: Base group names to skip. The corresponding RO group
+            (name + ``"ro"``) is also skipped automatically. Names that do not
+            exist are silently ignored. ``None`` or ``[]`` means "regenerate
+            for all groups".
+
     Returns:
-        RegeneratePoliciesResponse with users_updated, groups_updated, errors,
-        performed_by, and timestamp
+        RegeneratePoliciesResponse with users_updated, groups_updated,
+        users_skipped, groups_skipped, errors, performed_by, and timestamp.
 
     Raises:
-        RuntimeError: If the request fails (e.g., insufficient permissions)
+        RuntimeError: If the request fails (e.g., insufficient permissions).
 
     Example:
+        # Regenerate everything
         result = regenerate_policies()
-        print(f"Updated {result.users_updated} users, {result.groups_updated} groups")
+
+        # Skip caller-defined system accounts
+        SYSTEM_USERS = ["hive", "mms", "cdm_task_service"]
+        result = regenerate_policies(exclude_users=SYSTEM_USERS)
+        print(f"Updated {result.users_updated} users, "
+              f"skipped {result.users_skipped}")
     """
+    body = RegeneratePoliciesRequest(
+        exclude_users=list(exclude_users) if exclude_users else [],
+        exclude_groups=list(exclude_groups) if exclude_groups else [],
+    )
+
     client = get_governance_client()
-    response = regenerate_all_policies_management_migrate_regenerate_policies_post.sync(client=client)
+    response = regenerate_all_policies_management_migrate_regenerate_policies_post.sync(
+        client=client,
+        body=body,
+    )
 
     if isinstance(response, ErrorResponse):
         raise RuntimeError(f"Failed to regenerate policies: {response.message}")

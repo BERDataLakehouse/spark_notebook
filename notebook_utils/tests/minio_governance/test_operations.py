@@ -981,7 +981,7 @@ class TestRequestTenantAccessConnectionError:
 
 
 class TestRegeneratePolicies:
-    """Tests for regenerate_policies function (lines 978-987)."""
+    """Tests for regenerate_policies function."""
 
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch(
@@ -996,6 +996,73 @@ class TestRegeneratePolicies:
 
         assert result.users_updated == 5
         assert result.groups_updated == 3
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.regenerate_all_policies_management_migrate_regenerate_policies_post"
+    )
+    def test_regenerate_policies_no_args_sends_empty_exclusions(self, mock_regen, mock_get_client):
+        """With no args, the body should have empty exclusion lists."""
+        mock_get_client.return_value = Mock()
+        mock_regen.sync.return_value = Mock(users_updated=0, groups_updated=0, errors=[])
+
+        regenerate_policies()
+
+        body = mock_regen.sync.call_args.kwargs["body"]
+        assert body.exclude_users == []
+        assert body.exclude_groups == []
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.regenerate_all_policies_management_migrate_regenerate_policies_post"
+    )
+    def test_regenerate_policies_passes_exclude_users(self, mock_regen, mock_get_client):
+        """Caller-supplied exclude_users is forwarded verbatim."""
+        mock_get_client.return_value = Mock()
+        mock_regen.sync.return_value = Mock(users_updated=0, groups_updated=0, errors=[])
+
+        system_users = ["hive", "mms", "cdm_task_service"]
+        regenerate_policies(exclude_users=system_users)
+
+        body = mock_regen.sync.call_args.kwargs["body"]
+        assert body.exclude_users == system_users
+        assert body.exclude_groups == []
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.regenerate_all_policies_management_migrate_regenerate_policies_post"
+    )
+    def test_regenerate_policies_passes_exclude_groups(self, mock_regen, mock_get_client):
+        """Caller-supplied exclude_groups is forwarded verbatim."""
+        mock_get_client.return_value = Mock()
+        mock_regen.sync.return_value = Mock(users_updated=0, groups_updated=0, errors=[])
+
+        regenerate_policies(exclude_groups=["legacy_team"])
+
+        body = mock_regen.sync.call_args.kwargs["body"]
+        assert body.exclude_users == []
+        assert body.exclude_groups == ["legacy_team"]
+
+    @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
+    @patch(
+        "berdl_notebook_utils.minio_governance.operations.regenerate_all_policies_management_migrate_regenerate_policies_post"
+    )
+    def test_regenerate_policies_copies_input_lists(self, mock_regen, mock_get_client):
+        """The function must not retain a reference to the caller's lists."""
+        mock_get_client.return_value = Mock()
+        mock_regen.sync.return_value = Mock(users_updated=0, groups_updated=0, errors=[])
+
+        users = ["hive"]
+        groups = ["team1"]
+        regenerate_policies(exclude_users=users, exclude_groups=groups)
+
+        # Mutate caller's lists after the call.
+        users.append("evil")
+        groups.append("evil_group")
+
+        body = mock_regen.sync.call_args.kwargs["body"]
+        assert body.exclude_users == ["hive"]
+        assert body.exclude_groups == ["team1"]
 
     @patch("berdl_notebook_utils.minio_governance.operations.get_governance_client")
     @patch(
