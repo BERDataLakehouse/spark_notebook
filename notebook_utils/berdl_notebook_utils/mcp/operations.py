@@ -71,7 +71,7 @@ def mcp_list_databases() -> list[str]:
     Databases are filtered by user/tenant namespace prefixes by default.
 
     Returns:
-        List of database names (e.g., ['u_alice__demo', 'kbase_pangenome'])
+        List of database names
 
     Raises:
         Exception: If the MCP server returns an error or is unreachable
