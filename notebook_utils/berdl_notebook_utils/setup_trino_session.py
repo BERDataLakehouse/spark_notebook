@@ -159,7 +159,20 @@ def _build_iceberg_catalog_properties(
         "iceberg.rest-catalog.oauth2.credential": settings.POLARIS_CREDENTIAL or "",
         "iceberg.rest-catalog.oauth2.scope": "PRINCIPAL_ROLE:ALL",
         "iceberg.rest-catalog.oauth2.server-uri": oauth2_server_uri,
-        "iceberg.rest-catalog.oauth2.token-refresh-enabled": "false",
+        # Refresh the OAuth bearer token before it expires.  Polaris-issued
+        # tokens default to a 1 h TTL; with this previously set to "false"
+        # the connector cached a single token at catalog-creation time and
+        # every query after the first hour failed with
+        # ``ICEBERG_CATALOG_ERROR: Failed to list namespaces`` (Trino
+        # swallows the underlying 401).  Combined with
+        # ``_create_dynamic_catalog()`` skipping recreation when a catalog
+        # of the same name already exists in the coordinator, this also
+        # caused stale per-user catalogs from prior coordinator uptime to
+        # stay broken until Trino was restarted.
+        "iceberg.rest-catalog.oauth2.token-refresh-enabled": "true",
+        # Token-exchange flow is unused with the client-credentials grant
+        # we issue; leave disabled to avoid an extra Polaris round-trip on
+        # each refresh.
         "iceberg.rest-catalog.oauth2.token-exchange-enabled": "false",
         "iceberg.rest-catalog.vended-credentials-enabled": "false",
         "iceberg.security": "read_only",

@@ -222,7 +222,11 @@ def _get_catalog_conf(settings: BERDLSettings) -> dict[str, str]:
             f"{prefix}.credential": settings.POLARIS_CREDENTIAL or "",
             f"{prefix}.warehouse": warehouse,
             f"{prefix}.scope": "PRINCIPAL_ROLE:ALL",
-            f"{prefix}.token-refresh-enabled": "false",
+            # Refresh the OAuth bearer token before it expires (Polaris
+            # default TTL is 1 h).  Mirrors the same flip in
+            # setup_trino_session._build_iceberg_catalog_properties — see
+            # that function's comment for the failure mode this avoided.
+            f"{prefix}.token-refresh-enabled": "true",
             f"{prefix}.client.region": "us-east-1",
         }
         # Add S3 properties scoped to this catalog
