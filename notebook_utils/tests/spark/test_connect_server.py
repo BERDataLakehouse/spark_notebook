@@ -547,9 +547,9 @@ class TestSparkConnectServerManagerForceRestart:
     """Tests for force_restart functionality."""
 
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.stop")
-    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.is_running")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.get_server_info")
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
-    def test_start_force_restart_calls_stop(self, mock_config_class, mock_is_running, mock_stop, tmp_path):
+    def test_start_force_restart_calls_stop(self, mock_config_class, mock_get_server_info, mock_stop, tmp_path):
         """Test start with force_restart=True calls stop first."""
         mock_config = Mock()
         mock_config.username = "test_user"
@@ -561,8 +561,10 @@ class TestSparkConnectServerManagerForceRestart:
         mock_config.pid_file_path = tmp_path / "pid"
         mock_config_class.return_value = mock_config
 
-        # Server is running initially
-        mock_is_running.side_effect = [True, False]  # First check: running, after stop: not running
+        # Server is running initially. After the TOCTOU-race fix in start(),
+        # the running-check is now a single get_server_info() call (not is_running()).
+        running_info = {"pid": 4321, "url": "sc://localhost:15002", "log_file": str(tmp_path / "log")}
+        mock_get_server_info.side_effect = [running_info, None]  # First check: running, after stop: not running
 
         # Mock the start script check to fail (we don't want to actually start)
         with patch("pathlib.Path.exists", return_value=False):

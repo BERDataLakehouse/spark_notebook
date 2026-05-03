@@ -40,6 +40,14 @@ def generate_namespace_location(namespace: str | None = None, tenant_name: str |
     # Always fetch warehouse directory from governance API for proper S3 location
     # Don't rely on spark.sql.warehouse.dir as it may be set to local path by Spark Connect server
     warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
+
+    # Defensive: governance API may return an ErrorResponse-shaped object with a
+    # `message` field but no `sql_warehouse_prefix` (e.g., user not in tenant).
+    # Surface a warning and short-circuit instead of dereferencing None below.
+    if hasattr(warehouse_response, "message") and not getattr(warehouse_response, "sql_warehouse_prefix", None):
+        print(f"Warning: Failed to get warehouse location: {getattr(warehouse_response, 'message', 'Unknown error')}")
+        return (namespace, None)
+
     warehouse_dir = warehouse_response.sql_warehouse_prefix
 
     if warehouse_dir and ("users-sql-warehouse" in warehouse_dir or "tenant-sql-warehouse" in warehouse_dir):

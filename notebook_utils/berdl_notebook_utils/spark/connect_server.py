@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -288,8 +289,6 @@ class SparkConnectServerManager:
         Returns:
             True if port is free, False if timeout reached.
         """
-        import socket
-
         port = self.config.spark_connect_port
         start_time = time.time()
 
@@ -318,10 +317,13 @@ class SparkConnectServerManager:
         Returns:
             Dictionary with server information.
         """
-        # Check if server is already running
-        if self.is_running():
+        # Check if server is already running.
+        # Call get_server_info() once and reuse the result to avoid a TOCTOU
+        # race where the server could exit between is_running() and the
+        # follow-up get_server_info() returning None.
+        server_info = self.get_server_info()
+        if server_info is not None:
             if not force_restart:
-                server_info = self.get_server_info()
                 logger.info(f"✅ Spark Connect server already running (PID: {server_info['pid']})")
                 logger.info("   Reusing existing server - no need to start a new one")
                 return server_info
@@ -382,6 +384,12 @@ class SparkConnectServerManager:
                 f.write(str(process.pid))
 
             server_info = self.get_server_info()
+            if server_info is None:
+                raise RuntimeError(
+                    "Spark Connect process started but server info could not be read; "
+                    f"check logs: {self.config.log_file_path}"
+                )
+
             logger.info(f"✅ Spark Connect server started successfully (PID: {process.pid})")
             logger.info(f"   Connect URL: {server_info['url']}")
             logger.info(f"   Logs: {server_info['log_file']}")
@@ -401,18 +409,19 @@ class SparkConnectServerManager:
         Returns:
             Dictionary with status information.
         """
-        if self.is_running():
-            info = self.get_server_info()
+        # Single get_server_info() call (returns None if not running) avoids
+        # the TOCTOU race against a separate is_running() check.
+        info = self.get_server_info()
+        if info is not None:
             return {
                 "status": "running",
                 **info,
             }
-        else:
-            return {
-                "status": "stopped",
-                "port": self.config.spark_connect_port,
-                "url": f"sc://localhost:{self.config.spark_connect_port}",
-            }
+        return {
+            "status": "stopped",
+            "port": self.config.spark_connect_port,
+            "url": f"sc://localhost:{self.config.spark_connect_port}",
+        }
 
 
 # Public API - convenient functions for notebook users
