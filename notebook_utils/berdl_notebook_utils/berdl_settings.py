@@ -35,10 +35,10 @@ class BERDLSettings(BaseSettings):
     USER: str  # KBase username of the user running the notebook
 
     # MinIO configuration
-    MINIO_ENDPOINT_URL: str = Field(..., description="MinIO endpoint (hostname:port)")
-    MINIO_ACCESS_KEY: str = Field(default="access_key_placeholder", description="MinIO access key")
-    MINIO_SECRET_KEY: str = Field(default="secret_key_placeholder", description="MinIO secret key")
-    MINIO_SECURE: bool = Field(default=False, description="Use secure connection (True/False)")
+    S3_ENDPOINT_URL: str = Field(..., description="MinIO endpoint (hostname:port)")
+    S3_ACCESS_KEY: str = Field(default="access_key_placeholder", description="MinIO access key")
+    S3_SECRET_KEY: str = Field(default="secret_key_placeholder", description="MinIO secret key")
+    S3_SECURE: bool = Field(default=False, description="Use secure connection (True/False)")
 
     # Spark configuration
     BERDL_POD_IP: str

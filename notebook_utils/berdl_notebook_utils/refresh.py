@@ -1,9 +1,10 @@
 """
 Refresh credentials and Spark environment.
 
-Provides a single function to rotate MinIO credentials, re-fetch MMS-backed
-Polaris credentials, restart the Spark Connect server, and stop any existing
-Spark session — ensuring get_spark_session() works afterward.
+Provides a single function to rotate the user's S3 + Polaris credentials,
+re-fetch Polaris catalog metadata, restart the Spark Connect server, and
+stop any existing Spark session — ensuring get_spark_session() works
+afterward.
 """
 
 import logging
@@ -11,9 +12,9 @@ import logging
 from pyspark.sql import SparkSession
 
 from berdl_notebook_utils.berdl_settings import get_settings
-from berdl_notebook_utils.minio_governance.operations import (
-    rotate_minio_credentials,
-    get_polaris_credentials,
+from berdl_notebook_utils.governance.operations import (
+    get_polaris_catalog_info,
+    rotate_credentials,
 )
 from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
 
@@ -25,46 +26,58 @@ def refresh_spark_environment() -> dict:
 
     Steps performed:
         1. Clear the in-memory ``get_settings()`` LRU cache
-        2. Rotate MinIO credentials via MMS (generates new secret key, updates env vars)
-        3. Re-fetch MMS-backed Polaris credentials (sets POLARIS_CREDENTIAL and catalog env vars)
+        2. Rotate the unified credential bundle via MMS — generates new
+           S3 IAM secret AND new Polaris OAuth secret in one call;
+           updates ``S3_ACCESS_KEY``, ``S3_SECRET_KEY``,
+           ``POLARIS_CREDENTIAL`` env vars
+        3. Re-fetch Polaris catalog metadata via the read-only
+           effective-access endpoint (sets
+           ``POLARIS_PERSONAL_CATALOG`` / ``POLARIS_TENANT_CATALOGS``)
         4. Clear settings cache again so downstream code sees fresh env vars
         5. Stop any existing Spark session
         6. Restart the Spark Connect server with regenerated spark-defaults.conf
 
     Returns:
-        dict with keys ``minio``, ``polaris``, ``spark_connect``,
-        ``spark_session_stopped`` summarising what happened.
+        dict with keys ``credentials``, ``polaris_catalog``,
+        ``spark_connect``, ``spark_session_stopped`` summarising what
+        happened.
     """
     result: dict = {}
 
     # 1. Clear in-memory settings cache
     get_settings.cache_clear()
 
-    # 2. Rotate MinIO credentials (generates new secret key)
+    # 2. Rotate the unified credential bundle (S3 + Polaris in one call)
     try:
-        minio_creds = rotate_minio_credentials()
-        result["minio"] = {"status": "ok", "username": minio_creds.username}
-        logger.info("MinIO credentials rotated for user: %s", minio_creds.username)
+        creds = rotate_credentials()
+        result["credentials"] = {"status": "ok", "username": creds.username}
+        logger.info("Credentials rotated for user: %s", creds.username)
     except Exception as exc:
-        result["minio"] = {"status": "error", "error": str(exc)}
-        logger.warning("Failed to rotate MinIO credentials: %s", exc)
+        result["credentials"] = {"status": "error", "error": str(exc)}
+        logger.warning("Failed to rotate credentials: %s", exc)
 
-    # 3. Re-fetch MMS-backed Polaris credentials
+    # 3. Re-fetch Polaris catalog metadata (no credential side effect)
     try:
-        polaris_creds = get_polaris_credentials()
-        if polaris_creds:
-            result["polaris"] = {
+        catalog_info = get_polaris_catalog_info()
+        if catalog_info:
+            result["polaris_catalog"] = {
                 "status": "ok",
-                "personal_catalog": polaris_creds["personal_catalog"],
-                "tenant_catalogs": polaris_creds.get("tenant_catalogs", []),
+                "personal_catalog": catalog_info["personal_catalog"],
+                "tenant_catalogs": catalog_info.get("tenant_catalogs", []),
             }
-            logger.info("Polaris credentials refreshed for catalog: %s", polaris_creds["personal_catalog"])
+            logger.info(
+                "Polaris catalog metadata refreshed for catalog: %s",
+                catalog_info["personal_catalog"],
+            )
         else:
-            result["polaris"] = {"status": "skipped", "reason": "Polaris not configured"}
-            logger.info("Polaris not configured, skipping credential refresh")
+            result["polaris_catalog"] = {
+                "status": "skipped",
+                "reason": "Polaris not configured",
+            }
+            logger.info("Polaris not configured, skipping catalog metadata refresh")
     except Exception as exc:
-        result["polaris"] = {"status": "error", "error": str(exc)}
-        logger.warning("Failed to refresh Polaris credentials: %s", exc)
+        result["polaris_catalog"] = {"status": "error", "error": str(exc)}
+        logger.warning("Failed to refresh Polaris catalog metadata: %s", exc)
 
     # 4. Clear settings cache again so get_settings() picks up new env vars
     get_settings.cache_clear()

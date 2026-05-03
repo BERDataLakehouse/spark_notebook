@@ -1,5 +1,5 @@
 """
-Tests for minio_governance/tenant_management.py module.
+Tests for governance/tenant_management.py module.
 """
 
 from unittest.mock import Mock, patch
@@ -14,7 +14,7 @@ from governance_client.models import (
     TenantSummaryResponse,
 )
 
-from berdl_notebook_utils.minio_governance.tenant_management import (
+from berdl_notebook_utils.governance.tenant_management import (
     _print_tenant,
     _val,
     add_tenant_member,
@@ -30,7 +30,7 @@ from berdl_notebook_utils.minio_governance.tenant_management import (
     update_tenant_metadata,
 )
 
-MODULE = "berdl_notebook_utils.minio_governance.tenant_management"
+MODULE = "berdl_notebook_utils.governance.tenant_management"
 
 
 # =============================================================================

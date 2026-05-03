@@ -10,7 +10,7 @@ create_namespace_if_not_exists() supports two flows:
 """
 
 from pyspark.sql import SparkSession
-from berdl_notebook_utils.minio_governance.operations import (
+from berdl_notebook_utils.governance.operations import (
     get_namespace_prefix,
     get_my_sql_warehouse,
     get_group_sql_warehouse,

@@ -1,12 +1,21 @@
 """
-Initialize MinIO and Polaris credentials.
+Initialize unified S3 + Polaris credentials and Polaris catalog metadata.
 
-This runs after 00-notebookutils.py loads all the imports, so get_minio_credentials
-is already available in the global namespace.
+This runs after 00-notebookutils.py loads all the imports, so
+``get_credentials`` and ``get_polaris_catalog_info`` are already
+available in the global namespace.
+
+Two MMS round-trips:
+  1. ``get_credentials()`` — fetches the unified credential bundle and
+     populates ``S3_ACCESS_KEY``, ``S3_SECRET_KEY``, ``POLARIS_CREDENTIAL``.
+  2. ``get_polaris_catalog_info()`` — read-only catalog discovery via
+     ``GET /polaris/effective-access/me``; populates
+     ``POLARIS_PERSONAL_CATALOG`` and ``POLARIS_TENANT_CATALOGS``.
 """
 
 # Setup logging
 import logging
+import warnings
 
 logger = logging.getLogger("berdl.startup")
 logger.setLevel(logging.INFO)
@@ -16,36 +25,36 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-# --- MinIO Credentials ---
+# --- Unified S3 + Polaris credentials ---
+# One MMS call populates S3_ACCESS_KEY, S3_SECRET_KEY, POLARIS_CREDENTIAL.
+# MMS self-bootstraps the underlying identities (MinIO user + Polaris
+# principal + personal catalog + role bindings) on cache miss.
 try:
-    # Set MinIO credentials to environment - also creates user if they don't exist
-    credentials = get_minio_credentials()  # noqa: F821
-    logger.info(f"✅ MinIO credentials set for user: {credentials.username}")
+    credentials = get_credentials()  # noqa: F821
+    logger.info(f"✅ Credentials set for user: {credentials.username}")
 
 except Exception as e:
-    import warnings
-
-    warnings.warn(f"Failed to set MinIO credentials: {str(e)}", UserWarning)
-    logger.error(f"❌ Failed to set MinIO credentials: {str(e)}")
+    warnings.warn(f"Failed to set credentials: {str(e)}", UserWarning)
+    logger.error(f"❌ Failed to set credentials: {str(e)}")
     credentials = None
 
-# --- Polaris Credentials ---
+# --- Polaris catalog metadata ---
+# Separate read-only call — fetches personal_catalog name + tenant catalog
+# list. No provisioning side effect (uses GET /polaris/effective-access/me).
 try:
-    polaris_creds = get_polaris_credentials()  # noqa: F821
-    if polaris_creds:
-        logger.info(f"✅ Polaris credentials set for catalog: {polaris_creds['personal_catalog']}")
-        if polaris_creds["tenant_catalogs"]:
-            logger.info(f"   Tenant catalogs: {', '.join(polaris_creds['tenant_catalogs'])}")
-        # Clear the settings cache so downstream code (e.g., Spark Connect server startup)
-        # picks up the POLARIS_CREDENTIAL, POLARIS_PERSONAL_CATALOG, and
-        # POLARIS_TENANT_CATALOGS env vars that get_polaris_credentials() just set.
+    catalog_info = get_polaris_catalog_info()  # noqa: F821
+    if catalog_info:
+        logger.info(f"✅ Polaris catalog metadata: {catalog_info['personal_catalog']}")
+        if catalog_info["tenant_catalogs"]:
+            logger.info(f"   Tenant catalogs: {', '.join(catalog_info['tenant_catalogs'])}")
+        # Clear the settings cache so downstream code (e.g., Spark Connect
+        # server startup) picks up POLARIS_PERSONAL_CATALOG and
+        # POLARIS_TENANT_CATALOGS that get_polaris_catalog_info() just set.
         get_settings.cache_clear()  # noqa: F821
     else:
-        logger.info("ℹ️  Polaris not configured, skipping Polaris credential setup")
+        logger.info("ℹ️  Polaris not configured, skipping catalog metadata fetch")
 
 except Exception as e:
-    import warnings
-
-    warnings.warn(f"Failed to set Polaris credentials: {str(e)}", UserWarning)
-    logger.warning(f"⚠️  Failed to set Polaris credentials: {str(e)}")
-    polaris_creds = None
+    warnings.warn(f"Failed to fetch Polaris catalog metadata: {str(e)}", UserWarning)
+    logger.warning(f"⚠️  Failed to fetch Polaris catalog metadata: {str(e)}")
+    catalog_info = None

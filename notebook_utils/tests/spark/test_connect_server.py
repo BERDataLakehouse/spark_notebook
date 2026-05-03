@@ -93,9 +93,9 @@ class TestSparkConnectServerConfig:
         mock_settings.SPARK_CONNECT_URL = mock_url
         mock_settings.SPARK_MASTER_URL = "spark://master:7077"
         mock_settings.BERDL_HIVE_METASTORE_URI = "thrift://localhost:9083"
-        mock_settings.MINIO_ENDPOINT_URL = "http://localhost:9000"
-        mock_settings.MINIO_ACCESS_KEY = "minioadmin"
-        mock_settings.MINIO_SECRET_KEY = "minioadmin"
+        mock_settings.S3_ENDPOINT_URL = "http://localhost:9000"
+        mock_settings.S3_ACCESS_KEY = "minioadmin"
+        mock_settings.S3_SECRET_KEY = "minioadmin"
         mock_settings.SPARK_WORKER_COUNT = 2
         mock_settings.SPARK_WORKER_CORES = 2
         mock_settings.SPARK_WORKER_MEMORY = "10G"
@@ -145,9 +145,9 @@ class TestSparkConnectServerConfig:
         mock_settings.SPARK_CONNECT_URL = mock_url
         mock_settings.SPARK_MASTER_URL = "spark://master:7077"
         mock_settings.BERDL_HIVE_METASTORE_URI = "thrift://localhost:9083"
-        mock_settings.MINIO_ENDPOINT_URL = "http://localhost:9000"
-        mock_settings.MINIO_ACCESS_KEY = "minioadmin"
-        mock_settings.MINIO_SECRET_KEY = "minioadmin"
+        mock_settings.S3_ENDPOINT_URL = "http://localhost:9000"
+        mock_settings.S3_ACCESS_KEY = "minioadmin"
+        mock_settings.S3_SECRET_KEY = "minioadmin"
         mock_settings.SPARK_WORKER_COUNT = 2
         mock_settings.SPARK_WORKER_CORES = 2
         mock_settings.SPARK_WORKER_MEMORY = "10G"

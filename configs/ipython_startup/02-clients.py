@@ -12,7 +12,7 @@ logger = logging.getLogger("berdl.startup")
 
 # Initialize MinIO client
 try:
-    minio = get_minio_client()  # noqa: F821
+    minio = get_s3_client()  # noqa: F821
     logger.info("✅ MinIO client initialized")
 except Exception as e:
     logger.error(f"❌ Failed to initialize MinIO client: {e}")

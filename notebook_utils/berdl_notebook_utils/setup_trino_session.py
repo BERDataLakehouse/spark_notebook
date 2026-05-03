@@ -24,7 +24,7 @@ import re
 import trino
 
 from .berdl_settings import BERDLSettings, get_settings
-from .minio_governance.operations import get_minio_credentials
+from .governance.operations import get_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,9 @@ def _build_catalog_properties(
     secret_key: str,
 ) -> dict[str, str]:
     """Build the WITH properties for CREATE CATALOG."""
-    endpoint_url = str(settings.MINIO_ENDPOINT_URL)
+    endpoint_url = str(settings.S3_ENDPOINT_URL)
     if not endpoint_url.startswith("http"):
-        protocol = "https" if settings.MINIO_SECURE else "http"
+        protocol = "https" if settings.S3_SECURE else "http"
         endpoint_url = f"{protocol}://{endpoint_url}"
 
     return {
@@ -305,7 +305,7 @@ def get_trino_connection(
     trino_port = port if port is not None else settings.TRINO_PORT
 
     # Fetch user's MinIO credentials (same flow as Spark)
-    credentials = get_minio_credentials()
+    credentials = get_credentials()
     username = settings.USER
 
     # Build catalog name: u_{username}
@@ -327,8 +327,8 @@ def get_trino_connection(
     # Create per-user Delta/Hive dynamic catalog with user's MinIO credentials
     properties = _build_catalog_properties(
         settings=settings,
-        access_key=credentials.access_key,
-        secret_key=credentials.secret_key,
+        access_key=credentials.s3_access_key,
+        secret_key=credentials.s3_secret_key,
     )
 
     cursor = conn.cursor()
@@ -336,8 +336,8 @@ def get_trino_connection(
     _create_polaris_catalogs(
         cursor=cursor,
         settings=settings,
-        access_key=credentials.access_key,
-        secret_key=credentials.secret_key,
+        access_key=credentials.s3_access_key,
+        secret_key=credentials.s3_secret_key,
     )
 
     # Set the default catalog on the connection so users can write

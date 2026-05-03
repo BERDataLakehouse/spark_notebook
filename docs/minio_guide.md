@@ -33,7 +33,7 @@ Log in using your MinIO credentials (access key and secret key).
 import os
 
 # Get your MinIO credentials
-access_key, secret_key = os.environ['MINIO_ACCESS_KEY'], os.environ['MINIO_SECRET_KEY']
+access_key, secret_key = os.environ['S3_ACCESS_KEY'], os.environ['S3_SECRET_KEY']
 
 print(f"Access Key (username for MinIO UI): {access_key}")
 # Note: Keep your secret key secure - don't share or print it in shared notebooks
@@ -193,8 +193,8 @@ import boto3
 endpoint_url = 'https://minio-ui.berdl.kbase.us'
 
 # Get credentials from environment variables (automatically set in JupyterHub)
-access_key = os.environ['MINIO_ACCESS_KEY']
-secret_key = os.environ['MINIO_SECRET_KEY']
+access_key = os.environ['S3_ACCESS_KEY']
+secret_key = os.environ['S3_SECRET_KEY']
 
 # Create S3 client
 s3 = boto3.client('s3',

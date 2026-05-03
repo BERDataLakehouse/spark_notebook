@@ -512,7 +512,7 @@ class TestGetCatalogConf:
         settings.POLARIS_CREDENTIAL = "client_id:client_secret"
         settings.POLARIS_PERSONAL_CATALOG = "user_test"
         settings.POLARIS_TENANT_CATALOGS = None
-        settings.MINIO_ENDPOINT_URL = "minio:9000"
+        settings.S3_ENDPOINT_URL = "minio:9000"
 
         result = _get_catalog_conf(settings)
 

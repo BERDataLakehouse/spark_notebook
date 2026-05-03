@@ -92,7 +92,7 @@ services:
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
 
       # MINIO CONFIGURATION
-      - MINIO_ENDPOINT_URL=minio:9002
+      - S3_ENDPOINT_URL=minio:9002
 
       # DATA GOVERNANCE CONFIGURATION
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
@@ -115,6 +115,7 @@ services:
     volumes:
       - users_home:/home
       - global_share:/home/${CI_KBASE_USERNAME}/global_share
+      - ./test_notebooks:/home/${CI_KBASE_USERNAME}/work
     depends_on:
       spark-master:
         condition: service_started
@@ -223,7 +224,7 @@ services:
       # For docker-compose local dev, we default to the primary notebook
       - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
-      - MINIO_ENDPOINT_URL=minio:9002
+      - S3_ENDPOINT_URL=minio:9002
       # MinIO credentials fetched from MMS governance API per request
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
@@ -517,7 +518,7 @@ services:
       - QUARKUS_DATASOURCE_USERNAME=hive
       - QUARKUS_DATASOURCE_PASSWORD=hivepassword
       # Realm configuration
-      - POLARIS_REALM_NAME=default-realm
+      - POLARIS_REALM_CONTEXT_REALMS=POLARIS
       # MinIO credentials for Polaris's own S3 access (metadata files).
       # Polaris reads endpointInternal + pathStyleAccess from each catalog's storageConfigInfo.
       # STS is disabled per-catalog via stsUnavailable:true (not the global SKIP_CREDENTIAL flag).

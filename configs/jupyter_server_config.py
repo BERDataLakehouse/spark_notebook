@@ -1,17 +1,24 @@
+import logging
 import os
 import sys
-import logging
+import threading
 
 # Add config directory to path for local imports
 # Note: __file__ may not be defined when exec'd by traitlets config loader
 sys.path.insert(0, "/etc/jupyter")
 
 from berdl_notebook_utils.berdl_settings import get_settings
+from berdl_notebook_utils.governance import (
+    get_credentials,
+    get_my_groups,
+    get_my_workspace,
+    get_polaris_catalog_info,
+)
+from berdl_notebook_utils.kbase_user import sync_orcid_to_env
+from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
 from hybridcontents import HybridContentsManager
 from jupyter_server.services.contents.largefilemanager import LargeFileManager
 from grouped_s3_contents import GroupedS3ContentsManager
-
-from berdl_notebook_utils.kbase_user import sync_orcid_to_env
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -48,21 +55,19 @@ c.ServerApp.contents_manager_class = HybridContentsManager
 #   "The key '' (empty string) corresponds to the root directory."
 
 
-def get_minio_config():
-    """Extract MinIO configuration, provisioning credentials via governance API if needed."""
-    from berdl_notebook_utils.minio_governance import get_minio_credentials
+def get_s3_config():
+    """Extract S3 configuration, provisioning credentials via governance API if needed."""
+    # Provision user + fetch the unified S3 + Polaris credential bundle
+    # (cache-first; sets S3_ACCESS_KEY / S3_SECRET_KEY / POLARIS_CREDENTIAL).
+    credentials = get_credentials()
+    access_key = credentials.s3_access_key
+    secret_key = credentials.s3_secret_key
 
-    # Provision user + fetch credentials (checks cache first, calls API if needed,
-    # sets MINIO_ACCESS_KEY/MINIO_SECRET_KEY env vars)
-    credentials = get_minio_credentials()
-    access_key = credentials.access_key
-    secret_key = credentials.secret_key
-
-    endpoint = os.environ.get("MINIO_ENDPOINT_URL")
-    use_ssl = os.environ.get("MINIO_SECURE", "false").lower() == "true"
+    endpoint = os.environ.get("S3_ENDPOINT_URL")
+    use_ssl = os.environ.get("S3_SECURE", "false").lower() == "true"
 
     if not endpoint:
-        raise ValueError("MINIO_ENDPOINT_URL is required")
+        raise ValueError("S3_ENDPOINT_URL is required")
 
     if not endpoint.startswith(("http://", "https://")):
         protocol = "https://" if use_ssl else "http://"
@@ -83,8 +88,6 @@ def get_user_governance_paths():
     sources["my-sql"] = {"bucket": "cdm-lake", "prefix": f"users-sql-warehouse/{username}"}
 
     try:
-        from berdl_notebook_utils.minio_governance import get_my_groups, get_my_workspace
-
         workspace = get_my_workspace()
         # Update username if different from workspace (unlikely but good for consistency)
         if workspace.username:
@@ -137,25 +140,28 @@ def get_user_governance_paths():
     return sources
 
 
-def provision_polaris():
-    """Provision Polaris credentials at server startup and set env vars.
+def provision_polaris_catalog_metadata():
+    """Populate Polaris catalog-name env vars at server startup.
 
-    Called once at Jupyter Server startup so credentials are available
-    before any notebook kernel opens. Subsequent calls from IPython startup
-    scripts will hit the file cache and return immediately.
+    Polaris OAuth credentials (``POLARIS_CREDENTIAL``) are owned by
+    :func:`get_s3_config` via the unified ``get_credentials()`` call —
+    so this function only refreshes the read-only catalog metadata
+    (``POLARIS_PERSONAL_CATALOG`` / ``POLARIS_TENANT_CATALOGS``) via
+    ``GET /polaris/effective-access/me``.
+
+    Called once at Jupyter Server startup so values are available
+    before any notebook kernel opens.
     """
     try:
-        from berdl_notebook_utils.minio_governance import get_polaris_credentials
-
-        polaris_creds = get_polaris_credentials()
-        if polaris_creds:
-            logger.info(f"Polaris credentials provisioned for catalog: {polaris_creds['personal_catalog']}")
-            if polaris_creds["tenant_catalogs"]:
-                logger.info(f"   Tenant catalogs: {', '.join(polaris_creds['tenant_catalogs'])}")
+        catalog_info = get_polaris_catalog_info()
+        if catalog_info:
+            logger.info(f"Polaris catalog metadata loaded: {catalog_info['personal_catalog']}")
+            if catalog_info["tenant_catalogs"]:
+                logger.info(f"   Tenant catalogs: {', '.join(catalog_info['tenant_catalogs'])}")
         else:
-            logger.info("Polaris not configured, skipping Polaris credential provisioning")
+            logger.info("Polaris not configured, skipping catalog metadata fetch")
     except Exception as e:
-        logger.error(f"Failed to provision Polaris credentials: {e}")
+        logger.error(f"Failed to fetch Polaris catalog metadata: {e}")
 
 
 def provision_kbase_user_profile():
@@ -181,12 +187,9 @@ def start_spark_connect():
     Runs in a background thread so it doesn't block the server from accepting
     connections. Idempotent: reuses existing process if already running.
     """
-    import threading
 
     def _start():
         try:
-            from berdl_notebook_utils.spark.connect_server import start_spark_connect_server
-
             server_info = start_spark_connect_server()
             logger.info(f"Spark Connect server ready at {server_info['url']}")
         except Exception as e:
@@ -202,18 +205,21 @@ def start_spark_connect():
 # We map the root directory to the user's home
 username = os.environ.get("NB_USER", "jovyan")
 
-# 2. Get MinIO configuration (also provisions/caches the user in MinIO)
-endpoint_url, access_key, secret_key, use_ssl = get_minio_config()
+# 2. Get S3 configuration (also provisions/caches the user via MMS — and
+#    populates POLARIS_CREDENTIAL env var as part of the unified bundle)
+endpoint_url, access_key, secret_key, use_ssl = get_s3_config()
 governance_paths = get_user_governance_paths()
 
-# 3. Provision Polaris credentials — MUST be before Spark Connect so that
-#    POLARIS_CREDENTIAL env vars are set when generating spark-defaults.conf
-provision_polaris()
+# 3. Fetch Polaris catalog metadata — MUST be before Spark Connect so that
+#    POLARIS_PERSONAL_CATALOG / POLARIS_TENANT_CATALOGS env vars are set when
+#    generating spark-defaults.conf. POLARIS_CREDENTIAL was already set by
+#    get_s3_config() above (unified credential bundle).
+provision_polaris_catalog_metadata()
 
 # Clear the settings cache so start_spark_connect picks up the new
-# POLARIS_CREDENTIAL/POLARIS_PERSONAL_CATALOG/POLARIS_TENANT_CATALOGS env vars
-# that provision_polaris() just set. Without this, the lru_cache returns the
-# stale settings object captured before Polaris provisioning ran.
+# POLARIS_PERSONAL_CATALOG / POLARIS_TENANT_CATALOGS env vars. Without
+# this, the lru_cache returns the stale settings object captured before
+# the catalog metadata fetch ran.
 get_settings.cache_clear()
 
 # 4. Provision KBase user-profile fields (ORCID) so spawned kernels inherit them

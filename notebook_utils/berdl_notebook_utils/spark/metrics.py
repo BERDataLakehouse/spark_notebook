@@ -5,7 +5,7 @@ Reads Spark event logs directly from MinIO (S3) to extract resource utilization
 metrics across all users and jobs. Useful for capacity planning and determining
 optimal cluster sizing.
 
-Defaults to MINIO_ENDPOINT_URL, MINIO_ACCESS_KEY, MINIO_SECRET_KEY from env.
+Defaults to S3_ENDPOINT_URL, S3_ACCESS_KEY, S3_SECRET_KEY from env.
 With user creds, can only read own logs. Pass admin creds to read all users.
 
 Usage::
@@ -108,9 +108,9 @@ class SparkJobMetrics:
         bucket: str = BUCKET,
         prefix: str = PREFIX,
     ):
-        ep = endpoint or os.environ.get("MINIO_ENDPOINT_URL", "")
-        access_key = access_key or os.environ.get("MINIO_ACCESS_KEY", "")
-        secret_key = secret_key or os.environ.get("MINIO_SECRET_KEY", "")
+        ep = endpoint or os.environ.get("S3_ENDPOINT_URL", "")
+        access_key = access_key or os.environ.get("S3_ACCESS_KEY", "")
+        secret_key = secret_key or os.environ.get("S3_SECRET_KEY", "")
 
         # Strip protocol prefix and infer secure if not explicitly set
         for scheme in ("https://", "http://"):
@@ -121,7 +121,7 @@ class SparkJobMetrics:
                 break
 
         if secure is None:
-            secure = os.environ.get("MINIO_SECURE", "false").lower() in ("true", "1", "yes")
+            secure = os.environ.get("S3_SECURE", "false").lower() in ("true", "1", "yes")
 
         self._client = Minio(ep, access_key=access_key, secret_key=secret_key, secure=secure)
         self._bucket = bucket

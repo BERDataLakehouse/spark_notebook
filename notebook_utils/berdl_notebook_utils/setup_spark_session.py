@@ -4,7 +4,7 @@ Spark utilities for CDM JupyterHub.
 This module provides utilities for creating and configuring Spark sessions
 with support for Delta Lake, MinIO S3 storage, and fair scheduling.
 
-# This file must be loaded AFTER the 02-get_minio_client.py file
+# This file must be loaded AFTER the 02-get_s3_client.py file
 """
 
 import re
@@ -16,7 +16,7 @@ from pyspark.conf import SparkConf
 from pyspark.sql import SparkSession
 
 from .berdl_settings import BERDLSettings, get_settings
-from .minio_governance.operations import (
+from .governance.operations import (
     get_group_sql_warehouse,
     get_my_sql_warehouse,
 )
@@ -203,13 +203,13 @@ def _get_catalog_conf(settings: BERDLSettings) -> dict[str, str]:
 
     # S3/MinIO properties for Iceberg's S3FileIO (used by executors to read/write data files).
     # Iceberg does NOT use Spark's spark.hadoop.fs.s3a.* — it has its own AWS SDK S3 client.
-    s3_endpoint = settings.MINIO_ENDPOINT_URL
+    s3_endpoint = settings.S3_ENDPOINT_URL
     if not s3_endpoint.startswith("http"):
         s3_endpoint = f"http://{s3_endpoint}"
     s3_props = {
         "s3.endpoint": s3_endpoint,
-        "s3.access-key-id": settings.MINIO_ACCESS_KEY,
-        "s3.secret-access-key": settings.MINIO_SECRET_KEY,
+        "s3.access-key-id": settings.S3_ACCESS_KEY,
+        "s3.secret-access-key": settings.S3_SECRET_KEY,
         "s3.path-style-access": "true",
         "s3.region": "us-east-1",
     }
@@ -291,10 +291,10 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
 
     return {
-        "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
-        "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
-        "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
-        "spark.hadoop.fs.s3a.connection.ssl.enabled": str(settings.MINIO_SECURE).lower(),
+        "spark.hadoop.fs.s3a.endpoint": settings.S3_ENDPOINT_URL,
+        "spark.hadoop.fs.s3a.access.key": settings.S3_ACCESS_KEY,
+        "spark.hadoop.fs.s3a.secret.key": settings.S3_SECRET_KEY,
+        "spark.hadoop.fs.s3a.connection.ssl.enabled": str(settings.S3_SECURE).lower(),
         "spark.hadoop.fs.s3a.path.style.access": "true",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_response.sql_warehouse_prefix,

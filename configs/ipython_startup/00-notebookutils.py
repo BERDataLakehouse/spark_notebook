@@ -30,7 +30,7 @@ from berdl_notebook_utils.berdl_settings import (  # noqa: F401
 from berdl_notebook_utils.clients import (  # noqa: F401
     get_governance_client,
     get_hive_metastore_client,
-    get_minio_client,
+    get_s3_client,
     get_spark_cluster_client,
     get_task_service_client,
 )
@@ -98,25 +98,28 @@ from berdl_notebook_utils.agent import (  # noqa: F401
 # ============================================================================
 # Data Governance & Sharing
 # ============================================================================
-from berdl_notebook_utils.minio_governance import (  # noqa: F401
+from berdl_notebook_utils.governance import (  # noqa: F401
     check_governance_health,
     create_tenant_and_assign_users,
+    get_credentials,
     get_group_sql_warehouse,
-    get_minio_credentials,
-    get_polaris_credentials,
     get_my_accessible_paths,
     get_my_groups,
     get_my_policies,
     get_my_sql_warehouse,
     get_my_workspace,
     get_namespace_prefix,
+    get_polaris_catalog_info,
     grant_namespace_access,
     get_table_access_info,
     make_table_private,
     make_table_public,
     list_namespace_access,
     list_available_groups,
+    provision_polaris_user,
     request_tenant_access,
+    rotate_credentials,
+    rotate_polaris_credentials,
     revoke_namespace_access,
     share_table,
     unshare_table,

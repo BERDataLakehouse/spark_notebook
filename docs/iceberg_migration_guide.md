@@ -259,7 +259,7 @@ spark.sql(
 )
 ```
 
-> **Note:** `DROP TABLE` removes the catalog entry but does **not** delete the underlying S3 data files. `DROP TABLE ... PURGE` also does not delete files due to a [known Iceberg bug](https://github.com/apache/iceberg/issues/14743). To fully remove data, delete files from S3 directly using `get_minio_client()`.
+> **Note:** `DROP TABLE` removes the catalog entry but does **not** delete the underlying S3 data files. `DROP TABLE ... PURGE` also does not delete files due to a [known Iceberg bug](https://github.com/apache/iceberg/issues/14743). To fully remove data, delete files from S3 directly using `get_s3_client()`.
 
 </td>
 </tr>

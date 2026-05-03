@@ -1,5 +1,11 @@
 """
-Utility functions for BERDL MinIO Data Governance integration
+Utility functions for BERDL Data Governance integration.
+
+Covers the unified S3 + Polaris credential bundle (``/credentials/``,
+``/credentials/rotate``) and read-only Polaris catalog metadata
+discovery (``/polaris/effective-access/me``). Explicit Polaris
+provisioning / Polaris-only rotation are still available as recovery
+operations but are no longer part of the day-to-day flow.
 """
 
 import logging
@@ -35,6 +41,12 @@ try:
 except ImportError:
     rotate_polaris_credentials_polaris_credentials_rotate_username_post = None  # type: ignore[assignment]
 
+# /polaris/effective-access/me — read-only catalog metadata, no provisioning side effect.
+try:
+    from governance_client.api.polaris import get_my_effective_access_polaris_effective_access_me_get
+except ImportError:
+    get_my_effective_access_polaris_effective_access_me_get = None  # type: ignore[assignment]
+
 try:
     from governance_client.api.management import (
         ensure_all_polaris_resources_management_migrate_ensure_polaris_resources_post,
@@ -66,6 +78,7 @@ from governance_client.api.workspaces import (
 from governance_client.models import (
     CredentialsResponse,
     ErrorResponse,
+    PolarisEffectiveAccessResponse,
     GroupManagementResponse,
     HealthResponse,
     NamespacePrefixResponse,
@@ -151,37 +164,71 @@ def check_governance_health() -> HealthResponse:
     return response
 
 
-def get_minio_credentials() -> CredentialsResponse:
+def _set_credential_env(api_response: CredentialsResponse) -> None:
+    """Populate S3 + Polaris credential env vars from a unified response.
+
+    The unified ``/credentials/`` and ``/credentials/rotate`` endpoints
+    return both backends in one call. Setting both here means downstream
+    code (Spark/Trino/Iceberg config builders) can read from a single,
+    consistent source — and one MMS roundtrip is enough to refresh
+    everything credential-related.
     """
-    Get MinIO credentials for the current user and set them as environment variables.
+    os.environ["S3_ACCESS_KEY"] = api_response.s3_access_key
+    os.environ["S3_SECRET_KEY"] = api_response.s3_secret_key
+    os.environ["POLARIS_CREDENTIAL"] = f"{api_response.polaris_client_id}:{api_response.polaris_client_secret}"
+    # Clear the cached settings so subsequent get_settings() calls pick up the
+    # new S3_ACCESS_KEY / S3_SECRET_KEY / POLARIS_CREDENTIAL env vars.
+    get_settings.cache_clear()
 
-    Fetches credentials from the governance API (MMS). The API caches credentials
-    server-side in PostgreSQL, so repeated calls are fast.
 
-    Sets the following environment variables:
-    - MINIO_ACCESS_KEY: User's MinIO access key
-    - MINIO_SECRET_KEY: User's MinIO secret key
+def get_credentials() -> CredentialsResponse:
+    """Get unified S3 + Polaris credentials for the current user.
+
+    Calls ``GET /credentials/``. The API caches the bundle server-side
+    in PostgreSQL, so repeated calls are fast (cache-first). On first
+    call MMS self-bootstraps both the MinIO/S3 user AND the Polaris
+    principal + personal catalog + role bindings.
+
+    Sets the following environment variables in one shot:
+    - ``S3_ACCESS_KEY``: User's S3 IAM access key
+    - ``S3_SECRET_KEY``: User's S3 IAM secret key
+    - ``POLARIS_CREDENTIAL``: ``client_id:client_secret`` for Polaris OAuth
+
+    For catalog metadata (``POLARIS_PERSONAL_CATALOG`` /
+    ``POLARIS_TENANT_CATALOGS``) call :func:`get_polaris_catalog_info`.
 
     Returns:
-        CredentialsResponse with username, access_key, and secret_key
+        CredentialsResponse with username, ``s3_access_key``,
+        ``s3_secret_key``, ``polaris_client_id``, ``polaris_client_secret``.
     """
     client = get_governance_client()
     api_response = get_credentials_credentials_get.sync(client=client)
     if not isinstance(api_response, CredentialsResponse):
         raise RuntimeError("Failed to fetch credentials from API")
 
-    os.environ["MINIO_ACCESS_KEY"] = api_response.access_key
-    os.environ["MINIO_SECRET_KEY"] = api_response.secret_key
-
-    # Clear the cached settings so subsequent get_settings() calls pick up the
-    # new MINIO_ACCESS_KEY / MINIO_SECRET_KEY env vars.
-    get_settings.cache_clear()
-
+    _set_credential_env(api_response)
     return api_response
 
 
-class PolarisCredentials(TypedDict):
-    """Polaris credential provisioning result."""
+class PolarisCatalogInfo(TypedDict):
+    """Polaris catalog discovery result.
+
+    Returned by :func:`get_polaris_catalog_info`. Credentials are NOT
+    included — fetch those via :func:`get_credentials` (the unified
+    bundle includes the Polaris OAuth half).
+    """
+
+    personal_catalog: str
+    tenant_catalogs: list[str]
+
+
+class PolarisProvisioningResult(TypedDict):
+    """Polaris explicit-provisioning result.
+
+    Returned by :func:`provision_polaris_user` and
+    :func:`rotate_polaris_credentials` — both call Polaris-specific
+    endpoints that include credentials AND catalog metadata.
+    """
 
     client_id: str
     client_secret: str
@@ -189,8 +236,23 @@ class PolarisCredentials(TypedDict):
     tenant_catalogs: list[str]
 
 
-def _parse_polaris_credentials_response(api_response: Any, action: str) -> PolarisCredentials | None:
-    """Convert a Polaris credentials API response to the notebook credential shape."""
+def _set_polaris_full_env(creds: PolarisProvisioningResult) -> None:
+    """Set all four POLARIS_* env vars from a provisioning response."""
+    os.environ["POLARIS_CREDENTIAL"] = f"{creds['client_id']}:{creds['client_secret']}"
+    os.environ["POLARIS_PERSONAL_CATALOG"] = creds["personal_catalog"]
+    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(creds["tenant_catalogs"])
+    get_settings.cache_clear()
+
+
+def _set_polaris_catalog_env(info: PolarisCatalogInfo) -> None:
+    """Set the catalog-metadata POLARIS_* env vars (no credential touch)."""
+    os.environ["POLARIS_PERSONAL_CATALOG"] = info["personal_catalog"]
+    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(info["tenant_catalogs"])
+    get_settings.cache_clear()
+
+
+def _parse_polaris_provisioning_response(api_response: Any, action: str) -> PolarisProvisioningResult | None:
+    """Convert a Polaris provisioning/rotation response to the notebook shape."""
     polaris_logger = logging.getLogger(__name__)
 
     if isinstance(api_response, ErrorResponse):
@@ -209,21 +271,81 @@ def _parse_polaris_credentials_response(api_response: Any, action: str) -> Polar
     }
 
 
-def _set_polaris_credentials_env(credentials: PolarisCredentials) -> None:
-    """Set Polaris credential environment variables and clear cached settings."""
-    os.environ["POLARIS_CREDENTIAL"] = f"{credentials['client_id']}:{credentials['client_secret']}"
-    os.environ["POLARIS_PERSONAL_CATALOG"] = credentials["personal_catalog"]
-    os.environ["POLARIS_TENANT_CATALOGS"] = ",".join(credentials["tenant_catalogs"])
-    get_settings.cache_clear()
+def get_polaris_catalog_info() -> PolarisCatalogInfo | None:
+    """Fetch personal + tenant catalog names for the current user.
 
+    Calls ``GET /polaris/effective-access/me`` — a read-only discovery
+    endpoint that does NOT trigger any provisioning. For the user's
+    Polaris OAuth credentials, call :func:`get_credentials` (the
+    unified bundle).
 
-def _fetch_polaris_credentials() -> PolarisCredentials | None:
-    """Fetch fresh Polaris credentials from the governance API."""
+    Sets:
+    - ``POLARIS_PERSONAL_CATALOG``: e.g. ``user_alice``
+    - ``POLARIS_TENANT_CATALOGS``: comma-separated tenant catalog names
+
+    Returns:
+        PolarisCatalogInfo dict, or None if Polaris is not configured
+        or the installed governance client doesn't include the
+        effective-access endpoint.
+    """
     settings = get_settings()
     polaris_logger = logging.getLogger(__name__)
 
+    if not settings.POLARIS_CATALOG_URI:
+        return None
+
+    if get_my_effective_access_polaris_effective_access_me_get is None:
+        polaris_logger.warning("Polaris effective-access API not available — governance client is out of date")
+        return None
+
+    client = get_governance_client()
+    api_response = get_my_effective_access_polaris_effective_access_me_get.sync(client=client)
+
+    if isinstance(api_response, ErrorResponse):
+        polaris_logger.warning("Polaris effective-access fetch failed: %s", api_response.message)
+        return None
+    if not isinstance(api_response, PolarisEffectiveAccessResponse):
+        polaris_logger.warning("Polaris effective-access returned no response")
+        return None
+
+    info: PolarisCatalogInfo = {
+        "personal_catalog": api_response.personal_catalog,
+        "tenant_catalogs": [t.catalog_name for t in api_response.group_tenants],
+    }
+    _set_polaris_catalog_env(info)
+    return info
+
+
+def provision_polaris_user() -> PolarisProvisioningResult | None:
+    """Explicitly (re-)provision the user's Polaris environment.
+
+    Calls ``POST /polaris/user_provision/{username}``. This is an
+    **explicit recovery / admin** operation — day-to-day flows should
+    use :func:`get_credentials` (which self-bootstraps the Polaris
+    principal on cache miss) plus :func:`get_polaris_catalog_info`
+    for the catalog metadata.
+
+    Use this when:
+    - The Polaris principal/catalog state needs to be re-asserted from
+      MMS (e.g. after manual cleanup or schema drift).
+    - You want a single response that includes both credentials and
+      catalog metadata in one call.
+
+    Sets all POLARIS_* env vars (POLARIS_CREDENTIAL,
+    POLARIS_PERSONAL_CATALOG, POLARIS_TENANT_CATALOGS).
+
+    Returns:
+        PolarisProvisioningResult dict, or None if Polaris is not
+        configured.
+    """
+    settings = get_settings()
+    polaris_logger = logging.getLogger(__name__)
+
+    if not settings.POLARIS_CATALOG_URI:
+        return None
+
     if provision_polaris_user_polaris_user_provision_username_post is None:
-        polaris_logger.warning("Polaris API not available — governance client does not include polaris endpoints")
+        polaris_logger.warning("Polaris provisioning API not available — governance client is out of date")
         return None
 
     client = get_governance_client()
@@ -231,55 +353,29 @@ def _fetch_polaris_credentials() -> PolarisCredentials | None:
         username=settings.USER, client=client
     )
 
-    return _parse_polaris_credentials_response(api_response, "provisioning")
-
-
-def get_polaris_credentials() -> PolarisCredentials | None:
-    """
-    Provision a Polaris catalog for the current user and set credentials as environment variables.
-
-    The governance API persists and reuses Polaris credentials server-side in
-    PostgreSQL. This function intentionally calls MMS each time and does not
-    read or write local Polaris credential files.
-
-    Calls POST /polaris/user_provision/{username} on the governance API. This
-    ensures the user's Polaris environment exists (catalog, principal, roles,
-    credentials, tenant access) and returns cached credentials from MMS unless
-    the server-side record is missing.
-
-    Sets the following environment variables:
-    - POLARIS_CREDENTIAL: client_id:client_secret for authenticating with Polaris
-    - POLARIS_PERSONAL_CATALOG: Name of the user's personal Polaris catalog
-    - POLARIS_TENANT_CATALOGS: Comma-separated list of tenant catalogs the user has access to
-
-    Returns:
-        PolarisCredentials dict, or None if Polaris is not configured
-    """
-    settings = get_settings()
-
-    if not settings.POLARIS_CATALOG_URI:
-        return None
-
-    result = _fetch_polaris_credentials()
+    result = _parse_polaris_provisioning_response(api_response, "provisioning")
     if result is None:
         return None
 
-    _set_polaris_credentials_env(result)
-
+    _set_polaris_full_env(result)
     return result
 
 
-def rotate_polaris_credentials() -> PolarisCredentials | None:
-    """
-    Explicitly rotate Polaris credentials for the current user and update env vars.
+def rotate_polaris_credentials() -> PolarisProvisioningResult | None:
+    """Polaris-only credential rotation (S3 IAM credentials untouched).
 
-    Normal provisioning is stable and MMS/PostgreSQL-backed. Use this only when
-    intentional credential rotation is needed, then restart/recreate long-lived
-    engines that cached catalog credentials, especially Spark Connect and Trino.
+    The unified :func:`rotate_credentials` rotates BOTH backends — use
+    that for routine rotation. This function is for the narrow case
+    where ONLY the Polaris OAuth secret is suspected of compromise
+    and you want to leave the S3 IAM secret alone.
+
+    Restart any long-lived engines that cached the Polaris secret
+    (Spark Connect, Trino sessions) after calling.
 
     Returns:
-        PolarisCredentials dict, or None if Polaris is not configured or the
-        installed governance client does not include the rotate endpoint.
+        PolarisProvisioningResult dict, or None if Polaris is not
+        configured or the installed governance client lacks the
+        Polaris rotate endpoint.
     """
     settings = get_settings()
     polaris_logger = logging.getLogger(__name__)
@@ -296,12 +392,11 @@ def rotate_polaris_credentials() -> PolarisCredentials | None:
         username=settings.USER, client=client
     )
 
-    result = _parse_polaris_credentials_response(api_response, "credential rotation")
+    result = _parse_polaris_provisioning_response(api_response, "credential rotation")
     if result is None:
         return None
 
-    _set_polaris_credentials_env(result)
-
+    _set_polaris_full_env(result)
     return result
 
 
@@ -500,27 +595,33 @@ def list_namespace_access(
     )
 
 
-def rotate_minio_credentials() -> CredentialsResponse:
-    """
-    Rotate MinIO credentials for the current user and update environment variables.
+def rotate_credentials() -> CredentialsResponse:
+    """Rotate BOTH S3 IAM and Polaris OAuth credentials in one call.
 
-    Calls POST /credentials/rotate to generate new credentials in MinIO,
-    then updates the environment variables.
+    Calls ``POST /credentials/rotate``. This is the canonical "respond
+    to suspected credential compromise" primitive — rotating both
+    backends together prevents long-lived sessions from continuing to
+    authenticate with the old material.
+
+    Updates the same env vars as :func:`get_credentials`:
+    - ``S3_ACCESS_KEY`` / ``S3_SECRET_KEY`` (new IAM secret)
+    - ``POLARIS_CREDENTIAL`` (new Polaris client_secret)
+
+    Catalog metadata env vars (``POLARIS_PERSONAL_CATALOG`` /
+    ``POLARIS_TENANT_CATALOGS``) are not touched here — call
+    :func:`get_polaris_catalog_info` if you need to refresh them.
+
+    For Polaris-only rotation use :func:`rotate_polaris_credentials`.
 
     Returns:
-        CredentialsResponse with username, access_key, and secret_key
+        CredentialsResponse with the rotated unified bundle.
     """
     client = get_governance_client()
     api_response = rotate_credentials_credentials_rotate_post.sync(client=client)
     if not isinstance(api_response, CredentialsResponse):
         raise RuntimeError("Failed to rotate credentials from API")
 
-    os.environ["MINIO_ACCESS_KEY"] = api_response.access_key
-    os.environ["MINIO_SECRET_KEY"] = api_response.secret_key
-
-    # Clear cached settings so downstream code sees fresh env vars
-    get_settings.cache_clear()
-
+    _set_credential_env(api_response)
     return api_response
 
 

@@ -62,7 +62,7 @@ Note:
     - By default, migration is idempotent: tables that already exist in the target
       catalog are skipped. Use force=True to drop and re-migrate.
     - DROP TABLE PURGE does not delete S3 data files due to an Iceberg bug (#14743).
-      To fully clean up, delete files from S3 directly using get_minio_client().
+      To fully clean up, delete files from S3 directly using get_s3_client().
 """
 
 import logging

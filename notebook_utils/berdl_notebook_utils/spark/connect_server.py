@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..berdl_settings import BERDLSettings, get_settings
-from ..minio_governance.operations import (
+from ..governance.operations import (
     get_my_groups,
     get_my_sql_warehouse,
     get_namespace_prefix,
@@ -99,9 +99,9 @@ class SparkConnectServerConfig:
             f.write(f"spark.hadoop.hive.metastore.uris={self.settings.BERDL_HIVE_METASTORE_URI}\n")
 
             # MinIO S3 configuration with user credentials
-            f.write(f"spark.hadoop.fs.s3a.endpoint={self.settings.MINIO_ENDPOINT_URL}\n")
-            f.write(f"spark.hadoop.fs.s3a.access.key={self.settings.MINIO_ACCESS_KEY}\n")
-            f.write(f"spark.hadoop.fs.s3a.secret.key={self.settings.MINIO_SECRET_KEY}\n")
+            f.write(f"spark.hadoop.fs.s3a.endpoint={self.settings.S3_ENDPOINT_URL}\n")
+            f.write(f"spark.hadoop.fs.s3a.access.key={self.settings.S3_ACCESS_KEY}\n")
+            f.write(f"spark.hadoop.fs.s3a.secret.key={self.settings.S3_SECRET_KEY}\n")
 
             # Spark resource configuration from profile (with overhead accounted for)
             f.write("\n# Spark cluster resource configuration\n")

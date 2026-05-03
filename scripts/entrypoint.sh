@@ -17,17 +17,17 @@ if [ -n "$GOVERNANCE_URL" ] && [ -n "$AUTH_TOKEN" ]; then
         echo "Loaded AWS credentials from governance API"
     else
         echo "WARNING: Failed to fetch credentials from governance API, falling back to env vars"
-        export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-}"
-        export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-}"
+        export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY:-}"
+        export AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY:-}"
     fi
 else
     # Fallback to MINIO env vars if governance API URL or auth token not set
-    export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-}"
-    export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-}"
+    export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY:-}"
+    export AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY:-}"
 fi
 
-# Ensure MINIO_ENDPOINT_URL has http:// prefix
-MINIO_URL="${MINIO_ENDPOINT_URL}"
+# Ensure S3_ENDPOINT_URL has http:// prefix
+MINIO_URL="${S3_ENDPOINT_URL}"
 if [[ ! "$MINIO_URL" =~ ^https?:// ]]; then
     MINIO_URL="http://${MINIO_URL}"
 fi

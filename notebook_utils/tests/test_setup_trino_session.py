@@ -71,8 +71,8 @@ class TestSanitizeCatalogName:
 class TestBuildCatalogProperties:
     def _make_settings(self, endpoint_url="http://minio:9000", secure=False, hive_uri="thrift://hive:9083"):
         settings = MagicMock(spec=BERDLSettings)
-        settings.MINIO_ENDPOINT_URL = endpoint_url
-        settings.MINIO_SECURE = secure
+        settings.S3_ENDPOINT_URL = endpoint_url
+        settings.S3_SECURE = secure
         settings.BERDL_HIVE_METASTORE_URI = hive_uri
         settings.POLARIS_CATALOG_URI = None
         settings.POLARIS_CREDENTIAL = None
@@ -134,8 +134,8 @@ class TestBuildCatalogProperties:
 class TestPolarisCatalogHelpers:
     def _make_settings(self, polaris_uri="http://polaris:8181/api/catalog"):
         settings = MagicMock(spec=BERDLSettings)
-        settings.MINIO_ENDPOINT_URL = "minio:9000"
-        settings.MINIO_SECURE = False
+        settings.S3_ENDPOINT_URL = "minio:9000"
+        settings.S3_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.POLARIS_CATALOG_URI = polaris_uri
         settings.POLARIS_CREDENTIAL = "client:secret"
@@ -293,8 +293,8 @@ class TestGetTrinoConnection:
     def mock_settings(self):
         settings = MagicMock(spec=BERDLSettings)
         settings.USER = "testuser"
-        settings.MINIO_ENDPOINT_URL = "http://minio:9000"
-        settings.MINIO_SECURE = False
+        settings.S3_ENDPOINT_URL = "http://minio:9000"
+        settings.S3_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
@@ -309,13 +309,15 @@ class TestGetTrinoConnection:
     def mock_credentials(self):
         return CredentialsResponse(
             username="testuser",
-            access_key="test_access_key",
-            secret_key="test_secret_key",
+            s3_access_key="test_access_key",
+            s3_secret_key="test_secret_key",
+            polaris_client_id="test_polaris_id",
+            polaris_client_secret="test_polaris_secret",
         )
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_returns_connection(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
         mock_get_creds.return_value = mock_credentials
         mock_conn = MagicMock()
@@ -327,7 +329,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_sets_default_catalog_on_connection(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -342,7 +344,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_default_host_and_port(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
         mock_get_creds.return_value = mock_credentials
         mock_trino.dbapi.connect.return_value = MagicMock()
@@ -358,7 +360,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_custom_host_and_port(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
         mock_get_creds.return_value = mock_credentials
         mock_trino.dbapi.connect.return_value = MagicMock()
@@ -374,7 +376,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_host_and_port_from_settings(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -394,7 +396,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_explicit_host_overrides_settings(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -414,7 +416,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_custom_connector(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
         mock_get_creds.return_value = mock_credentials
         mock_conn = MagicMock()
@@ -428,7 +430,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_credentials_passed_to_catalog_properties(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -444,7 +446,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_username_sanitized_in_catalog_name(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -458,13 +460,13 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     @patch("berdl_notebook_utils.setup_trino_session.get_settings")
     def test_loads_settings_when_none(self, mock_get_settings, mock_get_creds, mock_trino, mock_create_cat):
         settings = MagicMock(spec=BERDLSettings)
         settings.USER = "autouser"
-        settings.MINIO_ENDPOINT_URL = "http://minio:9000"
-        settings.MINIO_SECURE = False
+        settings.S3_ENDPOINT_URL = "http://minio:9000"
+        settings.S3_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
@@ -474,7 +476,13 @@ class TestGetTrinoConnection:
         settings.POLARIS_PERSONAL_CATALOG = None
         settings.POLARIS_TENANT_CATALOGS = None
         mock_get_settings.return_value = settings
-        mock_get_creds.return_value = CredentialsResponse(username="autouser", access_key="ak", secret_key="sk")
+        mock_get_creds.return_value = CredentialsResponse(
+            username="autouser",
+            s3_access_key="ak",
+            s3_secret_key="sk",
+            polaris_client_id="pid",
+            polaris_client_secret="psecret",
+        )
         mock_trino.dbapi.connect.return_value = MagicMock()
 
         result = get_trino_connection()
@@ -485,7 +493,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_cursor_created_from_connection(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -503,7 +511,7 @@ class TestGetTrinoConnection:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_creates_polaris_catalogs_when_configured(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -597,8 +605,8 @@ class TestGetTrinoConnectionFalsyValues:
     def mock_settings(self):
         settings = MagicMock(spec=BERDLSettings)
         settings.USER = "testuser"
-        settings.MINIO_ENDPOINT_URL = "http://minio:9000"
-        settings.MINIO_SECURE = False
+        settings.S3_ENDPOINT_URL = "http://minio:9000"
+        settings.S3_SECURE = False
         settings.BERDL_HIVE_METASTORE_URI = "thrift://hive:9083"
         settings.TRINO_HOST = "trino"
         settings.TRINO_PORT = 8080
@@ -613,13 +621,15 @@ class TestGetTrinoConnectionFalsyValues:
     def mock_credentials(self):
         return CredentialsResponse(
             username="testuser",
-            access_key="test_access_key",
-            secret_key="test_secret_key",
+            s3_access_key="test_access_key",
+            s3_secret_key="test_secret_key",
+            polaris_client_id="test_polaris_id",
+            polaris_client_secret="test_polaris_secret",
         )
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_empty_string_host_is_honored(
         self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials
     ):
@@ -639,7 +649,7 @@ class TestGetTrinoConnectionFalsyValues:
 
     @patch("berdl_notebook_utils.setup_trino_session._create_dynamic_catalog")
     @patch("berdl_notebook_utils.setup_trino_session.trino")
-    @patch("berdl_notebook_utils.setup_trino_session.get_minio_credentials")
+    @patch("berdl_notebook_utils.setup_trino_session.get_credentials")
     def test_port_zero_is_honored(self, mock_get_creds, mock_trino, mock_create_cat, mock_settings, mock_credentials):
         """port=0 should NOT fall through to settings default."""
         mock_settings.TRINO_PORT = 9999

@@ -28,7 +28,7 @@ def get_task_service_client(settings: BERDLSettings | None = None) -> CTSClient:
 
 
 @lru_cache(maxsize=1)
-def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
+def get_s3_client(settings: BERDLSettings | None = None) -> Minio:
     """
     * Get an instance of the Minio client.
     * Note: Your minio credentials are refreshed on each restart of the jupyter notebook.
@@ -39,10 +39,10 @@ def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
         settings = get_settings()
 
     return Minio(
-        endpoint=settings.MINIO_ENDPOINT_URL.replace("https://", "").replace("http://", ""),
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
-        secure=settings.MINIO_SECURE,
+        endpoint=settings.S3_ENDPOINT_URL.replace("https://", "").replace("http://", ""),
+        access_key=settings.S3_ACCESS_KEY,
+        secret_key=settings.S3_SECRET_KEY,
+        secure=settings.S3_SECURE,
     )
 
 

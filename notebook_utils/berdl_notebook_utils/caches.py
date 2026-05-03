@@ -30,7 +30,7 @@ In a domain module:
     from ..caches import register_cache
 
     groups_cache = register_cache(
-        "minio_governance.groups",
+        "governance.groups",
         maxsize=1, ttl_seconds=3600,
         description="Cached get_my_groups() UserGroupsResponse.",
     )

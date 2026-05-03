@@ -22,7 +22,7 @@ Once you have the admin role, you can access management operations from within a
 Import the management functions:
 
 ```python
-from berdl_notebook_utils.minio_governance import (
+from berdl_notebook_utils.governance import (
     # List operations
     list_users,
     list_groups,
@@ -43,7 +43,7 @@ from berdl_notebook_utils.minio_governance import (
 Retrieve all users and their group memberships:
 
 ```python
-from berdl_notebook_utils.minio_governance import list_users
+from berdl_notebook_utils.governance import list_users
 
 users = list_users()
 
@@ -65,7 +65,7 @@ print(f"\nTotal Jupyterhub users: {users.retrieved_count}")
 View all existing groups and their members:
 
 ```python
-from berdl_notebook_utils.minio_governance import list_groups
+from berdl_notebook_utils.governance import list_groups
 
 groups = list_groups()
 
@@ -83,7 +83,7 @@ print(f"\nTotal groups: {groups['total_count']}")
 Create a new tenant (group) with optional initial members:
 
 ```python
-from berdl_notebook_utils.minio_governance import create_tenant_and_assign_users
+from berdl_notebook_utils.governance import create_tenant_and_assign_users
 
 # Create tenant without members
 result = create_tenant_and_assign_users("kbase")
@@ -104,7 +104,7 @@ print(result["add_members"])    # List of (username, status) tuples
 Add users to an existing group. By default, users are added to the read/write group. Use `read_only=True` to add users to the read-only variant instead.
 
 ```python
-from berdl_notebook_utils.minio_governance import add_group_member
+from berdl_notebook_utils.governance import add_group_member
 from governance_client.models import GroupManagementResponse
 
 # Add users to read/write group (default)
@@ -138,7 +138,7 @@ for username, response in results:
 Remove users from a group. By default, users are removed from the read/write group. Use `read_only=True` to remove users from the read-only variant instead.
 
 ```python
-from berdl_notebook_utils.minio_governance import remove_group_member
+from berdl_notebook_utils.governance import remove_group_member
 from governance_client.models import GroupManagementResponse
 
 # Remove users from read/write group (default)

@@ -92,7 +92,7 @@ spark.sql.catalogImplementation=hive
 # spark.hadoop.hive.metastore.uris will be set dynamically from BERDL_HIVE_METASTORE_URI
 
 # MinIO S3 configuration - will be set dynamically by startup script
-# spark.hadoop.fs.s3a.endpoint will be set from MINIO_ENDPOINT_URL
+# spark.hadoop.fs.s3a.endpoint will be set from S3_ENDPOINT_URL
 # spark.hadoop.fs.s3a.access.key will be set from user's credentials
 # spark.hadoop.fs.s3a.secret.key will be set from user's credentials
 spark.hadoop.fs.s3a.path.style.access=true

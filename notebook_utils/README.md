@@ -44,7 +44,7 @@ spark_group = get_spark_session("TeamAnalysis", tenant_name="research_team")
 ### Data Governance Operations
 
 ```python
-from berdl_notebook_utils.minio_governance import *
+from berdl_notebook_utils.governance import *
 
 # Get your workspace info
 workspace = get_my_workspace()
@@ -94,7 +94,7 @@ berdl_notebook_utils/
 │   ├── database.py            # Namespace and table management
 │   ├── dataframe.py           # DataFrame utilities
 │   └── cluster.py             # Spark cluster management
-└── minio_governance/          # Data governance integration
+└── governance/          # Data governance integration
     ├── __init__.py            # Governance operations exports
     └── operations.py          # API wrapper functions
 ```
@@ -109,10 +109,10 @@ The package uses Pydantic Settings for configuration management. Required enviro
 - `USER`: KBase username
 
 ### MinIO Configuration
-- `MINIO_ENDPOINT_URL`: MinIO endpoint (hostname:port)
-- `MINIO_ACCESS_KEY`: MinIO access key
-- `MINIO_SECRET_KEY`: MinIO secret key
-- `MINIO_SECURE`: Use secure connection (default: False)
+- `S3_ENDPOINT_URL`: MinIO endpoint (hostname:port)
+- `S3_ACCESS_KEY`: MinIO access key
+- `S3_SECRET_KEY`: MinIO secret key
+- `S3_SECURE`: Use secure connection (default: False)
 
 ### Spark Configuration
 - `BERDL_POD_IP`: Pod IP address for Spark driver
@@ -132,7 +132,7 @@ The package uses Pydantic Settings for configuration management. Required enviro
 uv run pytest tests/ -v
 
 # Run specific test files
-uv run pytest tests/minio_governance/ tests/spark/ -v
+uv run pytest tests/governance/ tests/spark/ -v
 
 # Run tests with short traceback
 uv run pytest tests/ -v --tb=short
@@ -182,7 +182,7 @@ uv pip install --python .venv/bin/python -e /path/to/minio_manager_service_clien
 
 ```python
 from berdl_notebook_utils.clients import (
-    get_minio_client,           # MinIO S3 client
+    get_s3_client,           # MinIO S3 client
     get_task_service_client,    # CDM Task Service client
     get_governance_client,      # Data Governance client
     get_spark_cluster_client,   # Spark Cluster Manager client
@@ -208,9 +208,9 @@ from berdl_notebook_utils.spark import (
 ### Data Governance
 
 ```python
-from berdl_notebook_utils.minio_governance import (
+from berdl_notebook_utils.governance import (
     # Health and credentials
-    check_governance_health, get_minio_credentials,
+    check_governance_health, get_credentials,
 
     # Workspace management
     get_my_sql_warehouse, get_group_sql_warehouse,
@@ -250,7 +250,7 @@ This package is designed to work seamlessly with the BERDL platform:
 
 ```python
 # Check governance API health
-from berdl_notebook_utils.minio_governance import check_governance_health
+from berdl_notebook_utils.governance import check_governance_health
 health = check_governance_health()
 print(f"API Status: {health.status}")
 
@@ -266,6 +266,6 @@ print(f"Cluster API Status: {cluster_health.status}")
 # Inspect current settings
 from berdl_notebook_utils import get_settings
 settings = get_settings()
-print(f"MinIO Endpoint: {settings.MINIO_ENDPOINT_URL}")
+print(f"MinIO Endpoint: {settings.S3_ENDPOINT_URL}")
 print(f"Governance API: {settings.GOVERNANCE_API_URL}")
 ```

@@ -420,10 +420,10 @@ class TestInitEndpointParsing:
             mock_minio.assert_called_once_with("minio.example.com", access_key="ak", secret_key="sk", secure=False)
 
     def test_no_scheme_falls_back_to_env_var(self):
-        """Test no scheme falls back to MINIO_SECURE env var."""
+        """Test no scheme falls back to S3_SECURE env var."""
         with (
             patch("berdl_notebook_utils.spark.metrics.Minio") as mock_minio,
-            patch.dict("os.environ", {"MINIO_SECURE": "true"}),
+            patch.dict("os.environ", {"S3_SECURE": "true"}),
         ):
             SparkJobMetrics(endpoint="minio.example.com:9000", access_key="ak", secret_key="sk")
             mock_minio.assert_called_once_with("minio.example.com:9000", access_key="ak", secret_key="sk", secure=True)
