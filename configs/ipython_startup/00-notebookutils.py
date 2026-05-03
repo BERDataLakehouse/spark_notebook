@@ -150,4 +150,4 @@ from berdl_notebook_utils import berdl_notebook_help  # noqa: F401
 # ============================================================================
 # Data Lakehouse Ingest (config-driven ingestion)
 # ============================================================================
-# from data_lakehouse_ingest import ingest  # noqa: F401
+from data_lakehouse_ingest import ingest  # noqa: F401
