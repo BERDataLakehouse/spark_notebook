@@ -483,7 +483,7 @@ services:
       "
 
   polaris-bootstrap:
-    image: apache/polaris-admin-tool:latest
+    image: apache/polaris-admin-tool:1.4.1
     environment:
       - POLARIS_PERSISTENCE_TYPE=relational-jdbc
       - QUARKUS_DATASOURCE_DB_KIND=postgresql
@@ -507,7 +507,7 @@ services:
         condition: service_healthy
 
   polaris:
-    image: apache/polaris:latest
+    image: apache/polaris:1.4.1
     ports:
       - "8181:8181"
     environment:
