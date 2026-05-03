@@ -2,9 +2,9 @@
 Spark utilities for CDM JupyterHub.
 
 This module provides utilities for creating and configuring Spark sessions
-with support for Delta Lake, MinIO S3 storage, and fair scheduling.
+with support for Delta Lake, S3-compatible storage, and fair scheduling.
 
-# This file must be loaded AFTER the 02-get_minio_client.py file
+# This file must be loaded AFTER the client initialization startup script.
 """
 
 import warnings
@@ -37,6 +37,8 @@ SPARK_POOLS = [SPARK_DEFAULT_POOL, "highPriority"]
 # Memory overhead percentages for Spark components
 EXECUTOR_MEMORY_OVERHEAD = 0.1  # 10% overhead for executors (accounts for JVM + system overhead)
 DRIVER_MEMORY_OVERHEAD = 0.05  # 5% overhead for driver (typically less memory pressure)
+EVENT_LOG_BUCKET = "cdm-spark-job-logs"
+EVENT_LOG_PREFIX = "spark-job-logs"
 
 # =============================================================================
 # PRIVATE HELPER FUNCTIONS
@@ -204,9 +206,7 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
     # Use tenant SQL warehouse if a tenant name is supplied; otherwise, use the user's warehouse.
     warehouse_response = get_group_sql_warehouse(tenant_name) if tenant_name else get_my_sql_warehouse()
 
-    event_log_dir = f"s3a://cdm-spark-job-logs/spark-job-logs/{settings.USER}/"
-
-    return {
+    config = {
         "spark.hadoop.fs.s3a.endpoint": settings.MINIO_ENDPOINT_URL,
         "spark.hadoop.fs.s3a.access.key": settings.MINIO_ACCESS_KEY,
         "spark.hadoop.fs.s3a.secret.key": settings.MINIO_SECRET_KEY,
@@ -215,8 +215,10 @@ def _get_s3_conf(settings: BERDLSettings, tenant_name: str | None = None) -> dic
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "spark.sql.warehouse.dir": warehouse_response.sql_warehouse_prefix,
         "spark.eventLog.enabled": "true",
-        "spark.eventLog.dir": event_log_dir,
+        "spark.eventLog.dir": f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/{settings.USER}/",
     }
+
+    return config
 
 
 IMMUTABLE_CONFIGS = {

@@ -10,12 +10,14 @@ import logging
 
 logger = logging.getLogger("berdl.startup")
 
-# Initialize MinIO client
+# Initialize S3-compatible client
 try:
-    minio = get_minio_client()  # noqa: F821
-    logger.info("✅ MinIO client initialized")
+    s3 = get_s3_client()  # noqa: F821
+    minio = s3
+    logger.info("✅ S3 client initialized")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize MinIO client: {e}")
+    logger.error(f"❌ Failed to initialize S3 client: {e}")
+    s3 = None
     minio = None
 
 # Initialize governance client (required for most operations)

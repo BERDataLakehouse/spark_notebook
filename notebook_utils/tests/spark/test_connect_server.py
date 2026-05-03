@@ -123,7 +123,7 @@ class TestSparkConnectServerConfig:
         assert config.spark_defaults_path.exists()
         content = config.spark_defaults_path.read_text()
         assert "test_user" in content
-        assert "spark.eventLog.dir" in content
+        assert "spark.eventLog.dir=s3a://cdm-spark-job-logs/spark-job-logs/test_user/" in content
 
     @patch("berdl_notebook_utils.spark.connect_server.get_my_groups")
     @patch("berdl_notebook_utils.spark.connect_server.get_namespace_prefix")

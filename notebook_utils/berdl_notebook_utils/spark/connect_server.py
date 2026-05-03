@@ -22,13 +22,15 @@ from ..minio_governance.operations import (
 )
 from ..setup_spark_session import (
     DRIVER_MEMORY_OVERHEAD,
+    EVENT_LOG_BUCKET,
+    EVENT_LOG_PREFIX,
     EXECUTOR_MEMORY_OVERHEAD,
     convert_memory_format,
 )
 
 logger = logging.getLogger(__name__)
 
-EVENT_LOG_DIR = "s3a://cdm-spark-job-logs/spark-job-logs/"
+EVENT_LOG_DIR = f"s3a://{EVENT_LOG_BUCKET}/{EVENT_LOG_PREFIX}/"
 
 
 class SparkConnectServerConfig:
@@ -50,7 +52,7 @@ class SparkConnectServerConfig:
         self.spark_home = settings.SPARK_HOME
         self.user_spark_dir = Path.home() / ".spark"
         self.user_conf_dir = self.user_spark_dir / "conf"
-        self.spark_event_log_dir = EVENT_LOG_DIR + self.username
+        self.spark_event_log_dir = EVENT_LOG_DIR + self.username + "/"
         self.connect_server_log_dir = self.user_spark_dir / "connect-server-logs"
 
         # Configuration files

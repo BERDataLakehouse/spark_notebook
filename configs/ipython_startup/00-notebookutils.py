@@ -31,6 +31,7 @@ from berdl_notebook_utils.clients import (  # noqa: F401
     get_governance_client,
     get_hive_metastore_client,
     get_minio_client,
+    get_s3_client,
     get_spark_cluster_client,
     get_task_service_client,
 )
