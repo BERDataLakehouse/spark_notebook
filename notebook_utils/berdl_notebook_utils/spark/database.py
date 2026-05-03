@@ -45,10 +45,7 @@ def generate_namespace_location(namespace: str | None = None, tenant_name: str |
     # `message` field but no `sql_warehouse_prefix` (e.g., user not in tenant).
     # Surface a warning and short-circuit instead of dereferencing None below.
     if hasattr(warehouse_response, "message") and not getattr(warehouse_response, "sql_warehouse_prefix", None):
-        print(
-            "Warning: Failed to get warehouse location: "
-            f"{getattr(warehouse_response, 'message', 'Unknown error')}"
-        )
+        print(f"Warning: Failed to get warehouse location: {getattr(warehouse_response, 'message', 'Unknown error')}")
         return (namespace, None)
 
     warehouse_dir = warehouse_response.sql_warehouse_prefix
