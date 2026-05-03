@@ -43,13 +43,16 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Delta Lake Configuration (STATIC - Server-Side Only)
+# SQL Extensions and Catalog Configuration (STATIC - Server-Side Only)
 # ------------------------------------------------------------------------------
 # These SQL extensions must be loaded when the Spark server starts.
-# They initialize Delta Lake support by registering custom SparkSessionExtensions
-# and catalog implementations that handle Delta table operations.
+# Delta Lake remains the default writer (spark_catalog -> DeltaCatalog) for
+# backward compatibility. Iceberg DDL/DML syntax is enabled by loading
+# IcebergSparkSessionExtensions here; concrete Iceberg catalogs are registered
+# dynamically per-session (e.g., when Polaris is configured).
+# Sedona provides geospatial UDFs.
 
-spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,org.apache.sedona.sql.SedonaSqlExtensions
+spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,org.apache.sedona.sql.SedonaSqlExtensions
 spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 
 # Delta Lake settings
