@@ -209,19 +209,39 @@ def _create_dynamic_catalog(
     catalog_name: str,
     connector: str,
     properties: dict[str, str],
+    *,
+    force: bool = False,
 ) -> None:
-    """
-    Create a dynamic catalog if it doesn't already exist.
+    """Create a dynamic catalog.
 
-    Skips creation if the catalog is already loaded (e.g. from a previous
-    session or static .properties file).  The access control plugin allows
-    CREATE CATALOG for catalogs matching u_{user}*.
-    """
-    if _catalog_exists(cursor, catalog_name):
-        logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
-        return
+    By default, an existing catalog with the same name is reused
+    (e.g. a static ``.properties`` file or a previously-created dynamic
+    catalog whose embedded credentials are still valid).
 
+    Args:
+        cursor: Open Trino cursor.
+        catalog_name: Catalog name to create (validated by the access
+            control plugin against ``u_{user}*`` and Polaris alias rules).
+        connector: One of :data:`ALLOWED_CONNECTORS`.
+        properties: ``WITH (...)`` catalog properties.
+        force: When True, drop the existing catalog (if any) and recreate
+            it. Required for OAuth-bearing Iceberg catalogs whose embedded
+            ``oauth2.credential`` may have rotated since the coordinator
+            last loaded them — without ``force``, a stale ``client_secret``
+            silently persists for the entire coordinator uptime even with
+            ``token-refresh-enabled=true``, because the refresh request
+            itself uses the (now stale) cached credential and is rejected
+            by Polaris with ``unauthorized_client``.
+    """
     _validate_connector(connector)
+
+    if _catalog_exists(cursor, catalog_name):
+        if not force:
+            logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
+            return
+        logger.info(f"Force-recreating Trino catalog '{catalog_name}' (force=True)")
+        cursor.execute(f'DROP CATALOG IF EXISTS "{catalog_name}"')
+        cursor.fetchall()
 
     props_sql = ",\n        ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in properties.items())
 
@@ -242,7 +262,17 @@ def _create_polaris_catalogs(
     access_key: str,
     secret_key: str,
 ) -> None:
-    """Create Trino Iceberg catalogs for configured Polaris warehouses."""
+    """Create Trino Iceberg catalogs for configured Polaris warehouses.
+
+    Always passes ``force=True`` to :func:`_create_dynamic_catalog` so the
+    catalogs are dropped and re-created on every connection.  The OAuth
+    ``client_secret`` we embed here is rotated by MMS via
+    :func:`refresh_spark_environment` (and admin tooling), so reusing a
+    coordinator-cached catalog risks running with a now-invalid
+    credential.  Drop+create on every call adds ~one round-trip per
+    catalog but guarantees a clean credential state for the duration of
+    the new connection.
+    """
     if not settings.POLARIS_CATALOG_URI or not settings.POLARIS_CREDENTIAL:
         return
 
@@ -255,7 +285,7 @@ def _create_polaris_catalogs(
             access_key=access_key,
             secret_key=secret_key,
         )
-        _create_dynamic_catalog(cursor, personal_alias, "iceberg", properties)
+        _create_dynamic_catalog(cursor, personal_alias, "iceberg", properties, force=True)
 
     for tenant_catalog in _iter_tenant_catalogs(settings.POLARIS_TENANT_CATALOGS):
         tenant_alias = _get_tenant_catalog_alias(tenant_catalog)
@@ -267,7 +297,7 @@ def _create_polaris_catalogs(
             access_key=access_key,
             secret_key=secret_key,
         )
-        _create_dynamic_catalog(cursor, tenant_alias, "iceberg", properties)
+        _create_dynamic_catalog(cursor, tenant_alias, "iceberg", properties, force=True)
 
 
 def get_trino_connection(

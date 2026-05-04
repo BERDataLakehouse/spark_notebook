@@ -284,6 +284,68 @@ class TestCreateDynamicCatalog:
         # fetchall called twice: once for SHOW CATALOGS, once after CREATE CATALOG
         assert cursor.fetchall.call_count == 2
 
+    def test_force_drops_then_recreates_when_catalog_exists(self):
+        """force=True must DROP the existing catalog before recreating it.
+
+        This is the recovery path used by the Polaris/Iceberg flow so that
+        a rotated POLARIS_CREDENTIAL takes effect — without the DROP, the
+        stale oauth2.credential cached in the coordinator-loaded catalog
+        keeps producing ICEBERG_CATALOG_ERROR even with
+        token-refresh-enabled=true.
+        """
+        cursor = MagicMock()
+        # SHOW CATALOGS sees the catalog (so we go through the drop path);
+        # DROP CATALOG and CREATE CATALOG both return empty.
+        cursor.fetchall.side_effect = [[("my",)], [], []]
+
+        _create_dynamic_catalog(
+            cursor,
+            "my",
+            "iceberg",
+            {"iceberg.rest-catalog.oauth2.credential": "id:secret"},
+            force=True,
+        )
+
+        sqls = [call.args[0] for call in cursor.execute.call_args_list]
+        # Three statements expected, in this order:
+        #   1. SHOW CATALOGS    (existence check)
+        #   2. DROP CATALOG     (force-recreate)
+        #   3. CREATE CATALOG   (with the new properties)
+        assert len(sqls) == 3
+        assert "SHOW CATALOGS" in sqls[0]
+        assert 'DROP CATALOG IF EXISTS "my"' in sqls[1]
+        assert "CREATE CATALOG IF NOT EXISTS" in sqls[2]
+        assert '"my"' in sqls[2]
+        assert "USING iceberg" in sqls[2]
+        # fetchall called once per execute()
+        assert cursor.fetchall.call_count == 3
+
+    def test_force_just_creates_when_catalog_absent(self):
+        """force=True is a no-op (no DROP) when the catalog doesn't exist yet."""
+        cursor = MagicMock()
+        cursor.fetchall.side_effect = [[("system",)], []]
+
+        _create_dynamic_catalog(cursor, "tgu2", "iceberg", {"k": "v"}, force=True)
+
+        sqls = [call.args[0] for call in cursor.execute.call_args_list]
+        # Two statements: SHOW CATALOGS, then CREATE CATALOG.  No DROP because
+        # the catalog wasn't there.
+        assert len(sqls) == 2
+        assert "SHOW CATALOGS" in sqls[0]
+        assert "DROP CATALOG" not in sqls[0] and "DROP CATALOG" not in sqls[1]
+        assert "CREATE CATALOG IF NOT EXISTS" in sqls[1]
+
+    def test_default_force_false_still_skips_existing(self):
+        """Sanity: omitting force keeps the original skip-if-exists behaviour."""
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [("u_alice_lake",)]
+
+        _create_dynamic_catalog(cursor, "u_alice_lake", "delta_lake", {"key": "val"})
+
+        # Only SHOW CATALOGS — no DROP, no CREATE.
+        assert cursor.execute.call_count == 1
+        assert "SHOW CATALOGS" in cursor.execute.call_args[0][0]
+
 
 # ---------------------------------------------------------------------------
 # get_trino_connection

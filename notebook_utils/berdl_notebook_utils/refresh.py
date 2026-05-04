@@ -1,10 +1,10 @@
 """
-Refresh credentials and Spark environment.
+Refresh credentials and Spark + Trino runtimes.
 
 Provides a single function to rotate the user's S3 + Polaris credentials,
-re-fetch Polaris catalog metadata, restart the Spark Connect server, and
-stop any existing Spark session — ensuring get_spark_session() works
-afterward.
+re-fetch Polaris catalog metadata, restart the Spark Connect server, stop
+any existing Spark session, AND re-create the Trino dynamic catalogs so
+both engines pick up the rotated credentials in one call.
 """
 
 import logging
@@ -22,7 +22,7 @@ logger = logging.getLogger("berdl.refresh")
 
 
 def refresh_spark_environment() -> dict:
-    """Re-provision credentials and restart Spark.
+    """Re-provision credentials and refresh Spark + Trino.
 
     Steps performed:
         1. Clear the in-memory ``get_settings()`` LRU cache
@@ -36,11 +36,15 @@ def refresh_spark_environment() -> dict:
         4. Clear settings cache again so downstream code sees fresh env vars
         5. Stop any existing Spark session
         6. Restart the Spark Connect server with regenerated spark-defaults.conf
+        7. Re-open a Trino connection so the dynamic Polaris catalogs are
+           dropped and re-created with the rotated ``POLARIS_CREDENTIAL``
+           (skipped if Polaris is not configured or the trino client is
+           unavailable in this environment)
 
     Returns:
         dict with keys ``credentials``, ``polaris_catalog``,
-        ``spark_connect``, ``spark_session_stopped`` summarising what
-        happened.
+        ``spark_connect``, ``spark_session_stopped``, ``trino_catalogs``
+        summarising what happened.
     """
     result: dict = {}
 
@@ -99,5 +103,39 @@ def refresh_spark_environment() -> dict:
     except Exception as exc:
         result["spark_connect"] = {"status": "error", "error": str(exc)}
         logger.warning("Failed to restart Spark Connect server: %s", exc)
+
+    # 7. Re-open a Trino connection so the per-user Polaris dynamic
+    #    catalogs are dropped and recreated with the rotated
+    #    POLARIS_CREDENTIAL.
+    #
+    #    Without this step, Trino's coordinator keeps the previously-
+    #    cached oauth2.credential (= the pre-rotation client_secret)
+    #    baked into the long-lived ``my`` / tenant catalogs. Even with
+    #    ``token-refresh-enabled=true`` the refresh request itself uses
+    #    the (now stale) cached secret and is rejected by Polaris with
+    #    ``unauthorized_client``, surfacing as
+    #    ``ICEBERG_CATALOG_ERROR: Failed to list namespaces`` on every
+    #    subsequent query. ``_create_polaris_catalogs`` calls
+    #    ``_create_dynamic_catalog(..., force=True)`` so the existing
+    #    catalogs are dropped before recreation.
+    settings = get_settings()
+    if not settings.POLARIS_CATALOG_URI:
+        result["trino_catalogs"] = {"status": "skipped", "reason": "Polaris not configured"}
+    else:
+        try:
+            # Inline import: keeps this module loadable in environments
+            # without the trino client installed.
+            from berdl_notebook_utils.setup_trino_session import get_trino_connection
+
+            conn = get_trino_connection()
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001 — closing failure is non-fatal
+                pass
+            result["trino_catalogs"] = {"status": "ok"}
+            logger.info("Trino dynamic Polaris catalogs refreshed")
+        except Exception as exc:
+            result["trino_catalogs"] = {"status": "error", "error": str(exc)}
+            logger.warning("Failed to refresh Trino dynamic catalogs: %s", exc)
 
     return result
