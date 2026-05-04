@@ -8,8 +8,8 @@ from berdl_notebook_utils.refresh import refresh_spark_environment
 def _polaris_unconfigured_settings() -> MagicMock:
     """Return a get_settings()-like mock whose POLARIS_CATALOG_URI is falsy.
 
-    Tests that don't care about Step 7 (Trino refresh) use this to make
-    refresh_spark_environment() short-circuit Step 7 without needing to
+    Tests that don't care about Step 6 (Trino refresh) use this to make
+    refresh_spark_environment() short-circuit Step 6 without needing to
     mock the trino client.
     """
     settings = MagicMock()
@@ -38,7 +38,7 @@ class TestRefreshSparkEnvironment:
 
         mock_spark.getActiveSession.return_value = None
         mock_sc_start.return_value = {"status": "running"}
-        # Step 7 short-circuit: report Polaris unconfigured for this test.
+        # Step 6 short-circuit: report Polaris unconfigured for this test.
         mock_settings.return_value = _polaris_unconfigured_settings()
 
         result = refresh_spark_environment()
@@ -48,7 +48,13 @@ class TestRefreshSparkEnvironment:
         assert result["polaris_catalog"]["personal_catalog"] == "user_testuser"
         assert result["spark_session_stopped"] is False
         assert result["spark_connect"] == {"status": "running"}
-        assert mock_settings.cache_clear.call_count == 2
+        # refresh.py only clears the cache explicitly once (Step 1, defensive
+        # against pre-call env mutations).  rotate_credentials() and
+        # get_polaris_catalog_info() each clear the cache themselves
+        # internally after writing env vars, but those calls are made on
+        # operations.get_settings (not on this mocked refresh.get_settings),
+        # so this counter reflects only the refresh-level clear.
+        assert mock_settings.cache_clear.call_count == 1
         mock_sc_start.assert_called_once_with(force_restart=True)
         assert result["trino_catalogs"] == {"status": "skipped", "reason": "Polaris not configured"}
 
@@ -177,12 +183,12 @@ class TestRefreshSparkEnvironment:
         assert result["polaris_catalog"]["status"] == "error"
         assert result["spark_session_stopped"] is False
         assert result["spark_connect"]["status"] == "error"
-        # Step 7 short-circuits when POLARIS_CATALOG_URI is unset.
+        # Step 6 short-circuits when POLARIS_CATALOG_URI is unset.
         assert result["trino_catalogs"] == {"status": "skipped", "reason": "Polaris not configured"}
 
 
 class TestRefreshSparkEnvironmentTrinoStep:
-    """Tests for Step 7 — Trino dynamic catalog refresh after credential rotation."""
+    """Tests for Step 6 — Trino dynamic catalog refresh after credential rotation."""
 
     def _setup_common_mocks(self, mock_creds, mock_polaris_catalog, mock_spark, mock_sc_start):
         mock_creds.return_value = Mock(username="u_test")
@@ -193,16 +199,22 @@ class TestRefreshSparkEnvironmentTrinoStep:
         mock_spark.getActiveSession.return_value = None
         mock_sc_start.return_value = {"status": "running"}
 
-    @patch("berdl_notebook_utils.setup_trino_session.get_trino_connection")
+    @patch("berdl_notebook_utils.refresh.get_trino_connection")
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_catalog_info")
     @patch("berdl_notebook_utils.refresh.rotate_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     def test_trino_refresh_invoked_when_polaris_configured(
-        self, mock_settings, mock_creds, mock_polaris_catalog, mock_spark, mock_sc_start, mock_get_trino,
+        self,
+        mock_settings,
+        mock_creds,
+        mock_polaris_catalog,
+        mock_spark,
+        mock_sc_start,
+        mock_get_trino,
     ):
-        """When POLARIS_CATALOG_URI is set, Step 7 must call get_trino_connection().
+        """When POLARIS_CATALOG_URI is set, Step 6 must call get_trino_connection().
 
         This is what re-creates the per-user Polaris dynamic catalogs in the
         Trino coordinator with the freshly-rotated POLARIS_CREDENTIAL — the
@@ -222,14 +234,20 @@ class TestRefreshSparkEnvironmentTrinoStep:
         mock_conn.close.assert_called_once()
         assert result["trino_catalogs"] == {"status": "ok"}
 
-    @patch("berdl_notebook_utils.setup_trino_session.get_trino_connection")
+    @patch("berdl_notebook_utils.refresh.get_trino_connection")
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_catalog_info")
     @patch("berdl_notebook_utils.refresh.rotate_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     def test_trino_refresh_error_does_not_crash_refresh(
-        self, mock_settings, mock_creds, mock_polaris_catalog, mock_spark, mock_sc_start, mock_get_trino,
+        self,
+        mock_settings,
+        mock_creds,
+        mock_polaris_catalog,
+        mock_spark,
+        mock_sc_start,
+        mock_get_trino,
     ):
         """A Trino-side failure must be captured but must not raise out of refresh()."""
         self._setup_common_mocks(mock_creds, mock_polaris_catalog, mock_spark, mock_sc_start)
@@ -246,16 +264,22 @@ class TestRefreshSparkEnvironmentTrinoStep:
         # Other steps still succeeded — refresh() must not propagate.
         assert result["spark_connect"] == {"status": "running"}
 
-    @patch("berdl_notebook_utils.setup_trino_session.get_trino_connection")
+    @patch("berdl_notebook_utils.refresh.get_trino_connection")
     @patch("berdl_notebook_utils.refresh.start_spark_connect_server")
     @patch("berdl_notebook_utils.refresh.SparkSession")
     @patch("berdl_notebook_utils.refresh.get_polaris_catalog_info")
     @patch("berdl_notebook_utils.refresh.rotate_credentials")
     @patch("berdl_notebook_utils.refresh.get_settings")
     def test_trino_refresh_skipped_when_polaris_not_configured(
-        self, mock_settings, mock_creds, mock_polaris_catalog, mock_spark, mock_sc_start, mock_get_trino,
+        self,
+        mock_settings,
+        mock_creds,
+        mock_polaris_catalog,
+        mock_spark,
+        mock_sc_start,
+        mock_get_trino,
     ):
-        """If POLARIS_CATALOG_URI is unset, Step 7 must NOT call get_trino_connection()."""
+        """If POLARIS_CATALOG_URI is unset, Step 6 must NOT call get_trino_connection()."""
         self._setup_common_mocks(mock_creds, mock_polaris_catalog, mock_spark, mock_sc_start)
         mock_settings.return_value = _polaris_unconfigured_settings()
 
