@@ -9,13 +9,14 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import time
 from pathlib import Path
 from typing import Optional
 
 from ..berdl_settings import BERDLSettings, get_settings
-from ..minio_governance.operations import (
+from ..governance.operations import (
     get_my_groups,
     get_my_sql_warehouse,
     get_namespace_prefix,
@@ -23,6 +24,7 @@ from ..minio_governance.operations import (
 from ..setup_spark_session import (
     DRIVER_MEMORY_OVERHEAD,
     EXECUTOR_MEMORY_OVERHEAD,
+    _get_catalog_conf,
     convert_memory_format,
 )
 
@@ -97,9 +99,9 @@ class SparkConnectServerConfig:
             f.write(f"spark.hadoop.hive.metastore.uris={self.settings.BERDL_HIVE_METASTORE_URI}\n")
 
             # MinIO S3 configuration with user credentials
-            f.write(f"spark.hadoop.fs.s3a.endpoint={self.settings.MINIO_ENDPOINT_URL}\n")
-            f.write(f"spark.hadoop.fs.s3a.access.key={self.settings.MINIO_ACCESS_KEY}\n")
-            f.write(f"spark.hadoop.fs.s3a.secret.key={self.settings.MINIO_SECRET_KEY}\n")
+            f.write(f"spark.hadoop.fs.s3a.endpoint={self.settings.S3_ENDPOINT_URL}\n")
+            f.write(f"spark.hadoop.fs.s3a.access.key={self.settings.S3_ACCESS_KEY}\n")
+            f.write(f"spark.hadoop.fs.s3a.secret.key={self.settings.S3_SECRET_KEY}\n")
 
             # Spark resource configuration from profile (with overhead accounted for)
             f.write("\n# Spark cluster resource configuration\n")
@@ -118,6 +120,13 @@ class SparkConnectServerConfig:
 
             warehouse_response = get_my_sql_warehouse()
             f.write(f"spark.sql.warehouse.dir={warehouse_response.sql_warehouse_prefix}\n")
+
+            # Add Polaris Iceberg Catalogs
+            catalog_configs = _get_catalog_conf(self.settings)
+            if catalog_configs:
+                f.write("\n# Polaris Catalog Configuration\n")
+                for key, value in catalog_configs.items():
+                    f.write(f"{key}={value}\n")
 
         logger.info(f"Spark configuration written to {self.spark_defaults_path}")
 
@@ -288,8 +297,6 @@ class SparkConnectServerManager:
         Returns:
             True if port is free, False if timeout reached.
         """
-        import socket
-
         port = self.config.spark_connect_port
         start_time = time.time()
 
@@ -319,9 +326,9 @@ class SparkConnectServerManager:
             Dictionary with server information.
         """
         # Check if server is already running
-        if self.is_running():
+        server_info = self.get_server_info()
+        if server_info is not None:
             if not force_restart:
-                server_info = self.get_server_info()
                 logger.info(f"✅ Spark Connect server already running (PID: {server_info['pid']})")
                 logger.info("   Reusing existing server - no need to start a new one")
                 return server_info
@@ -382,6 +389,9 @@ class SparkConnectServerManager:
                 f.write(str(process.pid))
 
             server_info = self.get_server_info()
+            if server_info is None:
+                raise RuntimeError("Failed to get server info after startup")
+
             logger.info(f"✅ Spark Connect server started successfully (PID: {process.pid})")
             logger.info(f"   Connect URL: {server_info['url']}")
             logger.info(f"   Logs: {server_info['log_file']}")
@@ -401,8 +411,8 @@ class SparkConnectServerManager:
         Returns:
             Dictionary with status information.
         """
-        if self.is_running():
-            info = self.get_server_info()
+        info = self.get_server_info()
+        if info is not None:
             return {
                 "status": "running",
                 **info,

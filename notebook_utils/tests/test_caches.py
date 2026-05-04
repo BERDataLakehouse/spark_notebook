@@ -119,10 +119,19 @@ class TestGetCache:
 class TestRegistryIntegration:
     """Verify production modules pre-register their caches at import time."""
 
-    def test_minio_governance_caches_are_registered(self):
+    def test_governance_caches_are_registered(self):
         # Import triggers registration as a side effect.
-        from berdl_notebook_utils.minio_governance import _cache  # noqa: F401
+        from berdl_notebook_utils.governance import _cache  # noqa: F401
 
         names = {info["name"] for info in caches.list_caches()}
-        assert "minio_governance.tenants" in names
-        assert "minio_governance.groups" in names
+        assert "governance.tenants" in names
+        assert "governance.groups" in names
+
+    def test_spark_data_store_caches_are_registered(self):
+        from berdl_notebook_utils.spark import _cache  # noqa: F401
+
+        names = {info["name"] for info in caches.list_caches()}
+        assert "spark.data_store.databases" in names
+        assert "spark.data_store.tables" in names
+        assert "spark.data_store.schema" in names
+        assert "spark.data_store.structure" in names

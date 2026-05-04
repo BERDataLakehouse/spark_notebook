@@ -73,7 +73,10 @@ services:
     # platform: linux/amd64
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.polaris-local
+      additional_contexts:
+        minio_manager_service_client: ../minio_manager_service_client
+        datalake_mcp_server_client: ../datalake-mcp-server-client
       args:
         BASE_TAG: local
         BASE_REGISTRY: ""
@@ -89,7 +92,7 @@ services:
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
 
       # MINIO CONFIGURATION
-      - MINIO_ENDPOINT_URL=minio:9002
+      - S3_ENDPOINT_URL=minio:9002
 
       # DATA GOVERNANCE CONFIGURATION
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
@@ -97,6 +100,9 @@ services:
 
       # DATALAKE MCP SERVER CONFIGURATION
       - DATALAKE_MCP_SERVER_URL=http://datalake-mcp-server:8000/apis/mcp
+
+      # POLARIS CONFIGURATION (per-user credentials provisioned dynamically by 01-credentials.py)
+      - POLARIS_CATALOG_URI=http://polaris:8181/api/catalog
 
       # TRINO CONFIGURATION
       - TRINO_HOST=trino
@@ -109,11 +115,32 @@ services:
     volumes:
       - users_home:/home
       - global_share:/home/${CI_KBASE_USERNAME}/global_share
+      - ./test_notebooks:/home/${CI_KBASE_USERNAME}/work
     depends_on:
-      - spark-master
-      - minio
-      - postgres
-      - hive-metastore
+      spark-master:
+        condition: service_started
+      minio-create-buckets:
+        condition: service_completed_successfully
+      minio-manager-service:
+        condition: service_healthy
+      polaris:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/api')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
     command: start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/${CI_KBASE_USERNAME}
 
   spark-connect-proxy:
@@ -148,6 +175,9 @@ services:
       - KBASE_ADMIN_ROLES=CDM_JUPYTERHUB_ADMIN
       - KBASE_APPROVED_ROLES=BERDL_USER
       - REDIS_URL=redis://redis:6379
+      # Polaris admin credentials (only the governance service needs root access)
+      - POLARIS_CATALOG_URI=http://polaris:8181/api/catalog
+      - POLARIS_CREDENTIAL=root:s3cr3t
       # Credential store (PostgreSQL)
       - MMS_DB_HOST=postgres
       - MMS_DB_PORT=5432
@@ -155,10 +185,28 @@ services:
       - MMS_DB_USER=mms
       - MMS_DB_PASSWORD=mmspassword
       - MMS_DB_ENCRYPTION_KEY=change-me-in-prod
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - minio
-      - redis
-      - postgres
+      minio:
+        condition: service_healthy
+      minio-create-buckets:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      polaris:
+        condition: service_healthy
 
   datalake-mcp-server:
     # image: ghcr.io/berdatalakehouse/datalake-mcp-server:main
@@ -176,19 +224,42 @@ services:
       # For docker-compose local dev, we default to the primary notebook
       - SPARK_CONNECT_URL_TEMPLATE=sc://spark-notebook:15002
       - BERDL_HIVE_METASTORE_URI=thrift://hive-metastore:9083
-      - MINIO_ENDPOINT_URL=minio:9002
+      - S3_ENDPOINT_URL=minio:9002
       # MinIO credentials fetched from MMS governance API per request
       - GOVERNANCE_API_URL=http://minio-manager-service:8000
       - KBASE_AUTH_URL=https://ci.kbase.us/services/auth/
       - KBASE_REQUIRED_ROLES=BERDL_USER
       - MFA_EXEMPT_USERS=${CI_KBASE_USERNAME}
+      # POLARIS CONFIGURATION (per-user credentials provisioned dynamically)
+      - POLARIS_CATALOG_URI=http://polaris:8181/api/catalog
       - BERDL_REDIS_HOST=redis
       - BERDL_REDIS_PORT=6379
+    volumes:
+      # Mount the shared /home directory to access all users' credentials
+      # This allows the MCP server to dynamically read any user's credentials
+      # from /home/{username}/.berdl_minio_credentials
+      # In K8s: mount the parent directory or use a shared volume
+      - users_home:/home:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/apis/mcp/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - hive-metastore
-      - minio
-      - minio-manager-service
-      - redis
+      hive-metastore:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-manager-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   tenant-access-request-service:
     # image: ghcr.io/berdatalakehouse/tenant_access_request_service:main
@@ -217,7 +288,8 @@ services:
       # Logging
       - LOG_LEVEL=DEBUG
     depends_on:
-      - minio-manager-service
+      minio-manager-service:
+        condition: service_healthy
 
   spark-master:
     # image: ghcr.io/berdatalakehouse/kube_spark_manager_image:main
@@ -309,6 +381,11 @@ services:
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     volumes:
       - redis_data:/data
 
@@ -323,7 +400,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-readonly.sh:/docker-entrypoint-initdb.d/01-init-postgres-readonly.sh:ro
-      - ./scripts/init-mms-db.sh:/docker-entrypoint-initdb.d/02-init-mms-db.sh:ro
+      - ./scripts/init-polaris-db.sh:/docker-entrypoint-initdb.d/02-init-polaris-db.sh:ro
+      - ./scripts/init-mms-db.sh:/docker-entrypoint-initdb.d/03-init-mms-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive"]
+      interval: 5s
+      timeout: 2s
+      retries: 15
 
   hive-metastore:
     # image: ghcr.io/berdatalakehouse/hive_metastore:main
@@ -352,13 +435,18 @@ services:
 
       - DELTALAKE_WAREHOUSE_DIR=s3a://cdm-lake/users-sql-warehouse
     depends_on:
-      - postgres
-      - minio
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-create-buckets:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "9083"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/9083'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
@@ -393,6 +481,70 @@ services:
 
       echo 'MinIO bucket creation complete.';
       "
+
+  polaris-bootstrap:
+    image: apache/polaris-admin-tool:1.4.1
+    environment:
+      - POLARIS_PERSISTENCE_TYPE=relational-jdbc
+      - QUARKUS_DATASOURCE_DB_KIND=postgresql
+      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://postgres:5432/polaris
+      - QUARKUS_DATASOURCE_USERNAME=hive
+      - QUARKUS_DATASOURCE_PASSWORD=hivepassword
+    # Bootstrap exits 3 if already bootstrapped (expected with persistent storage).
+    # Treat exit 3 as success so docker compose doesn't fail on subsequent runs.
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        java -jar /deployments/polaris-admin-tool.jar bootstrap --realm=POLARIS --credential=POLARIS,root,s3cr3t
+        rc=$$?
+        if [ $$rc -eq 3 ]; then
+          echo "Already bootstrapped — skipping (OK)"
+          exit 0
+        fi
+        exit $$rc
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  polaris:
+    image: apache/polaris:1.4.1
+    ports:
+      - "8181:8181"
+    environment:
+      # Persistence — PostgreSQL instead of in-memory
+      - POLARIS_PERSISTENCE_TYPE=relational-jdbc
+      - QUARKUS_DATASOURCE_DB_KIND=postgresql
+      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://postgres:5432/polaris
+      - QUARKUS_DATASOURCE_USERNAME=hive
+      - QUARKUS_DATASOURCE_PASSWORD=hivepassword
+      # Realm configuration
+      - POLARIS_REALM_CONTEXT_REALMS=POLARIS
+      # MinIO credentials for Polaris's own S3 access (metadata files).
+      # Polaris reads endpointInternal + pathStyleAccess from each catalog's storageConfigInfo.
+      # STS is disabled per-catalog via stsUnavailable:true (not the global SKIP_CREDENTIAL flag).
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8182/q/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      polaris-bootstrap:
+        condition: service_completed_successfully
+
+  polaris-ui:
+    image: ghcr.io/binarycat0/apache-polaris-ui:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side env vars used by the Next.js API routes for proxying auth
+      - POLARIS_MANAGEMENT_API_URL=http://polaris:8181/api/management/v1
+      - POLARIS_CATALOG_API_URL=http://polaris:8181/api/catalog/v1
+    depends_on:
+      polaris:
+        condition: service_started
 
 volumes:
   postgres_data:

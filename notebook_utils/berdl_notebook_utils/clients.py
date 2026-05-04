@@ -28,7 +28,7 @@ def get_task_service_client(settings: BERDLSettings | None = None) -> CTSClient:
 
 
 @lru_cache(maxsize=1)
-def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
+def get_s3_client(settings: BERDLSettings | None = None) -> Minio:
     """
     * Get an instance of the Minio client.
     * Note: Your minio credentials are refreshed on each restart of the jupyter notebook.
@@ -39,11 +39,28 @@ def get_minio_client(settings: BERDLSettings | None = None) -> Minio:
         settings = get_settings()
 
     return Minio(
-        endpoint=settings.MINIO_ENDPOINT_URL.replace("https://", "").replace("http://", ""),
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
-        secure=settings.MINIO_SECURE,
+        endpoint=settings.S3_ENDPOINT_URL.replace("https://", "").replace("http://", ""),
+        access_key=settings.S3_ACCESS_KEY,
+        secret_key=settings.S3_SECRET_KEY,
+        secure=settings.S3_SECURE,
     )
+
+
+# === Backward-compat alias ===========================================
+# `get_minio_client` was renamed to `get_s3_client` as part of the
+# Polaris/S3 refactor (the rename also drove BERDLSettings.MINIO_* →
+# S3_*). External downstream consumers — most notably
+# ``data_lakehouse_ingest`` ≤ v0.0.8 which has
+# ``from berdl_notebook_utils.clients import get_minio_client`` at
+# module top-level — would otherwise ImportError when imported against
+# this build, and that ImportError silently aborts the IPython startup
+# chain in [00-notebookutils.py](configs/ipython_startup/00-notebookutils.py).
+#
+# Keep the old export bound to the new function so single-name imports
+# such as ``from berdl_notebook_utils.clients import get_minio_client``
+# keep working for one release. Remove after every downstream consumer
+# (including data_lakehouse_ingest >= v0.0.9) has migrated.
+get_minio_client = get_s3_client
 
 
 @sync_kbase_token_before_call

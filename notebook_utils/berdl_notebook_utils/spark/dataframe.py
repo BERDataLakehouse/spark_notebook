@@ -17,7 +17,7 @@ from pandas import DataFrame as PandasDataFrame
 from pyspark.sql import DataFrame as SparkDataFrame, SparkSession
 from sidecar import Sidecar
 
-from berdl_notebook_utils import get_minio_client
+from berdl_notebook_utils import get_s3_client
 from berdl_notebook_utils.setup_spark_session import get_spark_session
 
 lock = RLock()
@@ -172,7 +172,7 @@ def read_csv(
     """
     # Auto-detect delimiter if not provided
     if sep is None:
-        client = get_minio_client()
+        client = get_s3_client()
 
         # Parse S3 path to get bucket and key
         s3_path = path.replace("s3a://", "")

@@ -35,10 +35,10 @@ class BERDLSettings(BaseSettings):
     USER: str  # KBase username of the user running the notebook
 
     # MinIO configuration
-    MINIO_ENDPOINT_URL: str = Field(..., description="MinIO endpoint (hostname:port)")
-    MINIO_ACCESS_KEY: str = Field(default="access_key_placeholder", description="MinIO access key")
-    MINIO_SECRET_KEY: str = Field(default="secret_key_placeholder", description="MinIO secret key")
-    MINIO_SECURE: bool = Field(default=False, description="Use secure connection (True/False)")
+    S3_ENDPOINT_URL: str = Field(..., description="MinIO endpoint (hostname:port)")
+    S3_ACCESS_KEY: str = Field(default="access_key_placeholder", description="MinIO access key")
+    S3_SECRET_KEY: str = Field(default="secret_key_placeholder", description="MinIO secret key")
+    S3_SECURE: bool = Field(default=False, description="Use secure connection (True/False)")
 
     # Spark configuration
     BERDL_POD_IP: str
@@ -53,7 +53,7 @@ class BERDLSettings(BaseSettings):
     )
 
     # Hive configuration
-    BERDL_HIVE_METASTORE_URI: AnyUrl  # Accepts thrift://
+    BERDL_HIVE_METASTORE_URI: AnyUrl | None = Field(default=None, description="Hive metastore URI (thrift://...)")
 
     # Profile-specific Spark configuration from JupyterHub
     SPARK_WORKER_COUNT: int = Field(default=1, description="Number of Spark workers from profile")
@@ -86,6 +86,18 @@ class BERDLSettings(BaseSettings):
     # Tenant Access Request Service configuration (optional)
     TENANT_ACCESS_SERVICE_URL: AnyHttpUrl | None = Field(
         default=None, description="Tenant Access Request Service URL for Slack-based approval workflow"
+    )
+
+    # Polaris Iceberg Catalog configuration
+    POLARIS_CATALOG_URI: AnyHttpUrl | None = Field(
+        default=None, description="Polaris REST Catalog endpoint (e.g., http://polaris:8181/api/catalog)"
+    )
+    POLARIS_CREDENTIAL: str | None = Field(default=None, description="Polaris client_id:client_secret credential")
+    POLARIS_PERSONAL_CATALOG: str | None = Field(
+        default=None, description="Polaris personal catalog name (e.g., user_tgu2)"
+    )
+    POLARIS_TENANT_CATALOGS: str | None = Field(
+        default=None, description="Comma-separated Polaris tenant catalog names"
     )
 
 

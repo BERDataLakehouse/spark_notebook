@@ -15,7 +15,7 @@ wiped uniformly with all other BERDL TTL caches.
 from ..caches import clear_all_caches, register_cache
 
 _TTL_SECONDS = 3600
-_NAME_PREFIX = "minio_governance."
+_NAME_PREFIX = "governance."
 
 tenants_cache = register_cache(
     f"{_NAME_PREFIX}tenants",

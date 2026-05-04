@@ -93,15 +93,17 @@ class TestSparkConnectServerConfig:
         mock_settings.SPARK_CONNECT_URL = mock_url
         mock_settings.SPARK_MASTER_URL = "spark://master:7077"
         mock_settings.BERDL_HIVE_METASTORE_URI = "thrift://localhost:9083"
-        mock_settings.MINIO_ENDPOINT_URL = "http://localhost:9000"
-        mock_settings.MINIO_ACCESS_KEY = "minioadmin"
-        mock_settings.MINIO_SECRET_KEY = "minioadmin"
+        mock_settings.S3_ENDPOINT_URL = "http://localhost:9000"
+        mock_settings.S3_ACCESS_KEY = "minioadmin"
+        mock_settings.S3_SECRET_KEY = "minioadmin"
         mock_settings.SPARK_WORKER_COUNT = 2
         mock_settings.SPARK_WORKER_CORES = 2
         mock_settings.SPARK_WORKER_MEMORY = "10G"
         mock_settings.SPARK_MASTER_CORES = 1
         mock_settings.SPARK_MASTER_MEMORY = "8G"
         mock_settings.BERDL_POD_IP = "192.168.1.100"
+        # Polaris not configured — _get_catalog_conf returns empty dict
+        mock_settings.POLARIS_CATALOG_URI = None
         mock_get_settings.return_value = mock_settings
 
         mock_convert.return_value = "8g"
@@ -124,6 +126,60 @@ class TestSparkConnectServerConfig:
         content = config.spark_defaults_path.read_text()
         assert "test_user" in content
         assert "spark.eventLog.dir" in content
+
+    @patch("berdl_notebook_utils.spark.connect_server._get_catalog_conf")
+    @patch("berdl_notebook_utils.spark.connect_server.shutil.copy")
+    @patch("berdl_notebook_utils.spark.connect_server.convert_memory_format")
+    @patch("berdl_notebook_utils.spark.connect_server.get_settings")
+    @patch("berdl_notebook_utils.spark.connect_server.get_my_sql_warehouse")
+    def test_generate_spark_config_with_catalog(
+        self, mock_get_warehouse, mock_get_settings, mock_convert, mock_copy, mock_catalog_conf, tmp_path
+    ):
+        """Test generate_spark_config includes Polaris catalog config when present."""
+        mock_settings = Mock()
+        mock_settings.USER = "test_user"
+        mock_settings.SPARK_HOME = "/opt/spark"
+        mock_settings.SPARK_CONNECT_DEFAULTS_TEMPLATE = str(tmp_path / "template.conf")
+        mock_url = Mock()
+        mock_url.port = 15002
+        mock_settings.SPARK_CONNECT_URL = mock_url
+        mock_settings.SPARK_MASTER_URL = "spark://master:7077"
+        mock_settings.BERDL_HIVE_METASTORE_URI = "thrift://localhost:9083"
+        mock_settings.S3_ENDPOINT_URL = "http://localhost:9000"
+        mock_settings.S3_ACCESS_KEY = "minioadmin"
+        mock_settings.S3_SECRET_KEY = "minioadmin"
+        mock_settings.SPARK_WORKER_COUNT = 2
+        mock_settings.SPARK_WORKER_CORES = 2
+        mock_settings.SPARK_WORKER_MEMORY = "10G"
+        mock_settings.SPARK_MASTER_CORES = 1
+        mock_settings.SPARK_MASTER_MEMORY = "8G"
+        mock_settings.BERDL_POD_IP = "192.168.1.100"
+        mock_get_settings.return_value = mock_settings
+
+        mock_convert.return_value = "8g"
+        mock_warehouse = Mock()
+        mock_warehouse.sql_warehouse_prefix = "s3a://cdm-lake/users-sql-warehouse/test_user"
+        mock_get_warehouse.return_value = mock_warehouse
+
+        # Return catalog config entries
+        mock_catalog_conf.return_value = {
+            "spark.sql.catalog.my": "org.apache.iceberg.spark.SparkCatalog",
+            "spark.sql.catalog.my.type": "rest",
+        }
+
+        # Create template file
+        template_file = tmp_path / "template.conf"
+        template_file.write_text("# Base config")
+
+        config = SparkConnectServerConfig()
+        config.spark_defaults_path = tmp_path / "spark-defaults.conf"
+
+        config.generate_spark_config()
+
+        content = config.spark_defaults_path.read_text()
+        assert "Polaris Catalog Configuration" in content
+        assert "spark.sql.catalog.my=org.apache.iceberg.spark.SparkCatalog" in content
+        assert "spark.sql.catalog.my.type=rest" in content
 
     @patch("berdl_notebook_utils.spark.connect_server.get_my_groups")
     @patch("berdl_notebook_utils.spark.connect_server.get_namespace_prefix")
@@ -547,9 +603,9 @@ class TestSparkConnectServerManagerForceRestart:
     """Tests for force_restart functionality."""
 
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.stop")
-    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.is_running")
+    @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerManager.get_server_info")
     @patch("berdl_notebook_utils.spark.connect_server.SparkConnectServerConfig")
-    def test_start_force_restart_calls_stop(self, mock_config_class, mock_is_running, mock_stop, tmp_path):
+    def test_start_force_restart_calls_stop(self, mock_config_class, mock_get_info, mock_stop, tmp_path):
         """Test start with force_restart=True calls stop first."""
         mock_config = Mock()
         mock_config.username = "test_user"
@@ -561,8 +617,9 @@ class TestSparkConnectServerManagerForceRestart:
         mock_config.pid_file_path = tmp_path / "pid"
         mock_config_class.return_value = mock_config
 
-        # Server is running initially
-        mock_is_running.side_effect = [True, False]  # First check: running, after stop: not running
+        # start() calls get_server_info() — return a dict (server running) on first call,
+        # then None after stop() to trigger the "start new server" path
+        mock_get_info.return_value = {"pid": 12345, "port": 15002}
 
         # Mock the start script check to fail (we don't want to actually start)
         with patch("pathlib.Path.exists", return_value=False):

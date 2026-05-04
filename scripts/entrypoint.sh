@@ -12,24 +12,38 @@ if [ -n "$GOVERNANCE_URL" ] && [ -n "$AUTH_TOKEN" ]; then
         -H "Authorization: Bearer ${AUTH_TOKEN}" \
         "${GOVERNANCE_URL%/}/credentials/" 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$CRED_JSON" ]; then
-        export AWS_ACCESS_KEY_ID=$(echo "$CRED_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_key',''))")
-        export AWS_SECRET_ACCESS_KEY=$(echo "$CRED_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('secret_key',''))")
+        # The unified /credentials/ endpoint returns the S3 IAM half under
+        # ``s3_access_key`` / ``s3_secret_key`` (the legacy ``access_key`` /
+        # ``secret_key`` fields were renamed in the Polaris/S3 refactor).
+        # Read the new keys first; fall back to the legacy keys so this
+        # script still works against an older MMS that hasn't been bumped
+        # yet.  Empty strings stay empty after the fallback.
+        export AWS_ACCESS_KEY_ID=$(echo "$CRED_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('s3_access_key') or d.get('access_key',''))")
+        export AWS_SECRET_ACCESS_KEY=$(echo "$CRED_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('s3_secret_key') or d.get('secret_key',''))")
         echo "Loaded AWS credentials from governance API"
     else
         echo "WARNING: Failed to fetch credentials from governance API, falling back to env vars"
-        export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-}"
-        export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-}"
+        export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY:-}"
+        export AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY:-}"
     fi
 else
-    # Fallback to MINIO env vars if governance API URL or auth token not set
-    export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY:-}"
-    export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY:-}"
+    # Fallback to S3_* env vars if governance API URL or auth token not set
+    export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY:-}"
+    export AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY:-}"
 fi
 
-# Ensure MINIO_ENDPOINT_URL has http:// prefix
-MINIO_URL="${MINIO_ENDPOINT_URL}"
+# Ensure S3_ENDPOINT_URL has a scheme prefix.  Choose http:// vs https://
+# based on the same S3_SECURE flag BERDLSettings reads — the previous code
+# always defaulted to http://, which silently misconfigured TLS-required
+# clusters (e.g. stage / prod) and was inconsistent with how
+# setup_trino_session._build_catalog_properties picks the scheme.
+MINIO_URL="${S3_ENDPOINT_URL}"
 if [[ ! "$MINIO_URL" =~ ^https?:// ]]; then
-    MINIO_URL="http://${MINIO_URL}"
+    case "${S3_SECURE:-false}" in
+        true|True|TRUE|1|yes|Yes|YES) SCHEME="https" ;;
+        *)                            SCHEME="http"  ;;
+    esac
+    MINIO_URL="${SCHEME}://${MINIO_URL}"
 fi
 
 # Set S3 endpoint for boto3/fsspec/papermill

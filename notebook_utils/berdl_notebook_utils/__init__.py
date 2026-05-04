@@ -5,7 +5,7 @@ from berdl_notebook_utils.berdl_settings import (
 )
 from berdl_notebook_utils.clients import (
     get_governance_client,
-    get_minio_client,
+    get_s3_client,
     get_spark_cluster_client,
     get_task_service_client,
     get_hive_metastore_client,
@@ -36,7 +36,7 @@ from berdl_notebook_utils.spark import (
     get_table_schema,
     get_db_structure,
 )
-from berdl_notebook_utils.minio_governance.tenant_management import (
+from berdl_notebook_utils.governance.tenant_management import (
     add_tenant_member,
     assign_steward,
     get_my_steward_tenants,
@@ -96,7 +96,7 @@ __all__ = [
     "BERDLSettings",
     "get_settings",
     "validate_environment",
-    "get_minio_client",
+    "get_s3_client",
     "get_task_service_client",
     "get_governance_client",
     "get_spark_cluster_client",
@@ -169,7 +169,7 @@ def berdl_notebook_help():
 
     Client Functions:
     -----------------
-    - get_minio_client: MinIO S3 client instance
+    - get_s3_client: MinIO S3 client instance
     - get_task_service_client: CDM Task Service client instance
     - get_governance_client: Data Governance API client instance
     - get_spark_cluster_client: Spark Cluster Manager API client instance
@@ -223,12 +223,11 @@ def berdl_notebook_help():
 
     Environment Refresh:
     -------------------
-    - refresh_spark_environment: Clear credential caches, re-fetch credentials, and restart Spark
+    - refresh_spark_environment: Re-fetch credentials and restart Spark
 
     Usage:
     ------
     from berdl_notebook_utils import get_spark_session, display_df
-    from berdl_notebook_utils.minio_governance import share_table
 
     # Create Spark session
     spark = get_spark_session("MyAnalysis")

@@ -1,376 +1,444 @@
 """Module for interacting with Spark databases and tables.
 
-This module provides functions to retrieve information about databases, tables,
-and their schemas from a Spark cluster or directly from Hive metastore in PostgreSQL.
+This module lists databases (across Iceberg catalogs *and* the Hive
+metastore), tables, and their schemas. Filtering is driven entirely by
+``BERDLSettings`` (``USER``, ``POLARIS_PERSONAL_CATALOG``,
+``POLARIS_TENANT_CATALOGS``) — there are no governance-API calls on the
+listing path.
+
+Output identifiers:
+
+- Iceberg namespaces are returned in ``catalog.namespace`` form
+  (e.g. ``my.demo``, ``globalusers.shared_data``).
+- Hive databases (Delta tables registered under ``spark_catalog``) are
+  returned as flat names (e.g. ``u_alice__demo``).
+
+Both forms can be used directly in queries:
+``SELECT * FROM {database}.{table}``.
 """
 
 import json
-import time
-from concurrent.futures import ThreadPoolExecutor
-from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+import logging
+import re
+from typing import Any, Dict, List, Optional, Union
 
 from pyspark.sql import SparkSession
 
 from .. import hive_metastore
-from ..minio_governance import get_my_accessible_paths, get_my_groups, get_namespace_prefix
-from ..minio_governance._cache import invalidate_all as _invalidate_governance_cache
-from ..setup_spark_session import get_spark_session
+from ..berdl_settings import BERDLSettings, get_settings
+from ..setup_spark_session import (
+    _get_personal_catalog_aliases,
+    _get_tenant_catalog_alias,
+    get_spark_session,
+)
+from ._cache import (
+    databases_cache as _databases_cache,
+    invalidate_all as invalidate_cache,
+    schema_cache as _schema_cache,
+    structure_cache as _structure_cache,
+    tables_cache as _tables_cache,
+)
 
-# =============================================================================
-# TTL CACHE FOR GOVERNANCE API CALLS
-# =============================================================================
-# These caches prevent repeated slow API calls within a session.
-# Default TTL is 5 minutes (300 seconds).
+# Re-export so existing callers `from .data_store import invalidate_cache` keep working.
+__all__ = [
+    "get_databases",
+    "get_tables",
+    "get_table_schema",
+    "get_db_structure",
+    "invalidate_cache",
+]
 
-_CACHE_TTL_SECONDS = 300  # 5 minutes
+logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
+# Catalogs to exclude from Iceberg discovery (non-Iceberg catalogs that
+# happen to be registered under spark.sql.catalog.*).
+_EXCLUDED_CATALOGS = {"spark_catalog"}
 
-
-def _ttl_cache(ttl_seconds: int = _CACHE_TTL_SECONDS) -> Callable:
-    """
-    Simple TTL cache decorator using a dict-based cache.
-
-    Unlike functools.lru_cache, this cache expires entries after ttl_seconds.
-    Thread-safe for concurrent reads (Python's GIL protects dict operations).
-    """
-
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        cache: Dict[str, tuple[float, T]] = {}
-
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
-            # Create cache key from function arguments
-            key = str((args, tuple(sorted(kwargs.items()))))
-            now = time.time()
-
-            # Check if cached and not expired
-            if key in cache:
-                cached_time, cached_value = cache[key]
-                if now - cached_time < ttl_seconds:
-                    return cached_value
-
-            # Call function and cache result
-            result = func(*args, **kwargs)
-            cache[key] = (now, result)
-            return result
-
-        def clear_cache() -> None:
-            """Clear all cached entries."""
-            cache.clear()
-
-        wrapper.clear_cache = clear_cache  # type: ignore
-        return wrapper
-
-    return decorator
+# Pattern matching only top-level Spark catalog registration keys
+# (``spark.sql.catalog.<name>``) — sub-properties like ``.uri`` are skipped.
+_CATALOG_KEY_PATTERN = re.compile(r"^spark\.sql\.catalog\.([a-zA-Z_][a-zA-Z0-9_]*)$")
 
 
-@_ttl_cache()
-def _cached_get_my_groups():
-    """Cached wrapper for get_my_groups().
-
-    Uses force_refresh=True to bypass the library-level 1-hour cache so
-    that this wrapper's own 300s TTL controls freshness for data-store
-    callers (namespace viewers, database listings, etc.).
-    """
-    return get_my_groups(force_refresh=True)
-
-
-@_ttl_cache()
-def _cached_get_namespace_prefix(tenant: Optional[str] = None):
-    """Cached wrapper for get_namespace_prefix()."""
-    return get_namespace_prefix(tenant=tenant)
-
-
-@_ttl_cache()
-def _cached_get_my_accessible_paths():
-    """Cached wrapper for get_my_accessible_paths()."""
-    return get_my_accessible_paths()
-
-
-def clear_governance_cache() -> None:
-    """Clear all governance API caches. Call this when user permissions change."""
-    _invalidate_governance_cache()
-    getattr(_cached_get_my_groups, "clear_cache", lambda: None)()
-    getattr(_cached_get_namespace_prefix, "clear_cache", lambda: None)()
-    getattr(_cached_get_my_accessible_paths, "clear_cache", lambda: None)()
+def _settings_cache_signature(settings: Any) -> tuple:
+    """Return a hashable tuple of settings fields that affect filtering."""
+    return (
+        _settings_get(settings, "USER"),
+        _settings_get(settings, "POLARIS_PERSONAL_CATALOG"),
+        _settings_get(settings, "POLARIS_TENANT_CATALOGS"),
+    )
 
 
 # =============================================================================
-# HELPER FUNCTIONS
+# Helpers
 # =============================================================================
-
-
-def _execute_with_spark(func: Any, spark: Optional[SparkSession] = None, *args, **kwargs) -> Any:
-    """
-    Execute a function with a SparkSession, creating one if not provided.
-    """
-    if spark is None:
-        spark = get_spark_session()
-        return func(spark, *args, **kwargs)
-    return func(spark, *args, **kwargs)
 
 
 def _format_output(data: Any, return_json: bool = True) -> Union[str, Any]:
-    """
-    Format the output based on the return_json flag.
-    """
+    """Format the output based on the return_json flag."""
     return json.dumps(data) if return_json else data
 
 
-def _extract_databases_from_paths(paths: List[str]) -> List[str]:
+def _ensure_spark(spark: Optional[SparkSession]) -> SparkSession:
+    """Return ``spark`` if provided, else create one via ``get_spark_session``."""
+    return spark if spark is not None else get_spark_session()
+
+
+def _list_iceberg_catalogs(spark: SparkSession) -> List[str]:
+    """List all Iceberg catalogs registered in Spark, excluding ``spark_catalog``.
+
+    In Spark Connect mode ``SHOW CATALOGS`` only returns catalogs the client
+    session has touched, so we instead introspect ``spark.sql.catalog.<name>``
+    keys via ``SET`` to discover all server-registered catalogs reliably.
     """
-    Extract unique database names from S3 SQL warehouse paths.
+    rows = spark.sql("SET").collect()
+    catalogs: set[str] = set()
+    for row in rows:
+        match = _CATALOG_KEY_PATTERN.match(row["key"])
+        if match:
+            catalogs.add(match.group(1))
+    logger.info(f"Discovered {len(catalogs)} catalog(s) from Spark config: {sorted(catalogs)}")
+    return sorted(c for c in catalogs if c not in _EXCLUDED_CATALOGS)
 
-    Only considers paths in SQL warehouses (not general warehouses or logs):
-    - s3a://cdm-lake/users-sql-warehouse/...
-    - s3a://cdm-lake/tenant-sql-warehouse/...
 
-    S3 paths are in format: s3a://bucket/warehouse/user_or_tenant/database.db/...
-    Example: s3a://cdm-lake/users-sql-warehouse/tgu1/u_tgu1__sharing_test.db/employee_records_1/
+def _list_iceberg_namespaces(spark: SparkSession) -> List[str]:
+    """List Iceberg namespaces across all registered catalogs.
 
-    Args:
-        paths: List of S3 paths from accessible paths API
-
-    Returns:
-        List of unique database names (without .db suffix)
+    Returns entries in ``catalog.namespace`` format. A failure on a single
+    catalog is logged and skipped so the rest of the listing still surfaces.
     """
-    databases = set()
-    for path in paths:
-        # Only process paths from SQL warehouses
-        if not any(warehouse in path for warehouse in ["/users-sql-warehouse/", "/tenant-sql-warehouse/"]):
-            continue
+    out: List[str] = []
+    for catalog in _list_iceberg_catalogs(spark):
+        try:
+            rows = spark.sql(f"SHOW NAMESPACES IN {catalog}").collect()
+            for row in rows:
+                out.append(f"{catalog}.{row['namespace']}")
+        except Exception as e:
+            logger.warning(f"Failed to list namespaces in catalog '{catalog}': {e}")
+    return out
 
-        # Remove s3a:// prefix and split by /
-        parts = path.replace("s3a://", "").split("/")
 
-        # Look for .db directory (database directory in Hive convention)
-        for part in parts:
-            if part.endswith(".db"):
-                db_name = part[:-3]  # Remove .db suffix
-                databases.add(db_name)
-                break
+def _list_hive_databases() -> List[str]:
+    """List Hive databases via the HMS Thrift client (no Spark required).
 
-    return sorted(list(databases))
+    Returns flat names like ``u_alice__demo``. Failures are logged and
+    return an empty list so the Iceberg listing still surfaces.
+    """
+    try:
+        return sorted(hive_metastore.get_databases())
+    except Exception as e:
+        logger.warning(f"Failed to list Hive databases: {e}")
+        return []
+
+
+def _settings_get(settings: Any, key: str) -> Any:
+    """Read ``key`` from a BERDLSettings instance or a dict."""
+    if isinstance(settings, dict):
+        return settings.get(key)
+    return getattr(settings, key, None)
+
+
+def _aliases_for_user(settings: Any) -> tuple[set[str], set[str]]:
+    """Return ``(personal_aliases, tenant_aliases)`` for the current user.
+
+    Personal aliases include ``my`` plus the sanitized stripped form of
+    ``POLARIS_PERSONAL_CATALOG`` (e.g. ``user_alice`` → ``alice``). Tenant
+    aliases are derived from each entry of ``POLARIS_TENANT_CATALOGS`` with
+    the ``tenant_`` prefix stripped (e.g. ``tenant_globalusers`` →
+    ``globalusers``).
+    """
+    personal = set(_get_personal_catalog_aliases(_settings_get(settings, "POLARIS_PERSONAL_CATALOG")))
+    tenant: set[str] = set()
+    raw_tenants = _settings_get(settings, "POLARIS_TENANT_CATALOGS")
+    if raw_tenants:
+        for cat in str(raw_tenants).split(","):
+            cat = cat.strip()
+            if cat:
+                alias = _get_tenant_catalog_alias(cat)
+                if alias:
+                    tenant.add(alias)
+    return personal, tenant
+
+
+def _filter_to_user_namespaces(
+    databases: List[str],
+    username: str,
+    personal_aliases: set[str],
+    tenant_aliases: set[str],
+) -> List[str]:
+    """Filter ``databases`` to those owned by the user or accessible via tenants.
+
+    Iceberg ``catalog.namespace`` entries are kept when the catalog matches
+    the user's personal or tenant aliases. Hive flat names are kept when
+    they start with ``u_{username}__`` (own personal) or ``{tenant}_`` for
+    any tenant the user belongs to.
+    """
+    user_prefix = f"u_{username}__"
+    allowed_catalogs = personal_aliases | tenant_aliases
+
+    result: List[str] = []
+    for db in databases:
+        if "." in db:
+            catalog = db.split(".", 1)[0]
+            if catalog in allowed_catalogs:
+                result.append(db)
+        else:
+            if db.startswith(user_prefix):
+                result.append(db)
+            elif any(db.startswith(f"{t}_") for t in tenant_aliases):
+                result.append(db)
+    return result
+
+
+# =============================================================================
+# Public API
+# =============================================================================
 
 
 def get_databases(
     spark: Optional[SparkSession] = None,
-    use_hms: bool = True,
+    use_hms: bool = True,  # noqa: ARG001 — kept for backward compatibility, ignored
     return_json: bool = True,
     filter_by_namespace: bool = True,
     tenant: Optional[str] = None,
+    settings: Optional[BERDLSettings] = None,
+    force_refresh: bool = False,
 ) -> Union[str, List[str]]:
-    """
-    Get the list of databases in the Hive metastore.
+    """List all accessible databases across Iceberg catalogs and Hive.
+
+    Iceberg namespaces are returned in ``catalog.namespace`` format
+    (e.g. ``my.demo``, ``globalusers.shared_data``). Hive databases (Delta
+    tables registered under ``spark_catalog``) are returned as flat names
+    (e.g. ``u_alice__demo``). All forms can be used directly in table
+    references: ``SELECT * FROM {database}.{table}``.
+
+    Results are cached in-process for ``_CACHE_TTL_SECONDS`` (60s) keyed by
+    ``(filter_by_namespace, tenant, USER, POLARIS_PERSONAL_CATALOG,
+    POLARIS_TENANT_CATALOGS)``. Pass ``force_refresh=True`` or call
+    :func:`invalidate_cache` to bypass / clear the cache.
 
     Args:
-        spark: Optional SparkSession to use (if use_hms is False)
-        use_hms: Whether to use HMS direct client (faster) or Spark
-        return_json: Whether to return JSON string or raw data
-        filter_by_namespace: Whether to filter databases by user/group ownership AND shared access.
-                           When True, returns:
-                           - User's owned databases (u_username_*)
-                           - Group/tenant databases (groupname_*)
-                           - Databases shared with the user (from accessible paths API)
-                           When False, returns all databases in the metastore.
-        tenant: Optional tenant/group name to filter to a single tenant's databases.
-                When provided, only returns databases matching that tenant's namespace prefix
-                (e.g. tenant="globalusers" returns only globalusers_* databases).
-                Implies filter_by_namespace=True.
+        spark: SparkSession to use. If ``None``, a session is obtained via
+            ``get_spark_session()``. A Spark session is required to
+            discover and query Iceberg catalogs.
+        use_hms: Deprecated. Retained for backward compatibility and
+            ignored — both Iceberg (via Spark) and Hive (via direct HMS
+            Thrift client) are always queried.
+        return_json: Whether to return a JSON string or raw list.
+        filter_by_namespace: When True (default), restrict results to
+            databases owned by the current user or accessible via the
+            user's tenant catalogs. Filtering is purely prefix-based and
+            uses ``BERDLSettings`` (no governance API calls).
+        tenant: Optional single-tenant filter. When provided, only
+            databases matching that tenant are returned: Iceberg catalog
+            ``{tenant}`` and Hive databases prefixed ``{tenant}_``. Takes
+            precedence over ``filter_by_namespace``.
+        settings: Optional ``BERDLSettings`` instance. Defaults to
+            ``get_settings()`` (env-driven).
+        force_refresh: If True, bypass the cache and re-fetch from Spark / HMS.
 
     Returns:
-        List of database names, either as JSON string or raw list
+        Sorted list of database identifiers (Iceberg ``catalog.namespace``
+        and Hive flat names interleaved), as a JSON string when
+        ``return_json=True``.
     """
+    settings = settings or get_settings()
+    cache_key = (filter_by_namespace, tenant, _settings_cache_signature(settings))
 
-    def _get_dbs(session: SparkSession) -> List[str]:
-        return [db.name for db in session.catalog.listDatabases()]
+    if not force_refresh:
+        cached = _databases_cache.get(cache_key)
+        if cached is not None:
+            return _format_output(cached, return_json)
 
-    if use_hms:
-        databases = hive_metastore.get_databases()
-    else:
-        databases = _execute_with_spark(_get_dbs, spark)
+    spark = _ensure_spark(spark)
 
-    # Single-tenant filter: just get that tenant's prefix and filter
+    # Concatenate into a fresh list to avoid mutating helper return values.
+    databases = _list_iceberg_namespaces(spark) + _list_hive_databases()
+
+    # Single-tenant filter takes precedence over the general user filter.
     if tenant is not None:
-        try:
-            tenant_prefix_response = _cached_get_namespace_prefix(tenant=tenant)
-            prefix = tenant_prefix_response.tenant_namespace_prefix
-            if not isinstance(prefix, str):
-                raise ValueError(f"No tenant namespace prefix returned for tenant '{tenant}'")
-            databases = sorted([db for db in databases if db.startswith(prefix)])
-        except Exception as e:
-            raise Exception(f"Could not filter databases for tenant '{tenant}': {e}") from e
-        return _format_output(databases, return_json)
+        hive_prefix = f"{tenant}_"
+        iceberg_prefix = f"{tenant}."
+        databases = sorted(db for db in databases if db.startswith(iceberg_prefix) or db.startswith(hive_prefix))
+    elif filter_by_namespace:
+        username = _settings_get(settings, "USER")
+        if not username:
+            raise ValueError("settings.USER must be set when filter_by_namespace=True")
+        personal, tenant_aliases = _aliases_for_user(settings)
+        databases = sorted(_filter_to_user_namespaces(databases, username, personal, tenant_aliases))
+    else:
+        databases = sorted(databases)
 
-    # Apply filtering: owned databases (fast) + shared databases (API call)
-    if filter_by_namespace:
-        try:
-            # Parallelize all governance API calls to reduce latency
-            # These calls use cached wrappers, so subsequent calls are instant
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                # Submit initial calls: groups, user prefix, and accessible paths
-                groups_future = executor.submit(_cached_get_my_groups)
-                user_prefix_future = executor.submit(_cached_get_namespace_prefix)
-                accessible_paths_future = executor.submit(_cached_get_my_accessible_paths)
-
-                # Wait for groups to get tenant list, then submit tenant prefix calls
-                groups_response = groups_future.result()
-                tenant_prefix_futures = {
-                    group: executor.submit(_cached_get_namespace_prefix, tenant=group)
-                    for group in groups_response.groups
-                }
-
-                # Collect results
-                user_prefix_response = user_prefix_future.result()
-                prefixes = [user_prefix_response.user_namespace_prefix]
-
-                # Collect tenant prefixes as they complete
-                for group, future in tenant_prefix_futures.items():
-                    tenant_prefix_response = future.result()
-                    prefixes.append(tenant_prefix_response.tenant_namespace_prefix)
-
-                # Filter databases by namespace prefixes (owned + group databases)
-                owned_databases = [db for db in databases if db.startswith(tuple(prefixes))]
-
-                # Get shared databases from accessible paths API
-                accessible_paths_response = accessible_paths_future.result()
-                shared_databases = _extract_databases_from_paths(accessible_paths_response.accessible_paths)
-
-            # Combine owned and shared, remove duplicates
-            all_accessible = set(owned_databases) | set(shared_databases)
-
-            # Filter to only databases that exist in metastore, and sort for consistent output
-            databases = sorted([db for db in databases if db in all_accessible])
-
-        except Exception as e:
-            raise Exception(f"Could not filter databases by namespace: {e}") from e
-
+    _databases_cache.set(cache_key, databases)
     return _format_output(databases, return_json)
 
 
 def get_tables(
-    database: str, spark: Optional[SparkSession] = None, use_hms: bool = True, return_json: bool = True
+    database: str,
+    spark: Optional[SparkSession] = None,
+    use_hms: bool = True,  # noqa: ARG001 — kept for backward compatibility, ignored
+    return_json: bool = True,
+    force_refresh: bool = False,
 ) -> Union[str, List[str]]:
-    """
-    Get the list of tables in a specific database.
+    """List tables in a database (Iceberg namespace or Hive database).
+
+    Uses ``spark.catalog.listTables`` with the database name; pyspark
+    routes to the correct catalog whether ``database`` is an Iceberg
+    ``catalog.namespace`` (e.g. ``my.demo``) or a Hive flat name
+    (e.g. ``u_alice__demo``).
+
+    Results are cached in-process for ``_CACHE_TTL_SECONDS`` (60s) keyed by
+    ``database``. Pass ``force_refresh=True`` or call
+    :func:`invalidate_cache` to bypass / clear the cache.
 
     Args:
-        database: Name of the database
-        spark: Optional SparkSession to use (if use_hms is False)
-        use_hms: Whether to use HMS direct client (faster) or Spark
-        return_json: Whether to return JSON string or raw data
+        database: Either an Iceberg ``catalog.namespace`` or a Hive flat
+            database name.
+        spark: SparkSession to use; if ``None``, one is created via
+            ``get_spark_session()``.
+        use_hms: Deprecated. Retained for backward compatibility and
+            ignored — listing is always done via the Spark catalog API.
+        return_json: Whether to return a JSON string or raw list.
+        force_refresh: If True, bypass the cache and re-fetch from Spark.
 
     Returns:
-        List of table names, either as JSON string or raw list
+        Sorted list of table names. Empty list on lookup failure (logged).
     """
+    if not force_refresh:
+        cached = _tables_cache.get(database)
+        if cached is not None:
+            return _format_output(cached, return_json)
 
-    def _get_tbls(session: SparkSession, db: str) -> List[str]:
-        return [table.name for table in session.catalog.listTables(dbName=db)]
+    spark = _ensure_spark(spark)
+    try:
+        tables = sorted(t.name for t in spark.catalog.listTables(dbName=database))
+    except Exception as e:
+        logger.warning(f"Failed to list tables in '{database}': {e}")
+        tables = []
 
-    if use_hms:
-        tables = hive_metastore.get_tables(database)
-    else:
-        tables = _execute_with_spark(_get_tbls, spark, database)
-
+    _tables_cache.set(database, tables)
     return _format_output(tables, return_json)
 
 
 def get_table_schema(
-    database: str, table: str, spark: Optional[SparkSession] = None, return_json: bool = True, detailed: bool = False
+    database: str,
+    table: str,
+    spark: Optional[SparkSession] = None,
+    return_json: bool = True,
+    detailed: bool = False,
+    force_refresh: bool = False,
 ) -> Union[str, List[str], List[Dict[str, Any]]]:
-    """
-    Get the schema of a specific table in a database.
+    """Get the schema of a specific table.
+
+    Works for both Iceberg ``catalog.namespace`` databases and Hive flat
+    databases. Uses ``spark.catalog.listColumns`` with the
+    fully-qualified table name; pyspark routes to the correct catalog.
+
+    Results are cached in-process for ``_CACHE_TTL_SECONDS`` (60s) keyed by
+    ``(database, table, detailed)``. Pass ``force_refresh=True`` or call
+    :func:`invalidate_cache` to bypass / clear the cache.
 
     Args:
-        database: Name of the database
-        table: Name of the table
-        spark: Optional SparkSession to use
-        return_json: Whether to return JSON string or raw data
-        detailed: If True, return each column as a dict of all
-            pyspark.sql.catalog.Column fields instead of just its name
+        database: Either an Iceberg ``catalog.namespace`` (e.g. ``my.demo``)
+            or a Hive flat database name (e.g. ``u_alice__demo``).
+        table: Table name.
+        spark: SparkSession to use; if ``None``, one is created via
+            ``get_spark_session()``.
+        return_json: Whether to return a JSON string or raw list.
+        detailed: If ``True``, return a list of per-column dicts (name,
+            dataType, nullable, isPartition, isBucket, description) via
+            ``Column._asdict()`` instead of just column names.
+        force_refresh: If True, bypass the cache and re-fetch from Spark.
 
     Returns:
-        List of column names, or list of column metadata dicts when detailed=True,
-        either as JSON string or raw list
+        List of column names, or list of column metadata dicts when
+        ``detailed=True``. Empty list on lookup failure (logged).
     """
+    cache_key = (database, table, detailed)
 
-    def _get_schema(session: SparkSession, db: str, tbl: str) -> Union[List[str], List[Dict[str, Any]]]:
-        try:
-            cols = session.catalog.listColumns(dbName=db, tableName=tbl)
-            if detailed:
-                return [c._asdict() for c in cols]
-            return [c.name for c in cols]
-        except Exception:
-            # Observed that certain tables lack their corresponding S3 files
-            print(f"Error retrieving schema for table {tbl} in database {db}")
-            return []
+    if not force_refresh:
+        cached = _schema_cache.get(cache_key)
+        if cached is not None:
+            return _format_output(cached, return_json)
 
-    columns = _execute_with_spark(_get_schema, spark, database, table)
-    return _format_output(columns, return_json)
+    spark = _ensure_spark(spark)
+    fq_table = f"{database}.{table}"
+    try:
+        cols = spark.catalog.listColumns(tableName=fq_table)
+        if detailed:
+            data: Union[List[str], List[Dict[str, Any]]] = [c._asdict() for c in cols]
+        else:
+            data = [c.name for c in cols]
+    except Exception:
+        logger.error(f"Error retrieving schema for table {table} in database {database}")
+        data = []
+
+    _schema_cache.set(cache_key, data)
+    return _format_output(data, return_json)
 
 
 def get_db_structure(
     with_schema: bool = False,
-    use_hms: bool = True,
+    use_hms: bool = True,  # noqa: ARG001 — kept for backward compatibility, ignored
     return_json: bool = True,
     filter_by_namespace: bool = True,
+    spark: Optional[SparkSession] = None,
+    settings: Optional[BERDLSettings] = None,
+    force_refresh: bool = False,
 ) -> Union[str, Dict]:
-    """Get the structure of all databases in the Hive metastore.
+    """Get the structure of all accessible databases.
+
+    Results are cached in-process for ``_CACHE_TTL_SECONDS`` (60s) keyed by
+    ``(with_schema, filter_by_namespace, USER, POLARIS_PERSONAL_CATALOG,
+    POLARIS_TENANT_CATALOGS)``. Pass ``force_refresh=True`` or call
+    :func:`invalidate_cache` to bypass / clear the cache. ``force_refresh``
+    is propagated to the inner :func:`get_databases`, :func:`get_tables`,
+    and :func:`get_table_schema` calls.
 
     Args:
-        with_schema: Whether to include table schemas
-        use_hms: Whether to use HMS direct client for metadata retrieval
-        return_json: Whether to return the result as a JSON string
-        filter_by_namespace: Whether to filter databases by user/tenant namespace prefixes
+        with_schema: Whether to include each table's column names.
+        use_hms: Deprecated. Retained for backward compatibility and
+            ignored — the listing always covers Iceberg + Hive.
+        return_json: Whether to return the result as a JSON string.
+        filter_by_namespace: Whether to filter to databases the user owns
+            or can access via tenants (delegates to ``get_databases``).
+        spark: SparkSession to use; if ``None``, one is created.
+        settings: Optional ``BERDLSettings`` instance.
+        force_refresh: If True, bypass the cache (this function and inner
+            calls) and re-fetch from Spark / HMS.
 
     Returns:
-        Database structure as either JSON string or dictionary:
-        {
-            "database_name": ["table1", "table2"] or
-            "database_name": {
-                "table1": ["column1", "column2"],
-                "table2": ["column1", "column2"]
-            }
-        }
+        Dictionary mapping database identifier to table list (or to a
+        ``{table: [columns]}`` dict when ``with_schema=True``).
     """
+    settings = settings or get_settings()
+    cache_key = (with_schema, filter_by_namespace, _settings_cache_signature(settings))
 
-    def _get_structure(session: SparkSession) -> Dict[str, Union[List[str], Dict[str, List[str]]]]:
-        db_structure = {}
-        databases = get_databases(
-            spark=session, use_hms=False, return_json=False, filter_by_namespace=filter_by_namespace
-        )
+    if not force_refresh:
+        cached = _structure_cache.get(cache_key)
+        if cached is not None:
+            return _format_output(cached, return_json)
 
-        for db in databases:
-            tables = get_tables(database=db, spark=session, use_hms=False, return_json=False)
-            if with_schema:
-                db_structure[db] = {
-                    table: get_table_schema(database=db, table=table, spark=session, return_json=False)
-                    for table in tables
-                }
-            else:
-                db_structure[db] = tables
+    spark = _ensure_spark(spark)
+    databases = get_databases(
+        spark=spark,
+        return_json=False,
+        filter_by_namespace=filter_by_namespace,
+        settings=settings,
+        force_refresh=force_refresh,
+    )
 
-        return db_structure
+    structure: Dict[str, Any] = {}
+    for db in databases:
+        tables = get_tables(database=db, spark=spark, return_json=False, force_refresh=force_refresh)
+        if with_schema:
+            structure[db] = {
+                tbl: get_table_schema(
+                    database=db, table=tbl, spark=spark, return_json=False, force_refresh=force_refresh
+                )
+                for tbl in tables
+            }
+        else:
+            structure[db] = tables
 
-    if use_hms:
-        db_structure = {}
-        databases = get_databases(use_hms=True, return_json=False, filter_by_namespace=filter_by_namespace)
-
-        for db in databases:
-            tables = hive_metastore.get_tables(db)
-            if with_schema:
-                # Get schema using Spark session
-                spark = get_spark_session()
-                db_structure[db] = {
-                    table: get_table_schema(database=db, table=table, spark=spark, return_json=False)
-                    for table in tables
-                }
-            else:
-                db_structure[db] = tables
-
-    else:
-        db_structure = _execute_with_spark(_get_structure)
-
-    return _format_output(db_structure, return_json)
+    _structure_cache.set(cache_key, structure)
+    return _format_output(structure, return_json)

@@ -9,10 +9,10 @@ TEST_ENVIRONMENT = {
     "USER": "fake_user",
     "KBASE_AUTH_TOKEN": "test-token-123",
     "CDM_TASK_SERVICE_URL": "http://localhost:8080",
-    "MINIO_ENDPOINT_URL": "http://localhost:9000",
-    "MINIO_ACCESS_KEY": "minioadmin",
-    "MINIO_SECRET_KEY": "minioadmin",
-    "MINIO_SECURE": "false",
+    "S3_ENDPOINT_URL": "http://localhost:9000",
+    "S3_ACCESS_KEY": "minioadmin",
+    "S3_SECRET_KEY": "minioadmin",
+    "S3_SECURE": "false",
     "BERDL_POD_IP": "192.168.1.100",
     "SPARK_MASTER_URL": "spark://localhost:7077",
     "BERDL_HIVE_METASTORE_URI": "thrift://localhost:9083",
@@ -29,7 +29,7 @@ for key, value in TEST_ENVIRONMENT.items():
 @pytest.fixture(autouse=True)
 def _clear_governance_caches():
     """Clear in-process governance caches between tests to avoid test pollution."""
-    from berdl_notebook_utils.minio_governance._cache import invalidate_all
+    from berdl_notebook_utils.governance._cache import invalidate_all
 
     invalidate_all()
     yield

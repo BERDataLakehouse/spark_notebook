@@ -43,13 +43,14 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Delta Lake Configuration (STATIC - Server-Side Only)
+# SQL Extensions and Catalog Configuration (STATIC - Server-Side Only)
 # ------------------------------------------------------------------------------
 # These SQL extensions must be loaded when the Spark server starts.
-# They initialize Delta Lake support by registering custom SparkSessionExtensions
-# and catalog implementations that handle Delta table operations.
+# Delta Lake + Iceberg + Sedona run side-by-side.
+# The default catalog remains spark_catalog (Delta/Hive) for backward compatibility.
+# Iceberg catalogs (my, tenant aliases) are added dynamically by connect_server.py.
 
-spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,org.apache.sedona.sql.SedonaSqlExtensions
+spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,org.apache.sedona.sql.SedonaSqlExtensions
 spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 
 # Delta Lake settings
@@ -91,12 +92,15 @@ spark.sql.catalogImplementation=hive
 # spark.hadoop.hive.metastore.uris will be set dynamically from BERDL_HIVE_METASTORE_URI
 
 # MinIO S3 configuration - will be set dynamically by startup script
-# spark.hadoop.fs.s3a.endpoint will be set from MINIO_ENDPOINT_URL
+# spark.hadoop.fs.s3a.endpoint will be set from S3_ENDPOINT_URL
 # spark.hadoop.fs.s3a.access.key will be set from user's credentials
 # spark.hadoop.fs.s3a.secret.key will be set from user's credentials
 spark.hadoop.fs.s3a.path.style.access=true
 spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
 spark.hadoop.fs.s3a.connection.ssl.enabled=false
+
+# Polaris Iceberg catalog configuration will be appended dynamically by connect_server.py
+# based on POLARIS_* environment variables (personal catalog "my" + tenant catalogs)
 
 # ------------------------------------------------------------------------------
 # KBase Authentication Interceptor (STATIC - Server-Side Only)
@@ -124,7 +128,7 @@ spark.hadoop.fs.s3a.connection.ssl.enabled=false
 # Environment variables used by the namespace interceptor:
 # - BERDL_ALLOWED_NAMESPACE_PREFIXES: Comma-separated allowed prefixes
 #   (e.g., "u_tgu2__,kbase_,research_"). Set dynamically by connect_server.py.
-spark.connect.grpc.interceptor.classes=us.kbase.spark.KBaseAuthServerInterceptor,us.kbase.spark.NamespaceValidationInterceptor
+spark.connect.grpc.interceptor.classes=us.kbase.spark.KBaseAuthServerInterceptor
 
 # ------------------------------------------------------------------------------
 # Session Timeout (STATIC - Server-Side Only)

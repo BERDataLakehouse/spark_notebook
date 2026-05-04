@@ -7,8 +7,11 @@ configures per-user S3 access for Spark.
 
 Architecture:
     1. Fetch user's MinIO credentials from governance API
-    2. Create a per-user dynamic catalog via CREATE CATALOG
-    3. Return a trino.dbapi Connection configured to use the per-user catalog as the default
+    2. Create a per-user Delta/Hive dynamic catalog via CREATE CATALOG
+    3. If Polaris is configured, create Iceberg REST catalogs for the personal
+       and tenant Polaris warehouses
+    4. Return a trino.dbapi Connection configured to use the per-user Delta/Hive
+       catalog as the default
 
 The user's catalog (e.g., "u_tgu") has their own MinIO credentials,
 so S3 access is scoped to what the governance API grants them — same
@@ -21,7 +24,7 @@ import re
 import trino
 
 from .berdl_settings import BERDLSettings, get_settings
-from .minio_governance.operations import get_minio_credentials
+from .governance.operations import get_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +41,18 @@ logger = logging.getLogger(__name__)
 # data from MinIO/S3, so the same namespace isolation applies to either one.
 # delta_lake is the default (matches Spark's Delta write format); hive is
 # available for querying legacy non-Delta tables (Parquet, ORC, CSV, etc.).
+#
+# The iceberg connector is used only for Polaris REST catalogs.  Those catalogs
+# are named with portable aliases that match Spark's cross-engine aliases:
+#   - Personal: {username} -> Polaris warehouse user_{username}
+#   - Tenant:   {tenant}   -> Polaris warehouse tenant_{tenant}
+# The Spark-only "my" alias is intentionally not created in Trino because Trino
+# catalog names are global on the coordinator.
 ALLOWED_CONNECTORS = frozenset(
     {
         "delta_lake",
         "hive",
+        "iceberg",
     }
 )
 
@@ -65,9 +76,9 @@ def _build_catalog_properties(
     secret_key: str,
 ) -> dict[str, str]:
     """Build the WITH properties for CREATE CATALOG."""
-    endpoint_url = str(settings.MINIO_ENDPOINT_URL)
+    endpoint_url = str(settings.S3_ENDPOINT_URL)
     if not endpoint_url.startswith("http"):
-        protocol = "https" if settings.MINIO_SECURE else "http"
+        protocol = "https" if settings.S3_SECURE else "http"
         endpoint_url = f"{protocol}://{endpoint_url}"
 
     return {
@@ -78,6 +89,94 @@ def _build_catalog_properties(
         "s3.aws-secret-key": secret_key,
         "s3.path-style-access": "true",
         "s3.region": "us-east-1",
+    }
+
+
+def _get_polaris_uri(settings: BERDLSettings) -> str | None:
+    """Return the configured Polaris REST catalog URI without a trailing slash."""
+    if not settings.POLARIS_CATALOG_URI:
+        return None
+    return str(settings.POLARIS_CATALOG_URI).rstrip("/")
+
+
+def _get_polaris_oauth2_server_uri(settings: BERDLSettings) -> str | None:
+    """Return the Polaris OAuth2 token endpoint for Iceberg REST clients."""
+    polaris_uri = _get_polaris_uri(settings)
+    if not polaris_uri:
+        return None
+    if polaris_uri.endswith("/v1"):
+        return f"{polaris_uri}/oauth/tokens"
+    return f"{polaris_uri}/v1/oauth/tokens"
+
+
+def _get_personal_catalog_alias(personal_catalog: str | None) -> str | None:
+    """Return the portable Trino alias for a personal Polaris catalog."""
+    if not personal_catalog:
+        return None
+
+    alias = personal_catalog.strip()
+    if alias.startswith("user_"):
+        alias = alias[len("user_") :]
+    alias = _sanitize_identifier(alias).strip("_")
+    return alias or None
+
+
+def _get_tenant_catalog_alias(tenant_catalog: str) -> str:
+    """Return the portable Trino alias for a tenant Polaris catalog."""
+    alias = tenant_catalog.strip()
+    if alias.startswith("tenant_"):
+        alias = alias[len("tenant_") :]
+    return _sanitize_identifier(alias).strip("_")
+
+
+def _iter_tenant_catalogs(tenant_catalogs: str | None) -> list[str]:
+    """Parse configured Polaris tenant catalog names."""
+    if not tenant_catalogs:
+        return []
+    return [catalog.strip() for catalog in tenant_catalogs.split(",") if catalog.strip()]
+
+
+def _build_iceberg_catalog_properties(
+    settings: BERDLSettings,
+    warehouse: str,
+    access_key: str,
+    secret_key: str,
+) -> dict[str, str]:
+    """Build the WITH properties for a Trino Iceberg REST catalog backed by Polaris."""
+    polaris_uri = _get_polaris_uri(settings)
+    oauth2_server_uri = _get_polaris_oauth2_server_uri(settings)
+    if not polaris_uri or not oauth2_server_uri:
+        raise ValueError("POLARIS_CATALOG_URI is required to create an Iceberg REST catalog")
+
+    s3_properties = _build_catalog_properties(settings, access_key, secret_key)
+    s3_properties.pop("hive.metastore.uri", None)
+
+    return {
+        "iceberg.catalog.type": "rest",
+        "iceberg.rest-catalog.uri": polaris_uri,
+        "iceberg.rest-catalog.warehouse": warehouse,
+        "iceberg.rest-catalog.security": "OAUTH2",
+        "iceberg.rest-catalog.oauth2.credential": settings.POLARIS_CREDENTIAL or "",
+        "iceberg.rest-catalog.oauth2.scope": "PRINCIPAL_ROLE:ALL",
+        "iceberg.rest-catalog.oauth2.server-uri": oauth2_server_uri,
+        # Refresh the OAuth bearer token before it expires.  Polaris-issued
+        # tokens default to a 1 h TTL; with this previously set to "false"
+        # the connector cached a single token at catalog-creation time and
+        # every query after the first hour failed with
+        # ``ICEBERG_CATALOG_ERROR: Failed to list namespaces`` (Trino
+        # swallows the underlying 401).  Combined with
+        # ``_create_dynamic_catalog()`` skipping recreation when a catalog
+        # of the same name already exists in the coordinator, this also
+        # caused stale per-user catalogs from prior coordinator uptime to
+        # stay broken until Trino was restarted.
+        "iceberg.rest-catalog.oauth2.token-refresh-enabled": "true",
+        # Token-exchange flow is unused with the client-credentials grant
+        # we issue; leave disabled to avoid an extra Polaris round-trip on
+        # each refresh.
+        "iceberg.rest-catalog.oauth2.token-exchange-enabled": "false",
+        "iceberg.rest-catalog.vended-credentials-enabled": "false",
+        "iceberg.security": "read_only",
+        **s3_properties,
     }
 
 
@@ -110,19 +209,39 @@ def _create_dynamic_catalog(
     catalog_name: str,
     connector: str,
     properties: dict[str, str],
+    *,
+    force: bool = False,
 ) -> None:
-    """
-    Create a dynamic catalog if it doesn't already exist.
+    """Create a dynamic catalog.
 
-    Skips creation if the catalog is already loaded (e.g. from a previous
-    session or static .properties file).  The access control plugin allows
-    CREATE CATALOG for catalogs matching u_{user}*.
-    """
-    if _catalog_exists(cursor, catalog_name):
-        logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
-        return
+    By default, an existing catalog with the same name is reused
+    (e.g. a static ``.properties`` file or a previously-created dynamic
+    catalog whose embedded credentials are still valid).
 
+    Args:
+        cursor: Open Trino cursor.
+        catalog_name: Catalog name to create (validated by the access
+            control plugin against ``u_{user}*`` and Polaris alias rules).
+        connector: One of :data:`ALLOWED_CONNECTORS`.
+        properties: ``WITH (...)`` catalog properties.
+        force: When True, drop the existing catalog (if any) and recreate
+            it. Required for OAuth-bearing Iceberg catalogs whose embedded
+            ``oauth2.credential`` may have rotated since the coordinator
+            last loaded them — without ``force``, a stale ``client_secret``
+            silently persists for the entire coordinator uptime even with
+            ``token-refresh-enabled=true``, because the refresh request
+            itself uses the (now stale) cached credential and is rejected
+            by Polaris with ``unauthorized_client``.
+    """
     _validate_connector(connector)
+
+    if _catalog_exists(cursor, catalog_name):
+        if not force:
+            logger.info(f"Catalog '{catalog_name}' already exists, skipping creation")
+            return
+        logger.info(f"Force-recreating Trino catalog '{catalog_name}' (force=True)")
+        cursor.execute(f'DROP CATALOG IF EXISTS "{catalog_name}"')
+        cursor.fetchall()
 
     props_sql = ",\n        ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in properties.items())
 
@@ -135,6 +254,50 @@ def _create_dynamic_catalog(
     cursor.execute(sql)
     cursor.fetchall()
     logger.info(f"Catalog '{catalog_name}' ready")
+
+
+def _create_polaris_catalogs(
+    cursor: trino.dbapi.Cursor,
+    settings: BERDLSettings,
+    access_key: str,
+    secret_key: str,
+) -> None:
+    """Create Trino Iceberg catalogs for configured Polaris warehouses.
+
+    Always passes ``force=True`` to :func:`_create_dynamic_catalog` so the
+    catalogs are dropped and re-created on every connection.  The OAuth
+    ``client_secret`` we embed here is rotated by MMS via
+    :func:`refresh_spark_environment` (and admin tooling), so reusing a
+    coordinator-cached catalog risks running with a now-invalid
+    credential.  Drop+create on every call adds ~one round-trip per
+    catalog but guarantees a clean credential state for the duration of
+    the new connection.
+    """
+    if not settings.POLARIS_CATALOG_URI or not settings.POLARIS_CREDENTIAL:
+        return
+
+    personal_catalog = settings.POLARIS_PERSONAL_CATALOG
+    personal_alias = _get_personal_catalog_alias(personal_catalog)
+    if personal_catalog and personal_alias:
+        properties = _build_iceberg_catalog_properties(
+            settings=settings,
+            warehouse=personal_catalog,
+            access_key=access_key,
+            secret_key=secret_key,
+        )
+        _create_dynamic_catalog(cursor, personal_alias, "iceberg", properties, force=True)
+
+    for tenant_catalog in _iter_tenant_catalogs(settings.POLARIS_TENANT_CATALOGS):
+        tenant_alias = _get_tenant_catalog_alias(tenant_catalog)
+        if not tenant_alias:
+            continue
+        properties = _build_iceberg_catalog_properties(
+            settings=settings,
+            warehouse=tenant_catalog,
+            access_key=access_key,
+            secret_key=secret_key,
+        )
+        _create_dynamic_catalog(cursor, tenant_alias, "iceberg", properties, force=True)
 
 
 def get_trino_connection(
@@ -151,7 +314,9 @@ def get_trino_connection(
     — the same model as get_spark_session().
 
     The connection's default catalog is set automatically, so queries
-    use ``schema.table`` format — same as Spark.
+    can keep using ``schema.table`` format for Delta/Hive tables.
+    Polaris/Iceberg tables use explicit cross-engine catalog aliases such
+    as ``{username}.schema.table`` or ``{tenant}.schema.table``.
 
     Args:
         host: Trino coordinator hostname. Defaults to TRINO_HOST env var or "trino".
@@ -183,7 +348,7 @@ def get_trino_connection(
     trino_port = port if port is not None else settings.TRINO_PORT
 
     # Fetch user's MinIO credentials (same flow as Spark)
-    credentials = get_minio_credentials()
+    credentials = get_credentials()
     username = settings.USER
 
     # Build catalog name: u_{username}
@@ -202,18 +367,24 @@ def get_trino_connection(
         extra_credential=[("kbase_auth_token", settings.KBASE_AUTH_TOKEN)],
     )
 
-    # Create per-user dynamic catalog with user's MinIO credentials
+    # Create per-user Delta/Hive dynamic catalog with user's MinIO credentials
     properties = _build_catalog_properties(
         settings=settings,
-        access_key=credentials.access_key,
-        secret_key=credentials.secret_key,
+        access_key=credentials.s3_access_key,
+        secret_key=credentials.s3_secret_key,
     )
 
     cursor = conn.cursor()
     _create_dynamic_catalog(cursor, catalog_name, connector, properties)
+    _create_polaris_catalogs(
+        cursor=cursor,
+        settings=settings,
+        access_key=credentials.s3_access_key,
+        secret_key=credentials.s3_secret_key,
+    )
 
     # Set the default catalog on the connection so users can write
-    # schema.table queries without a catalog prefix — same UX as Spark.
+    # schema.table Delta/Hive queries without a catalog prefix — same UX as Spark.
     conn._client_session.catalog = catalog_name
 
     logger.info(f"Trino session ready: host={trino_host}:{trino_port}, user={username}, catalog={catalog_name}")
