@@ -111,9 +111,7 @@ def test_minio_governance_emits_deprecation_warning() -> None:
         importlib.import_module("berdl_notebook_utils.minio_governance.tenant_management")
 
     legacy_warnings = [
-        w for w in caught
-        if issubclass(w.category, DeprecationWarning)
-        and "minio_governance" in str(w.message)
+        w for w in caught if issubclass(w.category, DeprecationWarning) and "minio_governance" in str(w.message)
     ]
     assert len(legacy_warnings) >= 3, (
         f"expected one DeprecationWarning per legacy module import; got "
