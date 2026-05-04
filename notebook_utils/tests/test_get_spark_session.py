@@ -504,7 +504,7 @@ class TestGetCatalogConf:
         assert all("kbase" in k for k in catalog_keys)
 
     def test_s3_endpoint_without_http_prefix(self):
-        """Test s3 endpoint gets http:// prefix if missing."""
+        """Test s3 endpoint gets http:// prefix if missing (S3_SECURE=False)."""
         from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
 
         settings = BERDLSettings()
@@ -513,11 +513,62 @@ class TestGetCatalogConf:
         settings.POLARIS_PERSONAL_CATALOG = "user_test"
         settings.POLARIS_TENANT_CATALOGS = None
         settings.S3_ENDPOINT_URL = "minio:9000"
+        settings.S3_SECURE = False
 
         result = _get_catalog_conf(settings)
 
         assert result["spark.sql.catalog.my.s3.endpoint"] == "http://minio:9000"
         assert result["spark.sql.catalog.test.s3.endpoint"] == "http://minio:9000"
+
+    def test_s3_endpoint_without_scheme_uses_https_when_s3_secure(self):
+        """Schemeless S3_ENDPOINT_URL must use https:// when S3_SECURE=True.
+
+        Regression test for the stage TLS-misconfig bug: previously
+        ``_get_catalog_conf`` always hard-coded ``http://`` regardless of
+        ``S3_SECURE``, so on stage where
+        ``S3_ENDPOINT_URL=minio.stage.berdl.kbase.us`` (no scheme) and
+        ``S3_SECURE=True``, Iceberg's S3FileIO ended up trying to talk
+        plain HTTP to a TLS-only endpoint.  The Trino helper
+        ``_build_catalog_properties`` already derived the scheme from
+        ``S3_SECURE``; this restores parity.
+        """
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = "user_test"
+        settings.POLARIS_TENANT_CATALOGS = None
+        settings.S3_ENDPOINT_URL = "minio.stage.berdl.kbase.us"
+        settings.S3_SECURE = True
+
+        result = _get_catalog_conf(settings)
+
+        assert result["spark.sql.catalog.my.s3.endpoint"] == "https://minio.stage.berdl.kbase.us"
+        assert result["spark.sql.catalog.test.s3.endpoint"] == "https://minio.stage.berdl.kbase.us"
+
+    def test_s3_endpoint_with_explicit_scheme_is_left_alone(self):
+        """If S3_ENDPOINT_URL already starts with http(s)://, the scheme is preserved verbatim.
+
+        ``S3_SECURE`` is consulted only to choose a default scheme when
+        the user supplied a bare host:port; it must not override an
+        explicit scheme set by the operator (avoids surprise URL
+        mutations and matches the Trino helper's behaviour).
+        """
+        from berdl_notebook_utils.setup_spark_session import _get_catalog_conf
+
+        settings = BERDLSettings()
+        settings.POLARIS_CATALOG_URI = "http://polaris:8181/api/catalog"  # type: ignore
+        settings.POLARIS_CREDENTIAL = "client_id:client_secret"
+        settings.POLARIS_PERSONAL_CATALOG = "user_test"
+        settings.POLARIS_TENANT_CATALOGS = None
+        # Explicit http:// even though S3_SECURE=True — caller is in charge.
+        settings.S3_ENDPOINT_URL = "http://minio.internal:9000"
+        settings.S3_SECURE = True
+
+        result = _get_catalog_conf(settings)
+
+        assert result["spark.sql.catalog.my.s3.endpoint"] == "http://minio.internal:9000"
 
     def test_both_personal_and_tenant_catalogs(self):
         """Test generates config for both personal and tenant catalogs."""

@@ -203,9 +203,16 @@ def _get_catalog_conf(settings: BERDLSettings) -> dict[str, str]:
 
     # S3/MinIO properties for Iceberg's S3FileIO (used by executors to read/write data files).
     # Iceberg does NOT use Spark's spark.hadoop.fs.s3a.* — it has its own AWS SDK S3 client.
+    #
+    # Derive the scheme from S3_SECURE (matches setup_trino_session
+    # ._build_catalog_properties).  Hard-coding "http://" silently
+    # misconfigured TLS-required clusters where S3_ENDPOINT_URL was
+    # supplied without a scheme — e.g. stage with
+    # S3_ENDPOINT_URL=minio.stage.berdl.kbase.us, S3_SECURE=true.
     s3_endpoint = settings.S3_ENDPOINT_URL
     if not s3_endpoint.startswith("http"):
-        s3_endpoint = f"http://{s3_endpoint}"
+        protocol = "https" if settings.S3_SECURE else "http"
+        s3_endpoint = f"{protocol}://{s3_endpoint}"
     s3_props = {
         "s3.endpoint": s3_endpoint,
         "s3.access-key-id": settings.S3_ACCESS_KEY,
